@@ -8,10 +8,22 @@ interface SlimeParticle {
   active: boolean;
 }
 
+export const GROUND_Y = -3.70;
+
+export interface PlatformBound {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /**
  * Alien Blob Enemy
- * A gelatinous, hopping alien creature with eye tracking, squish-and-stretch physics,
- * platform patrolling AI, and green slime particle explosions on defeat.
+ * A gelatinous, hopping alien creature with:
+ * - Natural squash-and-stretch physics
+ * - Real floor & platform boundary awareness (no walking on invisible layers!)
+ * - Reactive eye tracking
+ * - Slime burst splash particles on defeat
  */
 export class EnemyBlob {
   public group: THREE.Group;
@@ -30,14 +42,14 @@ export class EnemyBlob {
   private patrolDir: number = 1;
   private minX: number;
   private maxX: number;
-  private baseY: number;
+  public baseY: number;
 
   // Slime Burst VFX
   private static slimeGeo = new THREE.SphereGeometry(0.08, 6, 6);
   private static slimeMat = new THREE.MeshBasicMaterial({ color: 0x39ff14 });
   private slimePool: SlimeParticle[] = [];
 
-  constructor(scene: THREE.Scene, startX: number, startY: number, patrolRange: number = 4.0) {
+  constructor(scene: THREE.Scene, startX: number, startY: number, patrolRange: number = 3.0) {
     this.group = new THREE.Group();
     this.position = this.group.position;
     this.position.set(startX, startY, 0);
@@ -50,11 +62,11 @@ export class EnemyBlob {
     // Gelatinous Alien Slime Body
     const bodyGeo = new THREE.SphereGeometry(0.48, 16, 12);
     bodyGeo.scale(1.1, 0.9, 1.0);
-    bodyGeo.translate(0, 0.42, 0); // Pivot at base
+    bodyGeo.translate(0, 0.42, 0); // Pivot firmly at base (y=0 touches ground)
 
     const slimeMat = new THREE.MeshStandardMaterial({
       color: 0x30e620,
-      roughness: 0.2,
+      roughness: 0.25,
       metalness: 0.1,
       transparent: true,
       opacity: 0.92,
@@ -111,7 +123,7 @@ export class EnemyBlob {
       this.explodeSlime(14);
       this.active = false;
       this.group.visible = false;
-      return true; // Died!
+      return true; // Defeated!
     }
 
     // Flash white on hit
@@ -144,7 +156,13 @@ export class EnemyBlob {
     }
   }
 
-  public update(dt: number, time: number, playerX: number, playerY: number) {
+  public update(
+    dt: number,
+    time: number,
+    playerX: number,
+    playerY: number,
+    platforms: PlatformBound[] = []
+  ) {
     if (!this.active) {
       this.updateParticles(dt);
       return;
@@ -160,7 +178,32 @@ export class EnemyBlob {
       0.08
     );
 
-    // 2. Hopping AI Behavior
+    // 2. Identify Current Supporting Surface
+    // Check if directly over any platform
+    let surfaceY = GROUND_Y;
+    let currentPlatform: PlatformBound | null = null;
+
+    for (const plat of platforms) {
+      const pTop = plat.y + plat.height / 2;
+      const pLeft = plat.x - plat.width / 2;
+      const pRight = plat.x + plat.width / 2;
+
+      if (this.position.x >= pLeft - 0.2 && this.position.x <= pRight + 0.2) {
+        // Platform is beneath or at blob height
+        if (this.position.y >= pTop - 0.4 && pTop > surfaceY) {
+          surfaceY = pTop;
+          currentPlatform = plat;
+        }
+      }
+    }
+
+    // Restrict patrol boundary so the blob never walks off an elevated platform into thin air
+    if (currentPlatform) {
+      this.minX = Math.max(this.minX, currentPlatform.x - currentPlatform.width / 2 + 0.35);
+      this.maxX = Math.min(this.maxX, currentPlatform.x + currentPlatform.width / 2 - 0.35);
+    }
+
+    // 3. Hopping AI Behavior
     const distToPlayer = Math.abs(playerX - this.position.x);
 
     // Squash anticipation before hop
@@ -174,45 +217,63 @@ export class EnemyBlob {
       this.hopTimer = 0;
       this.isGrounded = false;
 
-      // Hop towards player if close, else patrol
+      // Hop towards player if in range and within boundary, else patrol
       let hopDir = this.patrolDir;
-      if (distToPlayer < 9.0) {
-        hopDir = playerX > this.position.x ? 1 : -1;
+      if (distToPlayer < 8.0) {
+        const toPlayer = playerX > this.position.x ? 1 : -1;
+        if (
+          (toPlayer > 0 && this.position.x < this.maxX) ||
+          (toPlayer < 0 && this.position.x > this.minX)
+        ) {
+          hopDir = toPlayer;
+        }
       }
 
-      this.velocity.x = hopDir * (2.8 + Math.random() * 1.5);
-      this.velocity.y = 6.8 + Math.random() * 1.5;
+      this.velocity.x = hopDir * (2.4 + Math.random() * 1.2);
+      this.velocity.y = 6.2 + Math.random() * 1.4;
 
       // Stretch on jump
       this.bodyMesh.scale.set(0.78, 1.35, 0.78);
     }
 
-    // 3. Air & Ground Physics
+    // 4. Air & Ground Physics
     if (!this.isGrounded) {
       this.velocity.y -= 18.0 * dt;
       this.position.x += this.velocity.x * dt;
       this.position.y += this.velocity.y * dt;
 
-      // Land on floor/base platform
-      if (this.position.y <= this.baseY) {
-        this.position.y = this.baseY;
+      // Land on supporting surface (platform top or ground floor)
+      if (this.position.y <= surfaceY) {
+        this.position.y = surfaceY;
         this.velocity.set(0, 0, 0);
         this.isGrounded = true;
 
         // Landing squash
         this.bodyMesh.scale.set(1.3, 0.65, 1.3);
 
-        // Turn around if past patrol boundary
-        if (this.position.x > this.maxX) this.patrolDir = -1;
-        if (this.position.x < this.minX) this.patrolDir = 1;
+        // Turn around if at or beyond patrol boundary
+        if (this.position.x >= this.maxX) this.patrolDir = -1;
+        if (this.position.x <= this.minX) this.patrolDir = 1;
       }
     } else {
+      // If already grounded, ensure position tracks surface exactly
+      if (Math.abs(this.position.y - surfaceY) < 0.2) {
+        this.position.y = surfaceY;
+      } else if (this.position.y > surfaceY) {
+        // Walked off an edge, fall naturally!
+        this.isGrounded = false;
+      }
+
       // Elastic recovery to normal shape
       this.bodyMesh.scale.lerp(new THREE.Vector3(1, 1, 1), dt * 10);
     }
 
+    // Turn around if walked past patrol bounds
+    if (this.position.x >= this.maxX) this.patrolDir = -1;
+    if (this.position.x <= this.minX) this.patrolDir = 1;
+
     // Gentle gelatinous breathing wobble
-    const wobble = Math.sin(time * 6.0) * 0.05;
+    const wobble = Math.sin(time * 6.0) * 0.04;
     this.bodyMesh.scale.y += wobble;
 
     this.updateParticles(dt);

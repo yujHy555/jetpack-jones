@@ -1,6 +1,6 @@
 /**
- * Retro 80s Web Audio Synthesizer for Jetpack Jones
- * Zero external audio assets required - runs instantly on any browser/mobile.
+ * Retro Sci-Fi Web Audio Synthesizer for Jetpack Jones
+ * Generates satisfying plasma bubble-bursts, jetpack thrust roars, alien squelches, and pickups.
  */
 export class AudioManager {
   private ctx: AudioContext | null = null;
@@ -9,9 +9,7 @@ export class AudioManager {
   private jetpackNoiseNode: AudioBufferSourceNode | null = null;
   private isThrusting: boolean = false;
 
-  constructor() {
-    // Lazily initialized on user interaction to comply with browser autoplay policies
-  }
+  constructor() {}
 
   private initCtx() {
     if (!this.ctx) {
@@ -32,7 +30,7 @@ export class AudioManager {
   }
 
   /**
-   * Jetpack thruster rocket roar with low-pass filtered noise and bass oscillation
+   * Epic Jetpack thruster roar with combustion rumble & filtered air turbulence
    */
   public setJetpackThrust(active: boolean) {
     if (!this.enabled) return;
@@ -44,7 +42,6 @@ export class AudioManager {
       const t = this.ctx.currentTime;
 
       if (!this.jetpackGain) {
-        // Build looping pink noise buffer for realistic combustion roar
         const bufferSize = this.ctx.sampleRate * 2;
         const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
         const output = noiseBuffer.getChannelData(0);
@@ -54,13 +51,13 @@ export class AudioManager {
           b0 = 0.99886 * b0 + white * 0.0555179;
           b1 = 0.99332 * b1 + white * 0.0750759;
           b2 = 0.96900 * b2 + white * 0.1538520;
-          output[i] = (b0 + b1 + b2) * 0.18;
+          output[i] = (b0 + b1 + b2) * 0.22;
         }
 
         const filter = this.ctx.createBiquadFilter();
         filter.type = 'lowpass';
-        filter.frequency.value = 650;
-        filter.Q.value = 2.0;
+        filter.frequency.value = 750;
+        filter.Q.value = 2.4;
 
         const gain = this.ctx.createGain();
         gain.gain.setValueAtTime(0.001, t);
@@ -79,7 +76,7 @@ export class AudioManager {
       }
 
       this.jetpackGain.gain.cancelScheduledValues(t);
-      this.jetpackGain.gain.linearRampToValueAtTime(0.28, t + 0.12);
+      this.jetpackGain.gain.linearRampToValueAtTime(0.32, t + 0.1);
 
     } else if (!active && this.isThrusting) {
       this.isThrusting = false;
@@ -92,9 +89,54 @@ export class AudioManager {
   }
 
   /**
-   * Classic retro laser raygun zap
+   * Satisfying Sci-Fi Plasma Bubble Burst Laser Zap!
+   * Combines an energetic frequency sweep with an acoustic bubble pop transient.
    */
   public playLaser() {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+
+    // 1. Plasma bubble burst transient (chirp pop)
+    const osc1 = this.ctx.createOscillator();
+    const gain1 = this.ctx.createGain();
+
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(420, t);
+    osc1.frequency.exponentialRampToValueAtTime(1450, t + 0.04);
+    osc1.frequency.exponentialRampToValueAtTime(180, t + 0.16);
+
+    gain1.gain.setValueAtTime(0.28, t);
+    gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+
+    osc1.connect(gain1);
+    gain1.connect(this.ctx.destination);
+    osc1.start(t);
+    osc1.stop(t + 0.17);
+
+    // 2. Low punch thump
+    const osc2 = this.ctx.createOscillator();
+    const gain2 = this.ctx.createGain();
+
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(160, t);
+    osc2.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+
+    gain2.gain.setValueAtTime(0.22, t);
+    gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+
+    osc2.connect(gain2);
+    gain2.connect(this.ctx.destination);
+    osc2.start(t);
+    osc2.stop(t + 0.13);
+  }
+
+  /**
+   * Juicy Alien Blob Squish Pop
+   */
+  public playAlienSquish() {
     if (!this.enabled) return;
     this.initCtx();
     if (!this.ctx) return;
@@ -103,23 +145,21 @@ export class AudioManager {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(980, t);
-    osc.frequency.exponentialRampToValueAtTime(140, t + 0.14);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, t);
+    osc.frequency.linearRampToValueAtTime(250, t + 0.08);
+    osc.frequency.linearRampToValueAtTime(550, t + 0.16);
+    osc.frequency.exponentialRampToValueAtTime(90, t + 0.28);
 
-    gain.gain.setValueAtTime(0.25, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
-
     osc.start(t);
-    osc.stop(t + 0.15);
+    osc.stop(t + 0.29);
   }
 
-  /**
-   * Explosive crunch / obstacle impact sound
-   */
   public playExplosion() {
     if (!this.enabled) return;
     this.initCtx();
@@ -129,52 +169,42 @@ export class AudioManager {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(180, t);
-    osc.frequency.exponentialRampToValueAtTime(30, t + 0.4);
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(140, t);
+    osc.frequency.exponentialRampToValueAtTime(25, t + 0.4);
 
-    gain.gain.setValueAtTime(0.4, t);
+    gain.gain.setValueAtTime(0.35, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
     osc.start(t);
-    osc.stop(t + 0.45);
+    osc.stop(t + 0.42);
   }
 
-  /**
-   * Chime pickup for fuel canisters or score tokens
-   */
   public playPickup() {
     if (!this.enabled) return;
     this.initCtx();
     if (!this.ctx) return;
 
     const t = this.ctx.currentTime;
-    const osc1 = this.ctx.createOscillator();
-    const osc2 = this.ctx.createOscillator();
+    const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    osc1.type = 'sine';
-    osc2.type = 'sine';
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, t); // D5
+    osc.frequency.setValueAtTime(880.00, t + 0.08); // A5
+    osc.frequency.setValueAtTime(1174.66, t + 0.16); // D6
 
-    osc1.frequency.setValueAtTime(523.25, t); // C5
-    osc1.frequency.setValueAtTime(659.25, t + 0.08); // E5
-    osc1.frequency.setValueAtTime(783.99, t + 0.16); // G5
-    osc1.frequency.setValueAtTime(1046.50, t + 0.24); // C6
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
 
-    gain.gain.setValueAtTime(0.18, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
-
-    osc1.connect(gain);
+    osc.connect(gain);
     gain.connect(this.ctx.destination);
-    osc1.start(t);
-    osc1.stop(t + 0.4);
+    osc.start(t);
+    osc.stop(t + 0.36);
   }
 
-  /**
-   * Low fuel warning emergency bleep
-   */
   public playWarning() {
     if (!this.enabled) return;
     this.initCtx();

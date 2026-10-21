@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+export const GROUND_Y = -3.70;
+
 export interface LaserBolt {
   mesh: THREE.Mesh;
   position: THREE.Vector3;
@@ -34,6 +36,14 @@ interface DustParticle {
   active: boolean;
 }
 
+interface BubbleBurstParticle {
+  mesh: THREE.Mesh;
+  velocity: THREE.Vector3;
+  age: number;
+  maxLife: number;
+  active: boolean;
+}
+
 export enum PlayerState {
   IDLE = 'idle',
   WALK = 'walk',
@@ -44,21 +54,22 @@ export enum PlayerState {
 }
 
 /**
- * Triple-AAA Articulated 2D Skeletal Character
+ * Triple-AAA Articulated 2D Skeletal Character - Jetpack Jones
  * Features:
- * - Cool Retro Space Helmet with Amber Visor and Antenna
- * - New Heavy Laser Blaster aligned with 360° Mouse Reticle
- * - Movement Key Facing Direction Priority
- * - Natural Backward-Flexing Knees
- * - High-Impact Muzzle Flash & Screen Recoil
- * - Rich Faux-Volumetric Smoke and Twin Thruster Flame Cones
+ * - 2-Joint Arm IK with natural elbow flexion & 360° mouse tracking
+ * - Cool 1970s Mego/Kenner style twin-tank chrome jetpack with blinking LEDs & fuel gauge
+ * - Epic multi-tiered thruster flames (white-hot core + surging amber cone)
+ * - Satisfying plasma bubble-burst muzzle flash with expanding ripple rings & sparks
+ * - Chunky retro astronaut gauntlet space gloves with status displays
+ * - Exact boot sole ground alignment (no sinking into terrain)
+ * - Aerodynamic rocketman jetpack flight animations
  */
 export class Player {
   public mesh: THREE.Group;
   public state: PlayerState = PlayerState.IDLE;
 
   // Transform & Physics
-  public position: THREE.Vector3 = new THREE.Vector3(0, -3.8, 0);
+  public position: THREE.Vector3 = new THREE.Vector3(0, GROUND_Y, 0);
   public velocity: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
   public isGrounded: boolean = true;
   public facingRight: boolean = true;
@@ -78,7 +89,7 @@ export class Player {
   private torsoBone: THREE.Group;
   private headBone: THREE.Group;
 
-  // Legs (Strictly backward-bending knee joints)
+  // Legs (Strictly backward-bending natural knee joints)
   private frontThighBone: THREE.Group;
   private frontShinBone: THREE.Group;
   private frontFootBone: THREE.Group;
@@ -87,42 +98,52 @@ export class Player {
   private backShinBone: THREE.Group;
   private backFootBone: THREE.Group;
 
-  // Arms (360° Rotational Aiming)
+  // Arms (2-Joint Inverse Kinematics / Natural Elbow Flexion)
   private frontArmBone: THREE.Group;
   private frontForearmBone: THREE.Group;
   private frontHandBone: THREE.Group;
   private blasterMesh: THREE.Group;
-  private muzzleFlashMesh: THREE.Mesh;
 
   private backArmBone: THREE.Group;
   private backForearmBone: THREE.Group;
   private backHandBone: THREE.Group;
 
-  // Jetpack & Lights
+  // Satisfying Bubble-Burst Muzzle Flash
+  private bubbleBurstGroup: THREE.Group;
+  private bubbleSphereMesh: THREE.Mesh;
+  private bubbleRingMesh: THREE.Mesh;
+  private bubbleBurstTimer: number = 0;
+  private bubbleParticles: BubbleBurstParticle[] = [];
+
+  // 1970s Toy-Style Jetpack & Flashing LEDs
   private jetpackBone: THREE.Group;
-  private flameConeLeft: THREE.Mesh;
-  private flameConeRight: THREE.Mesh;
+  private flameConeLeft: THREE.Group;
+  private flameConeRight: THREE.Group;
+  private flameCoreLeft: THREE.Mesh;
+  private flameCoreRight: THREE.Mesh;
+  private flameOuterLeft: THREE.Mesh;
+  private flameOuterRight: THREE.Mesh;
   private thrusterLight: THREE.PointLight;
   private muzzleLight: THREE.PointLight;
+
+  // 1970s Console Blinking LEDs & Gauge Needle
+  private ledMaterials: THREE.MeshBasicMaterial[] = [];
+  private fuelGaugeNeedle!: THREE.Mesh;
 
   // Animation Timers & Physics Smoothing
   private animTimer: number = 0;
   private shootTimer: number = 0;
   private currentAimAngle: number = 0; // World angle in radians
   private landSquashTimer: number = 0;
-  private jumpAnticipateTimer: number = 0;
   private wasGroundedLastFrame: boolean = true;
-
-  // Secondary Motion Follow-Through
   private headFollowLag: number = 0;
-  private torsoTiltSmooth: number = 0;
 
   // VFX Pools
   private vfxGroup: THREE.Group;
   private smokePuffs: SmokePuff[] = [];
-  private maxSmoke = 75;
+  private maxSmoke = 80;
   private sparks: Spark[] = [];
-  private maxSparks = 65;
+  private maxSparks = 70;
   private sparkGeo!: THREE.BufferGeometry;
   private sparkPositions!: Float32Array;
   private sparkColors!: Float32Array;
@@ -149,10 +170,10 @@ export class Player {
     this.thrusterLight = new THREE.PointLight(0xff7700, 0, 16, 1.2);
     scene.add(this.thrusterLight);
 
-    this.muzzleLight = new THREE.PointLight(0xffea00, 0, 8, 1.5);
+    this.muzzleLight = new THREE.PointLight(0x00f5ff, 0, 10, 1.8);
     scene.add(this.muzzleLight);
 
-    // Stylized PBR Palette
+    // Stylized Materials Palette
     const suitOrange = new THREE.MeshStandardMaterial({
       color: 0xee5a08,
       roughness: 0.38,
@@ -164,20 +185,21 @@ export class Player {
       metalness: 0.05,
     });
     const darkHarness = new THREE.MeshStandardMaterial({
-      color: 0x30343e,
-      roughness: 0.5,
-      metalness: 0.15,
+      color: 0x272b34,
+      roughness: 0.45,
+      metalness: 0.2,
     });
     const cyanStripe = new THREE.MeshBasicMaterial({
       color: 0x00f5ff,
     });
-    const gloveBrown = new THREE.MeshStandardMaterial({
-      color: 0x352e2c,
-      roughness: 0.55,
+    const spaceGloveWhite = new THREE.MeshStandardMaterial({
+      color: 0xe8e8f0,
+      roughness: 0.35,
+      metalness: 0.15,
     });
     const bootBrown = new THREE.MeshStandardMaterial({
-      color: 0x6e5c50,
-      roughness: 0.6,
+      color: 0x5a483e,
+      roughness: 0.65,
       metalness: 0.1,
     });
     const fleshTone = new THREE.MeshStandardMaterial({
@@ -185,37 +207,43 @@ export class Player {
       roughness: 0.45,
     });
     const creamHelmet = new THREE.MeshStandardMaterial({
-      color: 0xf6f3eb,
-      roughness: 0.28,
-      metalness: 0.06,
+      color: 0xf8f5ee,
+      roughness: 0.25,
+      metalness: 0.08,
     });
     const amberVisor = new THREE.MeshPhysicalMaterial({
-      color: 0xff7700,
-      roughness: 0.05,
+      color: 0xff7b00,
+      roughness: 0.04,
       metalness: 0.15,
-      transmission: 0.55,
+      transmission: 0.6,
       transparent: true,
       opacity: 0.95,
-      reflectivity: 0.9,
+      reflectivity: 0.95,
     });
     const chromeMetal = new THREE.MeshStandardMaterial({
-      color: 0xeeeeee,
+      color: 0xf0f0f0,
       metalness: 0.95,
       roughness: 0.12,
     });
+    const vintageConsoleMat = new THREE.MeshStandardMaterial({
+      color: 0x3d4349,
+      roughness: 0.5,
+      metalness: 0.3,
+    });
 
-    // 1. Build Bones Hierarchy
+    // --------------------------------------------------------
+    // 1. SKELETAL RIG HIERARCHY
+    // --------------------------------------------------------
+    // Hip Bone (Calculated so soles touch GROUND_Y = -3.70 with 0 clipping)
     this.hipBone = new THREE.Group();
-    this.hipBone.position.set(0, 0.95, 0);
+    this.hipBone.position.set(0, 1.05, 0);
     this.rigRoot.add(this.hipBone);
 
-    // Belt on hip
-    const beltGeo = new THREE.BoxGeometry(0.36, 0.14, 0.32);
-    const belt = new THREE.Mesh(beltGeo, darkHarness);
+    // Belt and buckle
+    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.14, 0.32), darkHarness);
     this.hipBone.add(belt);
 
-    const buckleGeo = new THREE.BoxGeometry(0.12, 0.16, 0.34);
-    const buckle = new THREE.Mesh(buckleGeo, darkHarness);
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.34), chromeMetal);
     buckle.position.set(0.12, 0, 0);
     this.hipBone.add(buckle);
 
@@ -224,8 +252,7 @@ export class Player {
     this.torsoBone.position.set(0, 0.1, 0);
     this.hipBone.add(this.torsoBone);
 
-    const torsoGeo = new THREE.BoxGeometry(0.34, 0.55, 0.3);
-    const torso = new THREE.Mesh(torsoGeo, suitOrange);
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.55, 0.3), suitOrange);
     torso.position.set(0, 0.28, 0);
     this.torsoBone.add(torso);
 
@@ -238,7 +265,7 @@ export class Player {
     harnessR.position.set(0, 0.56, -0.16);
     this.torsoBone.add(harnessR);
 
-    // Dark neck collar
+    // Collar
     const collarMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.14, 12), darkHarness);
     collarMesh.position.set(0.02, 0.62, 0);
     this.torsoBone.add(collarMesh);
@@ -249,22 +276,20 @@ export class Player {
     this.torsoBone.add(this.headBone);
 
     // Stylized Face inside helmet
-    const faceGeo = new THREE.BoxGeometry(0.24, 0.26, 0.22);
-    const face = new THREE.Mesh(faceGeo, fleshTone);
+    const face = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 0.22), fleshTone);
     face.position.set(0.02, 0.14, 0);
     this.headBone.add(face);
 
-    // COOL SPACE HELMET
+    // SPACE HELMET
     const helmetGroup = new THREE.Group();
     helmetGroup.position.set(0.02, 0.16, 0);
     this.headBone.add(helmetGroup);
 
     // Outer Aerodynamic Helmet Shell
-    const helmetGeo = new THREE.SphereGeometry(0.32, 20, 20);
-    const helmetMesh = new THREE.Mesh(helmetGeo, creamHelmet);
+    const helmetMesh = new THREE.Mesh(new THREE.SphereGeometry(0.32, 20, 20), creamHelmet);
     helmetGroup.add(helmetMesh);
 
-    // Mechanical Chin Rim
+    // Chin Rim
     const chinRimGeo = new THREE.TorusGeometry(0.27, 0.05, 10, 20);
     chinRimGeo.rotateX(Math.PI / 2);
     const chinRim = new THREE.Mesh(chinRimGeo, darkHarness);
@@ -278,10 +303,9 @@ export class Player {
     visor.position.set(0.08, 0, 0);
     helmetGroup.add(visor);
 
-    // Side Circular Communicators with Cyan Status Lights
+    // Side Circular Communicators with Status LEDs
     const commGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.06, 12);
     commGeo.rotateX(Math.PI / 2);
-
     const commL = new THREE.Mesh(commGeo, darkHarness);
     commL.position.set(0, 0, 0.32);
     helmetGroup.add(commL);
@@ -290,7 +314,6 @@ export class Player {
     commR.position.set(0, 0, -0.32);
     helmetGroup.add(commR);
 
-    // Cyan Status Light dots on communicators
     const commLedL = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), cyanStripe);
     commLedL.position.set(0, 0, 0.36);
     helmetGroup.add(commLedL);
@@ -299,7 +322,7 @@ export class Player {
     commLedR.position.set(0, 0, -0.36);
     helmetGroup.add(commLedR);
 
-    // Helmet Antenna with glowing golden beacon
+    // Helmet Antenna
     const antennaStem = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.28, 8), chromeMetal);
     antennaStem.position.set(-0.15, 0.38, -0.18);
     antennaStem.rotation.z = -0.25;
@@ -312,12 +335,15 @@ export class Player {
     antennaBeacon.position.set(-0.19, 0.53, -0.18);
     helmetGroup.add(antennaBeacon);
 
-    // 2. Legs: Back Leg (Z = -0.1) & Front Leg (Z = +0.1)
+    // --------------------------------------------------------
+    // 2. LEGS & ZERO-CLIP BOOT SOLES
+    // --------------------------------------------------------
+    // Calculation: Hip(1.05) - Thigh(0.05) - Shin(0.44) - Foot(0.42) - BootOffset(0.07) - BootHalf(0.07) = 0.00!
     const legGeoThigh = new THREE.BoxGeometry(0.15, 0.44, 0.14);
     const legGeoShin = new THREE.BoxGeometry(0.13, 0.42, 0.13);
-    const bootGeo = new THREE.BoxGeometry(0.28, 0.16, 0.14);
+    const bootGeo = new THREE.BoxGeometry(0.30, 0.14, 0.14);
 
-    // Back Leg
+    // Back Leg (Z = -0.1)
     this.backThighBone = new THREE.Group();
     this.backThighBone.position.set(-0.02, -0.05, -0.1);
     this.hipBone.add(this.backThighBone);
@@ -327,29 +353,25 @@ export class Player {
     this.backThighBone.add(backThighMesh);
 
     this.backShinBone = new THREE.Group();
-    this.backShinBone.position.set(0, -0.42, 0);
+    this.backShinBone.position.set(0, -0.44, 0);
     this.backThighBone.add(this.backShinBone);
 
     const backShinMesh = new THREE.Mesh(legGeoShin, suitOrangeDark);
-    backShinMesh.position.set(0, -0.2, 0);
+    backShinMesh.position.set(0, -0.21, 0);
     this.backShinBone.add(backShinMesh);
 
     this.backFootBone = new THREE.Group();
-    this.backFootBone.position.set(0, -0.4, 0);
+    this.backFootBone.position.set(0, -0.42, 0);
     this.backShinBone.add(this.backFootBone);
 
-    const backCuff = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.08, 0.15), darkHarness);
+    const backCuff = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.06, 0.15), darkHarness);
     this.backFootBone.add(backCuff);
 
-    const backStripe = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.16), cyanStripe);
-    backStripe.position.y = -0.05;
-    this.backFootBone.add(backStripe);
-
     const backBoot = new THREE.Mesh(bootGeo, bootBrown);
-    backBoot.position.set(0.06, -0.12, 0);
+    backBoot.position.set(0.06, -0.07, 0);
     this.backFootBone.add(backBoot);
 
-    // Front Leg
+    // Front Leg (Z = +0.1)
     this.frontThighBone = new THREE.Group();
     this.frontThighBone.position.set(0.02, -0.05, 0.1);
     this.hipBone.add(this.frontThighBone);
@@ -359,32 +381,29 @@ export class Player {
     this.frontThighBone.add(frontThighMesh);
 
     this.frontShinBone = new THREE.Group();
-    this.frontShinBone.position.set(0, -0.42, 0);
+    this.frontShinBone.position.set(0, -0.44, 0);
     this.frontThighBone.add(this.frontShinBone);
 
     const frontShinMesh = new THREE.Mesh(legGeoShin, suitOrange);
-    frontShinMesh.position.set(0, -0.2, 0);
+    frontShinMesh.position.set(0, -0.21, 0);
     this.frontShinBone.add(frontShinMesh);
 
     this.frontFootBone = new THREE.Group();
-    this.frontFootBone.position.set(0, -0.4, 0);
+    this.frontFootBone.position.set(0, -0.42, 0);
     this.frontShinBone.add(this.frontFootBone);
 
-    const frontCuff = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.08, 0.15), darkHarness);
+    const frontCuff = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.06, 0.15), darkHarness);
     this.frontFootBone.add(frontCuff);
 
-    const frontStripe = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.16), cyanStripe);
-    frontStripe.position.y = -0.05;
-    this.frontFootBone.add(frontStripe);
-
     const frontBoot = new THREE.Mesh(bootGeo, bootBrown);
-    frontBoot.position.set(0.06, -0.12, 0);
+    frontBoot.position.set(0.06, -0.07, 0);
     this.frontFootBone.add(frontBoot);
 
-    // 3. Arms: Back Arm (Z = -0.22) & Front Arm (Z = +0.22)
+    // --------------------------------------------------------
+    // 3. ARMS WITH RETRO ASTRONAUT GAUNTLET SPACE GLOVES
+    // --------------------------------------------------------
     const armGeoUpper = new THREE.BoxGeometry(0.12, 0.35, 0.12);
     const armGeoFore = new THREE.BoxGeometry(0.11, 0.32, 0.11);
-    const handGeo = new THREE.BoxGeometry(0.12, 0.14, 0.12);
 
     // Back Arm
     this.backArmBone = new THREE.Group();
@@ -403,14 +422,19 @@ export class Player {
     backForeMesh.position.set(0, -0.14, 0);
     this.backForearmBone.add(backForeMesh);
 
+    // Back Space Glove
+    const backGloveCuff = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.08, 12), darkHarness);
+    backGloveCuff.position.set(0, -0.26, 0);
+    this.backForearmBone.add(backGloveCuff);
+
     this.backHandBone = new THREE.Group();
-    this.backHandBone.position.set(0, -0.28, 0);
+    this.backHandBone.position.set(0, -0.32, 0);
     this.backForearmBone.add(this.backHandBone);
 
-    const backHand = new THREE.Mesh(handGeo, gloveBrown);
-    this.backHandBone.add(backHand);
+    const backGloveMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.12), spaceGloveWhite);
+    this.backHandBone.add(backGloveMesh);
 
-    // Front Arm (360° Rotational Aiming)
+    // Front Arm (2-Joint Inverse Kinematics)
     this.frontArmBone = new THREE.Group();
     this.frontArmBone.position.set(0.02, 0.5, 0.22);
     this.torsoBone.add(this.frontArmBone);
@@ -427,46 +451,47 @@ export class Player {
     frontForeMesh.position.set(0, -0.14, 0);
     this.frontForearmBone.add(frontForeMesh);
 
-    const frontWristStripe = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.05, 0.13), cyanStripe);
-    frontWristStripe.position.set(0, -0.24, 0);
-    this.frontForearmBone.add(frontWristStripe);
+    // Front Space Glove Gauntlet with Status Light
+    const frontGloveCuff = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.08, 12), darkHarness);
+    frontGloveCuff.position.set(0, -0.26, 0);
+    this.frontForearmBone.add(frontGloveCuff);
+
+    const gloveStatusLed = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.03, 0.08), cyanStripe);
+    gloveStatusLed.position.set(0.07, -0.26, 0);
+    this.frontForearmBone.add(gloveStatusLed);
 
     this.frontHandBone = new THREE.Group();
-    this.frontHandBone.position.set(0, -0.3, 0);
+    this.frontHandBone.position.set(0, -0.32, 0);
     this.frontForearmBone.add(this.frontHandBone);
 
-    const frontHand = new THREE.Mesh(handGeo, gloveBrown);
-    this.frontHandBone.add(frontHand);
+    const frontGloveMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.12), spaceGloveWhite);
+    this.frontHandBone.add(frontGloveMesh);
 
-    // BRAND NEW COOL RETRO-FUTURISTIC LASER BLASTER
-    // Constructed strictly along forward line of aim (+X)!
+    // --------------------------------------------------------
+    // 4. RETRO-FUTURISTIC LASER BLASTER (+X forward line of aim)
+    // --------------------------------------------------------
     this.blasterMesh = new THREE.Group();
     this.blasterMesh.position.set(0, -0.06, 0);
     this.frontHandBone.add(this.blasterMesh);
 
-    // Tactical Pistol Grip
     const grip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16, 0.08), darkHarness);
     grip.rotation.z = -0.2;
     grip.position.set(0.02, -0.06, 0);
     this.blasterMesh.add(grip);
 
-    // Main Chrome Receiver Chassis
     const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.12, 0.1), chromeMetal);
     receiver.position.set(0.12, 0.03, 0);
     this.blasterMesh.add(receiver);
 
-    // Glowing Cyan Energy Plasma Core in receiver
     const coreMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.12), cyanStripe);
     coreMesh.position.set(0.1, 0.03, 0);
     this.blasterMesh.add(coreMesh);
 
-    // Precision Forward Barrel
     const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.28, 12), chromeMetal);
-    barrel.rotateZ(Math.PI / 2); // Axis along X!
+    barrel.rotateZ(Math.PI / 2);
     barrel.position.set(0.36, 0.03, 0);
     this.blasterMesh.add(barrel);
 
-    // Ribbed Cooling Coils
     for (let cx = 0.26; cx <= 0.42; cx += 0.06) {
       const coil = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 8, 12), cyanStripe);
       coil.rotateY(Math.PI / 2);
@@ -474,7 +499,6 @@ export class Player {
       this.blasterMesh.add(coil);
     }
 
-    // Dual Muzzle Prongs at the tip
     const prongTop = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.022, 0.03), chromeMetal);
     prongTop.position.set(0.52, 0.05, 0);
     this.blasterMesh.add(prongTop);
@@ -483,22 +507,59 @@ export class Player {
     prongBot.position.set(0.52, 0.01, 0);
     this.blasterMesh.add(prongBot);
 
-    // Muzzle Flash Star at the tip
-    const flashMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
+    // SATISFYING PLASMA BUBBLE BURST MUZZLE FLASH
+    this.bubbleBurstGroup = new THREE.Group();
+    this.bubbleBurstGroup.position.set(0.62, 0.03, 0);
+    this.blasterMesh.add(this.bubbleBurstGroup);
+
+    // Expanding glowing energy bubble
+    const bubbleGeo = new THREE.SphereGeometry(0.26, 16, 16);
+    const bubbleMat = new THREE.MeshBasicMaterial({
+      color: 0x00f5ff,
       transparent: true,
       opacity: 0,
       blending: THREE.AdditiveBlending,
     });
-    this.muzzleFlashMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.25, 0), flashMat);
-    this.muzzleFlashMesh.position.set(0.6, 0.03, 0);
-    this.blasterMesh.add(this.muzzleFlashMesh);
+    this.bubbleSphereMesh = new THREE.Mesh(bubbleGeo, bubbleMat);
+    this.bubbleBurstGroup.add(this.bubbleSphereMesh);
 
-    // 4. Back-Mounted Chrome Jetpack
+    // Concentric shockwave ripple ring
+    const ringGeo = new THREE.RingGeometry(0.1, 0.35, 20);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xff00bb,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+    });
+    this.bubbleRingMesh = new THREE.Mesh(ringGeo, ringMat);
+    this.bubbleRingMesh.rotation.y = Math.PI / 2;
+    this.bubbleBurstGroup.add(this.bubbleRingMesh);
+
+    // Burst droplet particles
+    const dropletGeo = new THREE.SphereGeometry(0.035, 6, 6);
+    const dropletMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+    for (let i = 0; i < 8; i++) {
+      const drop = new THREE.Mesh(dropletGeo, dropletMat);
+      drop.visible = false;
+      this.bubbleBurstGroup.add(drop);
+      this.bubbleParticles.push({
+        mesh: drop,
+        velocity: new THREE.Vector3(),
+        age: 0,
+        maxLife: 0.22,
+        active: false,
+      });
+    }
+
+    // --------------------------------------------------------
+    // 5. 1970s TOY JETPACK WITH FLASHING BUTTONS & EPIC FLAMES
+    // --------------------------------------------------------
     this.jetpackBone = new THREE.Group();
     this.jetpackBone.position.set(-0.24, 0.34, 0);
     this.torsoBone.add(this.jetpackBone);
 
+    // Vacuum-Metallized Chrome Twin Rocket Cylinders
     const tankGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.58, 16);
     const leftTank = new THREE.Mesh(tankGeo, chromeMetal);
     leftTank.position.z = -0.13;
@@ -508,59 +569,141 @@ export class Player {
     rightTank.position.z = 0.13;
     this.jetpackBone.add(rightTank);
 
-    const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.09, 0.28), chromeMetal);
-    this.jetpackBone.add(bridge);
+    // Conical Rocket Nose Cones
+    const noseGeo = new THREE.ConeGeometry(0.09, 0.14, 16);
+    const noseL = new THREE.Mesh(noseGeo, chromeMetal);
+    noseL.position.set(0, 0.36, -0.13);
+    this.jetpackBone.add(noseL);
 
-    const nozzleGeo = new THREE.ConeGeometry(0.1, 0.18, 16, 1, true);
+    const noseR = new THREE.Mesh(noseGeo, chromeMetal);
+    noseR.position.set(0, 0.36, 0.13);
+    this.jetpackBone.add(noseR);
+
+    // Ribbed Tank Band Rings
+    for (const ty of [-0.15, 0.15]) {
+      const bandL = new THREE.Mesh(new THREE.TorusGeometry(0.095, 0.015, 8, 16), darkHarness);
+      bandL.rotation.x = Math.PI / 2;
+      bandL.position.set(0, ty, -0.13);
+      this.jetpackBone.add(bandL);
+
+      const bandR = new THREE.Mesh(new THREE.TorusGeometry(0.095, 0.015, 8, 16), darkHarness);
+      bandR.rotation.x = Math.PI / 2;
+      bandR.position.set(0, ty, 0.13);
+      this.jetpackBone.add(bandR);
+    }
+
+    // 1970s Retro Command Console Box between tanks
+    const consoleBox = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.32, 0.2), vintageConsoleMat);
+    consoleBox.position.set(-0.02, 0.02, 0);
+    this.jetpackBone.add(consoleBox);
+
+    // 4 Chunky Vintage Flashing LED Buttons (Red, Green, Amber, Cyan)
+    const ledColors = [0xff2222, 0x22ff44, 0xffaa00, 0x00f5ff];
+    for (let b = 0; b < 4; b++) {
+      const ledMat = new THREE.MeshBasicMaterial({ color: ledColors[b] });
+      this.ledMaterials.push(ledMat);
+
+      const button = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.045, 0.035), ledMat);
+      button.position.set(-0.095, 0.09 - b * 0.06, 0.05);
+      this.jetpackBone.add(button);
+    }
+
+    // Analog Pressure Gauge Dial with Needle
+    const dialRim = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.02, 12), chromeMetal);
+    dialRim.rotateZ(Math.PI / 2);
+    dialRim.position.set(-0.09, -0.08, -0.04);
+    this.jetpackBone.add(dialRim);
+
+    const dialFace = new THREE.Mesh(
+      new THREE.CircleGeometry(0.04, 12),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    dialFace.rotateY(-Math.PI / 2);
+    dialFace.position.set(-0.102, -0.08, -0.04);
+    this.jetpackBone.add(dialFace);
+
+    const needleGeo = new THREE.BoxGeometry(0.005, 0.035, 0.005);
+    needleGeo.translate(0, 0.015, 0);
+    this.fuelGaugeNeedle = new THREE.Mesh(needleGeo, new THREE.MeshBasicMaterial({ color: 0xcc0000 }));
+    this.fuelGaugeNeedle.position.set(-0.104, -0.08, -0.04);
+    this.jetpackBone.add(this.fuelGaugeNeedle);
+
+    // Flared Conical Exhaust Bells
+    const nozzleGeo = new THREE.ConeGeometry(0.11, 0.2, 16, 1, true);
     nozzleGeo.rotateX(Math.PI);
 
     const nozL = new THREE.Mesh(nozzleGeo, chromeMetal);
-    nozL.position.set(0, -0.36, -0.13);
+    nozL.position.set(0, -0.37, -0.13);
     this.jetpackBone.add(nozL);
 
     const nozR = new THREE.Mesh(nozzleGeo, chromeMetal);
-    nozR.position.set(0, -0.36, 0.13);
+    nozR.position.set(0, -0.37, 0.13);
     this.jetpackBone.add(nozR);
 
-    // Dual Animated 3D Flame Cones
-    const flameGeo = new THREE.ConeGeometry(0.14, 0.68, 12);
-    flameGeo.rotateX(Math.PI);
-    flameGeo.translate(0, -0.34, 0);
-
-    const flameMat = new THREE.MeshBasicMaterial({
-      color: 0xff5500,
-      transparent: true,
-      opacity: 0.9,
-    });
-
-    this.flameConeLeft = new THREE.Mesh(flameGeo, flameMat);
-    this.flameConeLeft.position.set(0, -0.38, -0.13);
+    // EPIC MULTI-TIERED THRUSTER FLAME PLUMES
+    this.flameConeLeft = new THREE.Group();
+    this.flameConeLeft.position.set(0, -0.42, -0.13);
     this.jetpackBone.add(this.flameConeLeft);
 
-    this.flameConeRight = new THREE.Mesh(flameGeo, flameMat);
-    this.flameConeRight.position.set(0, -0.38, 0.13);
+    this.flameConeRight = new THREE.Group();
+    this.flameConeRight.position.set(0, -0.42, 0.13);
     this.jetpackBone.add(this.flameConeRight);
 
-    const innerFlameGeo = new THREE.ConeGeometry(0.07, 0.42, 12);
-    innerFlameGeo.rotateX(Math.PI);
-    innerFlameGeo.translate(0, -0.21, 0);
-    const innerFlameMat = new THREE.MeshBasicMaterial({ color: 0xffffbb });
+    // Outer Roaring Amber Flame Plume
+    const outerGeo = new THREE.ConeGeometry(0.16, 0.82, 12);
+    outerGeo.rotateX(Math.PI);
+    outerGeo.translate(0, -0.41, 0);
+    const outerMat = new THREE.MeshBasicMaterial({
+      color: 0xff4400,
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+    });
+    this.flameOuterLeft = new THREE.Mesh(outerGeo, outerMat);
+    this.flameOuterRight = new THREE.Mesh(outerGeo, outerMat);
+    this.flameConeLeft.add(this.flameOuterLeft);
+    this.flameConeRight.add(this.flameOuterRight);
 
-    this.flameConeLeft.add(new THREE.Mesh(innerFlameGeo, innerFlameMat));
-    this.flameConeRight.add(new THREE.Mesh(innerFlameGeo, innerFlameMat));
+    // Middle Bright Yellow Plasma Flame
+    const midGeo = new THREE.ConeGeometry(0.10, 0.58, 12);
+    midGeo.rotateX(Math.PI);
+    midGeo.translate(0, -0.29, 0);
+    const midMat = new THREE.MeshBasicMaterial({
+      color: 0xffbb00,
+      blending: THREE.AdditiveBlending,
+    });
+    this.flameConeLeft.add(new THREE.Mesh(midGeo, midMat));
+    this.flameConeRight.add(new THREE.Mesh(midGeo, midMat));
+
+    // Inner White-Hot Plasma Core
+    const coreGeo = new THREE.ConeGeometry(0.05, 0.36, 12);
+    coreGeo.rotateX(Math.PI);
+    coreGeo.translate(0, -0.18, 0);
+    const coreFlameMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      blending: THREE.AdditiveBlending,
+    });
+    this.flameCoreLeft = new THREE.Mesh(coreGeo, coreFlameMat);
+    this.flameCoreRight = new THREE.Mesh(coreGeo, coreFlameMat);
+    this.flameConeLeft.add(this.flameCoreLeft);
+    this.flameConeRight.add(this.flameCoreRight);
 
     this.flameConeLeft.visible = false;
     this.flameConeRight.visible = false;
 
-    // 5. VFX Systems
+    // --------------------------------------------------------
+    // 6. VFX SYSTEMS (Volumetric Smoke, Sparks, Dust)
+    // --------------------------------------------------------
     this.initSmokeSystem();
     this.initSparkSystem();
     this.initDustSystem();
 
-    // 6. Laser Projectiles
-    this.laserGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.75, 8);
+    // --------------------------------------------------------
+    // 7. LASER BOLTS
+    // --------------------------------------------------------
+    this.laserGeo = new THREE.CylinderGeometry(0.045, 0.045, 0.8, 8);
     this.laserGeo.rotateZ(Math.PI / 2);
-    this.laserMat = new THREE.MeshBasicMaterial({ color: 0x00f5ff }); // Glowing Cyan Laser
+    this.laserMat = new THREE.MeshBasicMaterial({ color: 0x00f5ff });
 
     for (let i = 0; i < 24; i++) {
       const mesh = new THREE.Mesh(this.laserGeo, this.laserMat);
@@ -569,7 +712,7 @@ export class Player {
       this.lasers.push({
         mesh,
         position: new THREE.Vector3(),
-        velocity: new THREE.Vector3(28, 0, 0),
+        velocity: new THREE.Vector3(30, 0, 0),
         active: false,
         life: 0,
       });
@@ -578,7 +721,7 @@ export class Player {
     this.reset();
   }
 
-  public reset(startX: number = 0, startY: number = -3.8) {
+  public reset(startX: number = 0, startY: number = GROUND_Y) {
     this.position.set(startX, startY, 0);
     this.velocity.set(0, 0, 0);
     this.isGrounded = true;
@@ -589,8 +732,8 @@ export class Player {
     this.invulnerableTime = 0;
     this.animTimer = 0;
     this.shootTimer = 0;
+    this.bubbleBurstTimer = 0;
     this.headFollowLag = 0;
-    this.torsoTiltSmooth = 0;
     this.mesh.position.copy(this.position);
     this.mesh.visible = true;
 
@@ -608,6 +751,10 @@ export class Player {
     for (const d of this.dustPuffs) {
       d.active = false;
       d.mesh.visible = false;
+    }
+    for (const bp of this.bubbleParticles) {
+      bp.active = false;
+      bp.mesh.visible = false;
     }
   }
 
@@ -664,7 +811,7 @@ export class Player {
     this.sparkGeo.setAttribute('color', new THREE.BufferAttribute(this.sparkColors, 3));
 
     const sparkMat = new THREE.PointsMaterial({
-      size: 0.18,
+      size: 0.22,
       vertexColors: true,
       transparent: true,
       blending: THREE.AdditiveBlending,
@@ -686,7 +833,7 @@ export class Player {
   }
 
   private initDustSystem() {
-    const dustGeo = new THREE.CircleGeometry(0.12, 8);
+    const dustGeo = new THREE.SphereGeometry(0.1, 6, 6);
     const dustMat = new THREE.MeshBasicMaterial({
       color: 0x998877,
       transparent: true,
@@ -709,13 +856,14 @@ export class Player {
   }
 
   /**
-   * Fires a blaster laser bolt in 360° toward target
+   * Fires a blaster laser bolt in 360° toward target with bubble-burst flash
    */
   public shoot(aimTargetWorld?: THREE.Vector3): boolean {
     const laser = this.lasers.find(l => !l.active);
     if (!laser) return false;
 
     this.shootTimer = 0.28;
+    this.bubbleBurstTimer = 0.24; // Trigger bubble burst
 
     // Calculate aim angle
     let aimAngle = this.facingRight ? 0 : Math.PI;
@@ -728,21 +876,33 @@ export class Player {
     this.currentAimAngle = aimAngle;
 
     // Spawning location along aim vector
-    const muzzleDist = 0.55;
+    const muzzleDist = 0.62;
     const spawnX = originX + Math.cos(aimAngle) * muzzleDist;
     const spawnY = originY + Math.sin(aimAngle) * muzzleDist;
 
     laser.position.set(spawnX, spawnY, this.position.z);
-    laser.velocity.set(Math.cos(aimAngle) * 30, Math.sin(aimAngle) * 30, 0);
+    laser.velocity.set(Math.cos(aimAngle) * 32, Math.sin(aimAngle) * 32, 0);
     laser.active = true;
     laser.life = 1.3;
     laser.mesh.position.copy(laser.position);
-    laser.mesh.rotation.z = aimAngle; // Aligns laser cylinder with trajectory
+    laser.mesh.rotation.z = aimAngle;
     laser.mesh.visible = true;
 
-    // Muzzle flash light
+    // Trigger bubble burst droplets
+    for (let i = 0; i < this.bubbleParticles.length; i++) {
+      const bp = this.bubbleParticles[i];
+      bp.active = true;
+      bp.age = 0;
+      bp.mesh.position.set(0, 0, 0);
+      bp.mesh.visible = true;
+      const angle = (i / this.bubbleParticles.length) * Math.PI * 2;
+      const speed = 2.0 + Math.random() * 2.5;
+      bp.velocity.set(Math.cos(angle) * speed, Math.sin(angle) * speed, 0);
+    }
+
+    // Dynamic Muzzle Flash light
     this.muzzleLight.position.set(spawnX, spawnY, this.position.z + 0.2);
-    this.muzzleLight.intensity = 18;
+    this.muzzleLight.intensity = 22;
 
     return true;
   }
@@ -750,83 +910,80 @@ export class Player {
   public takeDamage(amount: number = 25) {
     if (this.invulnerableTime > 0) return;
     this.life = Math.max(0, this.life - amount);
-    this.invulnerableTime = 1.4;
+    this.invulnerableTime = 1.0;
   }
 
   public addFuel(amount: number = 35) {
     this.fuel = Math.min(this.maxFuel, this.fuel + amount);
   }
 
+  public addLife(amount: number = 30) {
+    this.life = Math.min(this.maxLife, this.life + amount);
+  }
+
   public update(
     dt: number,
     moveX: number,
-    run: boolean,
+    runPressed: boolean,
     jumpPressed: boolean,
-    jetpackHold: boolean,
-    platforms: { x: number; y: number; width: number; height: number }[],
-    aimTargetWorld?: THREE.Vector3,
-    hasMouse?: boolean
+    jetpackPressed: boolean,
+    platforms: { x: number; y: number; width: number; height: number }[] = [],
+    mouseWorldTarget?: THREE.Vector3,
+    hasMouseTarget: boolean = false
   ) {
     this.animTimer += dt;
-
-    // 1. Invulnerability flash
     if (this.invulnerableTime > 0) {
       this.invulnerableTime -= dt;
-      this.mesh.visible = Math.floor(this.invulnerableTime * 14) % 2 === 0;
+      this.mesh.visible = Math.floor(this.animTimer * 18) % 2 === 0;
     } else {
       this.mesh.visible = true;
     }
 
-    // 2. Facing Direction Resolution
-    // MOVEMENT KEY TAKES PRECEDENCE: player turns to direction of arrow or movement key when pressed!
-    if (moveX !== 0) {
-      this.facingRight = moveX > 0;
-      this.rigRoot.scale.x = this.facingRight ? 1 : -1;
-    } else if (hasMouse && aimTargetWorld) {
-      // If stationary: face towards mouse crosshair target
-      const lookRight = aimTargetWorld.x >= this.position.x;
-      if (this.facingRight !== lookRight) {
-        this.facingRight = lookRight;
-        this.rigRoot.scale.x = this.facingRight ? 1 : -1;
-      }
+    // 1. Aim Tracking
+    if (hasMouseTarget && mouseWorldTarget) {
+      const originY = this.position.y + 1.25;
+      const originX = this.position.x;
+      this.currentAimAngle = Math.atan2(
+        mouseWorldTarget.y - originY,
+        mouseWorldTarget.x - originX
+      );
     }
 
-    // Aim Angle
-    const chestY = this.position.y + 1.25;
-    if (hasMouse && aimTargetWorld) {
-      this.currentAimAngle = Math.atan2(aimTargetWorld.y - chestY, aimTargetWorld.x - this.position.x);
-    } else {
-      this.currentAimAngle = this.facingRight ? 0 : Math.PI;
+    // 2. Facing Direction Priority
+    if (moveX > 0.05) {
+      this.facingRight = true;
+    } else if (moveX < -0.05) {
+      this.facingRight = false;
+    } else if (hasMouseTarget && mouseWorldTarget) {
+      this.facingRight = mouseWorldTarget.x >= this.position.x;
     }
 
-    // 3. Smooth Acceleration / Deceleration
-    const walkSpeed = 4.6;
-    const runSpeed = 8.8;
-    const currentSpeed = run ? runSpeed : walkSpeed;
+    // Smooth Turn Around
+    const targetTurn = this.facingRight ? 0 : Math.PI;
+    this.rigRoot.rotation.y = THREE.MathUtils.lerp(
+      this.rigRoot.rotation.y,
+      targetTurn,
+      dt * 24
+    );
 
-    if (moveX !== 0) {
-      this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, moveX * currentSpeed, dt * 14);
-    } else {
-      this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, 0, dt * 16);
+    // 3. Movement Physics
+    const walkSpeed = 6.2;
+    const runSpeed = 10.5;
+    const targetSpeed = runPressed ? runSpeed : walkSpeed;
+    const accel = this.isGrounded ? 45.0 : 22.0;
+
+    const desiredVx = moveX * targetSpeed;
+    this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, desiredVx, dt * (accel / 10));
+
+    // 4. Jump & Jetpack
+    if (jumpPressed && this.isGrounded) {
+      this.velocity.y = 11.5;
+      this.isGrounded = false;
+      this.emitDust(this.position.x, this.position.y, 6);
     }
 
-    // 4. Jump Anticipation & Leap
-    if (jumpPressed && this.isGrounded && this.jumpAnticipateTimer <= 0) {
-      this.jumpAnticipateTimer = 0.06;
-    }
-
-    if (this.jumpAnticipateTimer > 0) {
-      this.jumpAnticipateTimer -= dt;
-      if (this.jumpAnticipateTimer <= 0) {
-        this.velocity.y = 11.8;
-        this.isGrounded = false;
-        this.emitDust(this.position.x, this.position.y, 4);
-      }
-    }
-
-    // 5. Jetpack Flight Mechanics
-    const isActuallyJetpacking = jetpackHold && this.fuel > 0;
-    const gravity = -17.5;
+    const isActuallyJetpacking = jetpackPressed && this.fuel > 0;
+    const gravity = -26.0;
     const jetpackLift = 34.0;
 
     if (isActuallyJetpacking) {
@@ -843,8 +1000,8 @@ export class Player {
     this.position.x += this.velocity.x * dt;
     this.position.y += this.velocity.y * dt;
 
-    // 6. Floor & Platform Collisions
-    const floorY = -3.8;
+    // 5. Floor & Platform Collisions (Exact alignment to GROUND_Y = -3.70)
+    const floorY = GROUND_Y;
     this.isGrounded = false;
 
     if (this.position.y <= floorY) {
@@ -878,176 +1035,138 @@ export class Player {
     }
     this.wasGroundedLastFrame = this.isGrounded;
 
-    this.mesh.position.copy(this.position);
-
-    // 7. State Machine
+    // 6. Determine State Machine
     if (isActuallyJetpacking) {
       this.state = PlayerState.JETPACK;
     } else if (!this.isGrounded) {
       this.state = this.velocity.y > 0 ? PlayerState.JUMP : PlayerState.FALL;
-    } else if (Math.abs(this.velocity.x) > 0.8) {
-      this.state = run ? PlayerState.RUN : PlayerState.WALK;
+    } else if (Math.abs(this.velocity.x) > 0.4) {
+      this.state = Math.abs(this.velocity.x) > 7.0 ? PlayerState.RUN : PlayerState.WALK;
     } else {
       this.state = PlayerState.IDLE;
     }
 
-    // 8. Animate Skeletal Joints with Natural Backward Knees & True Aim Vector
-    this.animateSkeletalBones(dt, run, hasMouse);
-
-    // 9. Update Jetpack Flames, Volumetric Smoke & Sparks
+    // 7. Update Transforms & Animations
+    this.mesh.position.copy(this.position);
+    this.animateSkeletalRig(dt, hasMouseTarget);
     this.updateJetpackVFX(dt, isActuallyJetpacking);
-
-    // 10. Update Lasers
-    for (const l of this.lasers) {
-      if (!l.active) continue;
-      l.life -= dt;
-      if (l.life <= 0) {
-        l.active = false;
-        l.mesh.visible = false;
-        continue;
-      }
-      l.position.addScaledVector(l.velocity, dt);
-      l.mesh.position.copy(l.position);
-    }
+    this.updateBubbleBurstVFX(dt);
+    this.updateParticles(dt);
+    this.updateLasers(dt);
   }
 
   /**
-   * Triple-AAA Skeletal Kinematics
-   * Knees bend strictly BACKWARD.
-   * Blaster barrel aligns directly with 360° mouse aiming vector!
+   * Triple-AAA Skeletal Animation System
+   * Features 2-joint arm IK with natural elbow flexion and backward-bending knees
    */
-  private animateSkeletalBones(dt: number, isRunning: boolean, hasMouseTarget?: boolean) {
+  private animateSkeletalRig(dt: number, hasMouseTarget: boolean) {
     const t = this.animTimer;
 
-    this.hipBone.position.y = 0.95;
-    this.torsoBone.rotation.set(0, 0, 0);
-    this.headBone.rotation.set(0, 0, 0);
+    // Secondary Motion / Follow-Through
+    const targetHeadLag = -(this.velocity.x / 11.0) * 0.18;
+    this.headFollowLag = THREE.MathUtils.lerp(this.headFollowLag, targetHeadLag, dt * 10);
 
-    // Squash & Stretch
+    // Squash on Landing
     if (this.landSquashTimer > 0) {
       this.landSquashTimer -= dt;
-      const squash = Math.sin((this.landSquashTimer / 0.16) * Math.PI) * 0.14;
-      this.hipBone.position.y -= squash;
-      this.hipBone.scale.set(1.0 + squash * 0.9, 1.0 - squash, 1.0);
-    } else if (this.jumpAnticipateTimer > 0) {
-      this.hipBone.position.y -= 0.15;
-      this.hipBone.scale.set(1.1, 0.88, 1.0);
-    } else if (!this.isGrounded) {
-      const stretch = Math.min(0.08, Math.abs(this.velocity.y) * 0.008);
-      this.hipBone.scale.set(1.0 - stretch * 0.5, 1.0 + stretch, 1.0);
+      const s = 1.0 - (this.landSquashTimer / 0.16) * 0.18;
+      this.hipBone.position.y = 1.05 * s;
     } else {
-      this.hipBone.scale.set(1, 1, 1);
+      this.hipBone.position.y = 1.05;
     }
-
-    // Torso tilt lag & head follow-through
-    const targetTorsoTilt = (this.velocity.x / 8.8) * (isRunning ? 0.32 : 0.08);
-    this.torsoTiltSmooth = THREE.MathUtils.lerp(this.torsoTiltSmooth, targetTorsoTilt, dt * 10);
-    this.headFollowLag = THREE.MathUtils.lerp(this.headFollowLag, -this.torsoTiltSmooth * 0.5, dt * 8);
 
     switch (this.state) {
       // ----------------------------------------------------
-      // A. IDLE (Soft breathing, backward knees)
+      // A. IDLE
       // ----------------------------------------------------
       case PlayerState.IDLE: {
-        const breathe = Math.sin(t * 2.8) * 0.035;
-        this.torsoBone.position.y = 0.1 + breathe;
-        this.torsoBone.rotation.z = Math.sin(t * 1.4) * 0.015;
-        this.headBone.rotation.z = -Math.sin(t * 2.8) * 0.02 + this.headFollowLag;
+        const breathe = Math.sin(t * 3.2);
+        this.torsoBone.rotation.z = breathe * 0.025;
+        this.torsoBone.position.y = 0.1 + breathe * 0.015;
+        this.headBone.rotation.z = -breathe * 0.02;
 
         this.frontThighBone.rotation.z = 0.05;
-        this.frontShinBone.rotation.z = -0.08; // BACKWARD
-        this.frontFootBone.rotation.z = 0.03;
+        this.frontShinBone.rotation.z = -0.05;
+        this.frontFootBone.rotation.z = 0.0;
 
         this.backThighBone.rotation.z = -0.05;
-        this.backShinBone.rotation.z = -0.08; // BACKWARD
-        this.backFootBone.rotation.z = 0.03;
+        this.backShinBone.rotation.z = -0.05;
+        this.backFootBone.rotation.z = 0.0;
 
-        this.backArmBone.rotation.z = Math.sin(t * 2.8) * 0.05 + 0.12;
-        this.backForearmBone.rotation.z = 0.25;
-
-        if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = -Math.sin(t * 2.8) * 0.05 + 0.15;
-          this.frontForearmBone.rotation.z = 0.35;
-        }
-        break;
-      }
-
-      // ----------------------------------------------------
-      // B. SIDE WALK CYCLE (Strictly Backward-Bending Knees)
-      // ----------------------------------------------------
-      case PlayerState.WALK: {
-        const walkFreq = 9.0;
-        const phase = t * walkFreq;
-
-        const hipBob = Math.abs(Math.sin(phase)) * 0.05;
-        this.hipBone.position.y = 0.95 + hipBob;
-
-        this.torsoBone.rotation.z = this.torsoTiltSmooth;
-        this.headBone.rotation.z = this.headFollowLag;
-
-        const frontAngle = Math.sin(phase);
-        const backAngle = Math.sin(phase + Math.PI);
-
-        // FRONT LEG
-        this.frontThighBone.rotation.z = frontAngle * 0.52;
-        const frontKneeFlex = frontAngle < 0 ? -Math.abs(frontAngle) * 0.75 : -0.08;
-        this.frontShinBone.rotation.z = frontKneeFlex; // BACKWARD
-        this.frontFootBone.rotation.z = frontAngle * 0.25;
-
-        // BACK LEG
-        this.backThighBone.rotation.z = backAngle * 0.52;
-        const backKneeFlex = backAngle < 0 ? -Math.abs(backAngle) * 0.75 : -0.08;
-        this.backShinBone.rotation.z = backKneeFlex; // BACKWARD
-        this.backFootBone.rotation.z = backAngle * 0.25;
-
-        // Counter-arm Swing
-        this.backArmBone.rotation.z = frontAngle * 0.55;
-        this.backForearmBone.rotation.z = 0.35 + Math.max(0, -frontAngle) * 0.35;
+        this.backArmBone.rotation.z = breathe * 0.04 - 0.1;
+        this.backForearmBone.rotation.z = 0.35;
 
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = backAngle * 0.45 + 0.15;
+          this.frontArmBone.rotation.z = -breathe * 0.04 + 0.15;
           this.frontForearmBone.rotation.z = 0.4;
         }
+        break;
+      }
 
-        if (Math.abs(frontAngle) > 0.95 && Math.random() < 0.25) {
-          this.emitDust(this.position.x, this.position.y, 1);
+      // ----------------------------------------------------
+      // B. WALK
+      // ----------------------------------------------------
+      case PlayerState.WALK: {
+        const walkFreq = 8.5;
+        const phase = t * walkFreq;
+
+        this.torsoBone.rotation.z = 0.12;
+        this.headBone.rotation.z = -0.04 + this.headFollowLag;
+
+        const bob = Math.abs(Math.sin(phase)) * 0.05;
+        this.hipBone.position.y = 1.05 + bob;
+
+        const frontStride = Math.sin(phase);
+        const backStride = Math.sin(phase + Math.PI);
+
+        this.frontThighBone.rotation.z = frontStride * 0.55;
+        this.frontShinBone.rotation.z = frontStride < 0 ? -Math.abs(frontStride) * 0.85 : -0.1;
+        this.frontFootBone.rotation.z = frontStride * 0.2;
+
+        this.backThighBone.rotation.z = backStride * 0.55;
+        this.backShinBone.rotation.z = backStride < 0 ? -Math.abs(backStride) * 0.85 : -0.1;
+        this.backFootBone.rotation.z = backStride * 0.2;
+
+        this.backArmBone.rotation.z = frontStride * 0.6;
+        this.backForearmBone.rotation.z = 0.5;
+
+        if (!hasMouseTarget && this.shootTimer <= 0) {
+          this.frontArmBone.rotation.z = backStride * 0.5 + 0.1;
+          this.frontForearmBone.rotation.z = 0.45;
         }
         break;
       }
 
       // ----------------------------------------------------
-      // C. RUN CYCLE (High Knee Drive & Backward Heel Kick)
+      // C. RUN
       // ----------------------------------------------------
       case PlayerState.RUN: {
         const runFreq = 14.0;
         const phase = t * runFreq;
 
-        this.torsoBone.rotation.z = 0.34;
+        this.torsoBone.rotation.z = 0.32;
         this.headBone.rotation.z = -0.12 + this.headFollowLag;
 
         const runBob = Math.abs(Math.sin(phase)) * 0.08;
-        this.hipBone.position.y = 0.95 + runBob;
+        this.hipBone.position.y = 1.05 + runBob;
 
         const frontRun = Math.sin(phase);
         const backRun = Math.sin(phase + Math.PI);
 
-        // FRONT LEG
         this.frontThighBone.rotation.z = frontRun * 0.82;
-        this.frontShinBone.rotation.z = frontRun < 0 ? -Math.abs(frontRun) * 1.25 : -0.1; // BACKWARD
+        this.frontShinBone.rotation.z = frontRun < 0 ? -Math.abs(frontRun) * 1.25 : -0.1;
         this.frontFootBone.rotation.z = frontRun * 0.35;
 
-        // BACK LEG
         this.backThighBone.rotation.z = backRun * 0.82;
-        this.backShinBone.rotation.z = backRun < 0 ? -Math.abs(backRun) * 1.25 : -0.1; // BACKWARD
+        this.backShinBone.rotation.z = backRun < 0 ? -Math.abs(backRun) * 1.25 : -0.1;
         this.backFootBone.rotation.z = backRun * 0.35;
 
-        // Pumping back arm
         this.backArmBone.rotation.z = frontRun * 0.85;
         this.backForearmBone.rotation.z = 0.85;
 
         if (!hasMouseTarget && this.shootTimer <= 0) {
           this.frontArmBone.rotation.z = backRun * 0.75 + 0.15;
-          this.frontForearmBone.rotation.z = 0.8;
+          this.frontForearmBone.rotation.z = 0.6;
         }
 
         if (Math.abs(frontRun) > 0.9) {
@@ -1057,18 +1176,18 @@ export class Player {
       }
 
       // ----------------------------------------------------
-      // D. JUMP & FALL (Natural Backward Knee Tucking)
+      // D. JUMP & FALL
       // ----------------------------------------------------
       case PlayerState.JUMP: {
-        this.torsoBone.rotation.z = 0.08;
-        this.headBone.rotation.z = 0.14;
+        this.torsoBone.rotation.z = 0.1;
+        this.headBone.rotation.z = 0.12;
 
         this.frontThighBone.rotation.z = 0.55;
-        this.frontShinBone.rotation.z = -0.85; // BACKWARD underneath
+        this.frontShinBone.rotation.z = -0.85;
         this.frontFootBone.rotation.z = 0.25;
 
         this.backThighBone.rotation.z = 0.45;
-        this.backShinBone.rotation.z = -0.75; // BACKWARD underneath
+        this.backShinBone.rotation.z = -0.75;
         this.backFootBone.rotation.z = 0.25;
 
         this.backArmBone.rotation.z = -0.4;
@@ -1076,21 +1195,21 @@ export class Player {
 
         if (!hasMouseTarget && this.shootTimer <= 0) {
           this.frontArmBone.rotation.z = 0.25;
-          this.frontForearmBone.rotation.z = 0.4;
+          this.frontForearmBone.rotation.z = 0.45;
         }
         break;
       }
 
       case PlayerState.FALL: {
-        this.torsoBone.rotation.z = -0.04;
-        this.headBone.rotation.z = -0.08;
+        this.torsoBone.rotation.z = -0.05;
+        this.headBone.rotation.z = -0.06;
 
         this.frontThighBone.rotation.z = 0.12;
-        this.frontShinBone.rotation.z = -0.2; // BACKWARD
+        this.frontShinBone.rotation.z = -0.2;
         this.frontFootBone.rotation.z = -0.25;
 
         this.backThighBone.rotation.z = -0.08;
-        this.backShinBone.rotation.z = -0.2; // BACKWARD
+        this.backShinBone.rotation.z = -0.2;
         this.backFootBone.rotation.z = -0.25;
 
         this.backArmBone.rotation.z = -0.25;
@@ -1099,189 +1218,330 @@ export class Player {
       }
 
       // ----------------------------------------------------
-      // E. JETPACK FLIGHT
+      // E. EPIC AERODYNAMIC JETPACK FLIGHT
       // ----------------------------------------------------
       case PlayerState.JETPACK: {
-        const flightLean = 0.26 + (this.velocity.x / 9.0) * 0.25;
-        this.torsoBone.rotation.z = flightLean;
-        this.headBone.rotation.z = 0.15;
+        const flightLean = 0.42 + (this.velocity.x / 10.0) * 0.22;
+        this.torsoBone.rotation.z = THREE.MathUtils.lerp(
+          this.torsoBone.rotation.z,
+          flightLean,
+          dt * 12
+        );
+        this.headBone.rotation.z = -0.16; // Head tilts up looking through visor
 
-        const flutter = Math.sin(t * 12.0) * 0.08;
-        this.frontThighBone.rotation.z = -0.42 + flutter;
-        this.frontShinBone.rotation.z = -0.32; // Backward trail
+        const windFlutter = Math.sin(t * 14.0) * 0.08;
+        this.frontThighBone.rotation.z = -0.58 + windFlutter;
+        this.frontShinBone.rotation.z = -0.32;
         this.frontFootBone.rotation.z = -0.25;
 
-        this.backThighBone.rotation.z = -0.52 - flutter;
-        this.backShinBone.rotation.z = -0.38; // Backward trail
+        this.backThighBone.rotation.z = -0.68 - windFlutter;
+        this.backShinBone.rotation.z = -0.36;
         this.backFootBone.rotation.z = -0.25;
 
         this.backArmBone.rotation.z = -0.55;
-        this.backForearmBone.rotation.z = 0.3;
+        this.backForearmBone.rotation.z = 0.4;
 
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = 0.2;
-          this.frontForearmBone.rotation.z = 0.35;
+          this.frontArmBone.rotation.z = 0.28;
+          this.frontForearmBone.rotation.z = 0.42;
         }
         break;
       }
     }
 
     // ------------------------------------------------------
-    // F. 360° MOUSE RETICLE AIMING & PRECISION BARREL ALIGNMENT
+    // F. ADVANCED 2-JOINT ARM IK & RETICLE AIMING
     // ------------------------------------------------------
     if (hasMouseTarget) {
-      // Calculate front arm angle directly toward mouse target
       let localAngle = this.currentAimAngle;
       if (!this.facingRight) {
         localAngle = Math.PI - localAngle;
       }
       localAngle = THREE.MathUtils.euclideanModulo(localAngle + Math.PI, Math.PI * 2) - Math.PI;
 
-      // Adjust for torso tilt
+      // Adjust for torso lean
       const aimRotation = localAngle - this.torsoBone.rotation.z;
 
-      // Point front arm bone directly at mouse reticle:
-      // The upper arm hangs along -Y, forearm along -Y, blaster extends along +X.
-      // So rotating frontArmBone by `aimRotation` aligns the blaster barrel strictly along the aim vector!
+      // Natural Ergonomic Elbow Flexion (~25 degrees bend)
+      // Shoulder + Elbow = Exact Aim Target Angle!
+      const elbowBend = 0.44;
+      const targetShoulderAngle = aimRotation - elbowBend;
+
       this.frontArmBone.rotation.z = THREE.MathUtils.lerp(
         this.frontArmBone.rotation.z,
-        aimRotation,
+        targetShoulderAngle,
         dt * 26
       );
-      this.frontForearmBone.rotation.z = 0.0;
+      this.frontForearmBone.rotation.z = THREE.MathUtils.lerp(
+        this.frontForearmBone.rotation.z,
+        elbowBend,
+        dt * 26
+      );
+      this.frontHandBone.rotation.z = 0.0;
+
+      // Back arm supports weapon in tactical two-handed combat stance
+      const backArmAim = aimRotation * 0.75 + 0.25;
+      this.backArmBone.rotation.z = THREE.MathUtils.lerp(
+        this.backArmBone.rotation.z,
+        backArmAim,
+        dt * 20
+      );
+      this.backForearmBone.rotation.z = THREE.MathUtils.lerp(
+        this.backForearmBone.rotation.z,
+        0.82,
+        dt * 20
+      );
     }
 
-    // Recoil Kickback Shock & Muzzle Flash on firing
+    // Recoil Kickback Shock on firing
     if (this.shootTimer > 0) {
       this.shootTimer -= dt;
       const progress = 1.0 - this.shootTimer / 0.28;
 
       if (progress < 0.25) {
-        // Immediate kickback along gun axis
         const kick = Math.sin((progress / 0.25) * Math.PI);
         this.blasterMesh.position.x = -kick * 0.12;
-        this.frontArmBone.rotation.z += 0.08 * kick; // Subtle muzzle climb
+        this.frontArmBone.rotation.z += 0.08 * kick;
         this.torsoBone.rotation.z -= kick * 0.04;
-
-        (this.muzzleFlashMesh.material as THREE.MeshBasicMaterial).opacity = 1.0;
-        this.muzzleFlashMesh.scale.set(1.5, 1.5, 1.5);
       } else {
         const returnProg = (progress - 0.25) / 0.75;
         this.blasterMesh.position.x = THREE.MathUtils.lerp(-0.06, 0.0, returnProg);
-        (this.muzzleFlashMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-        this.muzzleLight.intensity = 0;
       }
     } else {
       this.blasterMesh.position.x = 0;
-      (this.muzzleFlashMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-      this.muzzleLight.intensity = 0;
     }
   }
 
   private updateJetpackVFX(dt: number, isJetpacking: boolean) {
+    const time = this.animTimer;
     const nozzleX = this.position.x + (this.facingRight ? -0.28 : 0.28);
     const nozzleY = this.position.y + 0.78;
     const nozzleZ = this.position.z;
 
     this.thrusterLight.position.set(nozzleX, nozzleY, nozzleZ);
 
+    // 1. Animate 1970s Console Blinking LEDs & Fuel Needle
+    const led0State = Math.sin(time * 12.0) > 0;
+    const led1State = Math.sin(time * 6.0) > -0.2;
+    const led2State = Math.sin(time * 18.0) > 0.3;
+    const led3State = isJetpacking || Math.sin(time * 8.0) > 0.4;
+
+    this.ledMaterials[0].color.setHex(led0State ? 0xff2222 : 0x440505);
+    this.ledMaterials[1].color.setHex(led1State ? 0x22ff44 : 0x053308);
+    this.ledMaterials[2].color.setHex(led2State ? 0xffaa00 : 0x442200);
+    this.ledMaterials[3].color.setHex(led3State ? 0x00f5ff : 0x002233);
+
+    // Analog needle tracks fuel gauge ratio
+    const fuelRatio = this.fuel / this.maxFuel;
+    this.fuelGaugeNeedle.rotation.x = (fuelRatio - 0.5) * 2.2;
+
+    // 2. Multi-Tier Thruster Flames
     if (isJetpacking) {
       this.flameConeLeft.visible = true;
       this.flameConeRight.visible = true;
 
-      const flick = 1.0 + Math.random() * 0.45;
-      this.flameConeLeft.scale.set(1.0 + Math.random() * 0.2, flick, 1.0);
-      this.flameConeRight.scale.copy(this.flameConeLeft.scale);
+      const flick = 1.0 + Math.sin(time * 35.0) * 0.2 + Math.random() * 0.25;
+      const coreFlick = 1.0 + Math.random() * 0.3;
 
-      this.thrusterLight.intensity = 20 + Math.random() * 8;
-      this.thrusterLight.distance = 16;
+      this.flameOuterLeft.scale.set(1.0 + Math.random() * 0.2, flick, 1.0);
+      this.flameOuterRight.scale.copy(this.flameOuterLeft.scale);
+
+      this.flameCoreLeft.scale.set(1.0, coreFlick, 1.0);
+      this.flameCoreRight.scale.copy(this.flameCoreLeft.scale);
+
+      this.thrusterLight.intensity = 22 + Math.random() * 10;
+      this.thrusterLight.distance = 18;
 
       this.emitSmoke(nozzleX, nozzleY, nozzleZ, 2);
-      this.emitSparks(nozzleX, nozzleY, nozzleZ, 2);
+      this.emitSparks(nozzleX, nozzleY, nozzleZ, 3);
     } else {
       this.flameConeLeft.visible = false;
       this.flameConeRight.visible = false;
       this.thrusterLight.intensity = 0;
     }
+  }
 
-    // Update Smoke Puffs
-    for (const puff of this.smokePuffs) {
-      if (!puff.active) continue;
+  private updateBubbleBurstVFX(dt: number) {
+    if (this.bubbleBurstTimer > 0) {
+      this.bubbleBurstTimer -= dt;
+      const prog = 1.0 - this.bubbleBurstTimer / 0.24;
 
-      puff.age += dt;
-      if (puff.age >= puff.maxLife) {
-        puff.active = false;
-        puff.mesh.visible = false;
+      if (prog < 0.45) {
+        // Phase 1: Rapid swelling energy bubble
+        const bubbleProg = prog / 0.45;
+        const scale = 0.2 + bubbleProg * 1.5;
+        this.bubbleSphereMesh.scale.set(scale, scale, scale);
+        (this.bubbleSphereMesh.material as THREE.MeshBasicMaterial).opacity = 1.0 - bubbleProg * 0.2;
+        (this.bubbleSphereMesh.material as THREE.MeshBasicMaterial).color.setHex(
+          bubbleProg > 0.5 ? 0xff00bb : 0x00f5ff
+        );
+
+        this.bubbleRingMesh.scale.set(scale * 1.2, scale * 1.2, scale * 1.2);
+        (this.bubbleRingMesh.material as THREE.MeshBasicMaterial).opacity = 0.8;
+      } else {
+        // Phase 2: Bubble POP!
+        const popProg = (prog - 0.45) / 0.55;
+        (this.bubbleSphereMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+
+        // Shockwave ring violently expands and fades
+        const ringScale = 1.8 + popProg * 2.5;
+        this.bubbleRingMesh.scale.set(ringScale, ringScale, ringScale);
+        (this.bubbleRingMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(
+          0,
+          1.0 - popProg * 1.8
+        );
+        this.muzzleLight.intensity = Math.max(0, 22 * (1.0 - popProg));
+      }
+    } else {
+      (this.bubbleSphereMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+      (this.bubbleRingMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+      this.muzzleLight.intensity = 0;
+    }
+
+    // Update bursting droplets
+    for (const bp of this.bubbleParticles) {
+      if (!bp.active) continue;
+      bp.age += dt;
+      if (bp.age >= bp.maxLife) {
+        bp.active = false;
+        bp.mesh.visible = false;
+        continue;
+      }
+      bp.mesh.position.addScaledVector(bp.velocity, dt);
+      const s = 1.0 - bp.age / bp.maxLife;
+      bp.mesh.scale.set(s, s, s);
+    }
+  }
+
+  private emitSmoke(x: number, y: number, z: number, count: number) {
+    for (let i = 0; i < count; i++) {
+      const sp = this.smokePuffs.find(p => !p.active);
+      if (!sp) continue;
+
+      sp.active = true;
+      sp.age = 0;
+      sp.maxLife = 0.55 + Math.random() * 0.45;
+      sp.baseScale = 0.38 + Math.random() * 0.25;
+      sp.rotSpeed = (Math.random() - 0.5) * 5.0;
+
+      sp.mesh.position.set(
+        x + (Math.random() - 0.5) * 0.15,
+        y - 0.1,
+        z + (Math.random() - 0.5) * 0.15
+      );
+      sp.velocity.set(
+        (Math.random() - 0.5) * 1.2,
+        -(3.8 + Math.random() * 4.2),
+        (Math.random() - 0.5) * 0.8
+      );
+      sp.mesh.rotation.z = Math.random() * Math.PI * 2;
+      sp.mesh.scale.set(sp.baseScale, sp.baseScale, sp.baseScale);
+      sp.mesh.visible = true;
+    }
+  }
+
+  private emitSparks(x: number, y: number, z: number, count: number) {
+    for (let i = 0; i < count; i++) {
+      const sk = this.sparks.find(p => !p.active);
+      if (!sk) continue;
+
+      sk.active = true;
+      sk.age = 0;
+      sk.maxLife = 0.25 + Math.random() * 0.35;
+      sk.position.set(
+        x + (Math.random() - 0.5) * 0.1,
+        y - 0.1,
+        z + (Math.random() - 0.5) * 0.1
+      );
+      sk.velocity.set(
+        (Math.random() - 0.5) * 4.5,
+        -(6.5 + Math.random() * 7.5),
+        (Math.random() - 0.5) * 2.5
+      );
+    }
+  }
+
+  private emitDust(x: number, y: number, count: number) {
+    for (let i = 0; i < count; i++) {
+      const d = this.dustPuffs.find(p => !p.active);
+      if (!d) continue;
+
+      d.active = true;
+      d.age = 0;
+      d.maxLife = 0.3 + Math.random() * 0.2;
+      d.mesh.position.set(x + (Math.random() - 0.5) * 0.4, y, 0.1);
+      d.velocity.set(
+        (Math.random() - 0.5) * 3.5,
+        Math.random() * 2.2 + 0.5,
+        0
+      );
+      d.mesh.scale.set(1, 1, 1);
+      d.mesh.visible = true;
+    }
+  }
+
+  private updateParticles(dt: number) {
+    // 1. Smoke
+    for (const sp of this.smokePuffs) {
+      if (!sp.active) continue;
+      sp.age += dt;
+      if (sp.age >= sp.maxLife) {
+        sp.active = false;
+        sp.mesh.visible = false;
         continue;
       }
 
-      puff.velocity.x *= 1.0 - dt * 1.5;
-      puff.velocity.y *= 1.0 - dt * 1.2;
-      puff.mesh.position.addScaledVector(puff.velocity, dt);
+      sp.mesh.position.addScaledVector(sp.velocity, dt);
+      sp.velocity.y *= 0.94;
+      sp.velocity.x += 0.2 * dt;
+      sp.mesh.rotation.z += sp.rotSpeed * dt;
 
-      const progress = puff.age / puff.maxLife;
-      const currentScale = puff.baseScale + progress * 2.2;
-      puff.mesh.scale.set(currentScale, currentScale, 1);
-      puff.mesh.rotation.z += puff.rotSpeed * dt;
-
-      const mat = puff.mesh.material as THREE.MeshBasicMaterial;
-      if (progress < 0.25) {
-        const t = progress / 0.25;
-        mat.color.setRGB(1.0, THREE.MathUtils.lerp(0.8, 0.45, t), 0.1);
-        mat.opacity = 0.85;
-      } else if (progress < 0.65) {
-        const t = (progress - 0.25) / 0.4;
-        mat.color.setRGB(
-          THREE.MathUtils.lerp(1.0, 0.42, t),
-          THREE.MathUtils.lerp(0.45, 0.26, t),
-          THREE.MathUtils.lerp(0.1, 0.18, t)
-        );
-        mat.opacity = 0.75 - t * 0.2;
-      } else {
-        const t = (progress - 0.65) / 0.35;
-        mat.color.setRGB(0.25, 0.22, 0.2);
-        mat.opacity = (1.0 - t) * 0.5;
-      }
+      const prog = sp.age / sp.maxLife;
+      const s = sp.baseScale * (1.0 + prog * 3.2);
+      sp.mesh.scale.set(s, s, s);
+      (sp.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, (1.0 - prog) * 0.85);
     }
 
-    // Update Sparks
-    let pIdx = 0;
-    let cIdx = 0;
-
-    for (const sp of this.sparks) {
-      if (sp.active) {
-        sp.age += dt;
-        if (sp.age >= sp.maxLife) {
-          sp.active = false;
-        } else {
-          sp.velocity.x *= 1.0 - dt * 2.5;
-          sp.position.addScaledVector(sp.velocity, dt);
-        }
+    // 2. Sparks
+    let activeSparkCount = 0;
+    for (let i = 0; i < this.maxSparks; i++) {
+      const sk = this.sparks[i];
+      if (!sk.active) {
+        this.sparkPositions[i * 3 + 1] = -9999;
+        continue;
+      }
+      sk.age += dt;
+      if (sk.age >= sk.maxLife) {
+        sk.active = false;
+        this.sparkPositions[i * 3 + 1] = -9999;
+        continue;
       }
 
-      if (sp.active) {
-        this.sparkPositions[pIdx] = sp.position.x;
-        this.sparkPositions[pIdx + 1] = sp.position.y;
-        this.sparkPositions[pIdx + 2] = sp.position.z;
+      sk.position.addScaledVector(sk.velocity, dt);
+      sk.velocity.y -= 15.0 * dt;
 
-        const progress = sp.age / sp.maxLife;
-        this.sparkColors[cIdx] = 1.0;
-        this.sparkColors[cIdx + 1] = 0.85 - progress * 0.6;
-        this.sparkColors[cIdx + 2] = 0.2 * (1.0 - progress);
-      } else {
-        this.sparkPositions[pIdx] = 0;
-        this.sparkPositions[pIdx + 1] = -9999;
-        this.sparkPositions[pIdx + 2] = 0;
-      }
+      this.sparkPositions[i * 3 + 0] = sk.position.x;
+      this.sparkPositions[i * 3 + 1] = sk.position.y;
+      this.sparkPositions[i * 3 + 2] = sk.position.z;
 
-      pIdx += 3;
-      cIdx += 3;
+      const prog = sk.age / sk.maxLife;
+      const r = 1.0;
+      const g = Math.max(0, 0.9 - prog * 0.8);
+      const b = Math.max(0, 0.2 - prog * 0.2);
+      this.sparkColors[i * 3 + 0] = r;
+      this.sparkColors[i * 3 + 1] = g;
+      this.sparkColors[i * 3 + 2] = b;
+
+      activeSparkCount++;
     }
 
-    this.sparkGeo.getAttribute('position').needsUpdate = true;
-    this.sparkGeo.getAttribute('color').needsUpdate = true;
+    if (this.sparkPoints) {
+      this.sparkGeo.attributes.position.needsUpdate = true;
+      this.sparkGeo.attributes.color.needsUpdate = true;
+      this.sparkPoints.visible = activeSparkCount > 0;
+    }
 
-    // Update Dust Puffs
+    // 3. Ground Dust
     for (const d of this.dustPuffs) {
       if (!d.active) continue;
       d.age += dt;
@@ -1290,76 +1550,30 @@ export class Player {
         d.mesh.visible = false;
         continue;
       }
+
       d.mesh.position.addScaledVector(d.velocity, dt);
+      d.velocity.x *= 0.9;
+      d.velocity.y -= 9.8 * dt;
+
       const prog = d.age / d.maxLife;
-      const s = 0.5 + prog * 1.5;
-      d.mesh.scale.set(s, s, 1);
-      (d.mesh.material as THREE.MeshBasicMaterial).opacity = (1 - prog) * 0.5;
+      const s = 1.0 + prog * 1.8;
+      d.mesh.scale.set(s, s, s);
+      (d.mesh.material as THREE.MeshBasicMaterial).opacity = (1.0 - prog) * 0.6;
     }
   }
 
-  private emitSmoke(x: number, y: number, z: number, count: number) {
-    for (let c = 0; c < count; c++) {
-      const puff = this.smokePuffs.find(p => !p.active);
-      if (!puff) return;
+  private updateLasers(dt: number) {
+    for (const laser of this.lasers) {
+      if (!laser.active) continue;
+      laser.life -= dt;
+      if (laser.life <= 0) {
+        laser.active = false;
+        laser.mesh.visible = false;
+        continue;
+      }
 
-      puff.active = true;
-      puff.age = 0;
-      puff.maxLife = 0.75 + Math.random() * 0.45;
-      puff.baseScale = 0.4 + Math.random() * 0.2;
-      puff.rotSpeed = (Math.random() - 0.5) * 4.0;
-
-      puff.mesh.position.set(
-        x + (Math.random() - 0.5) * 0.2,
-        y - 0.1 + (Math.random() - 0.5) * 0.1,
-        z + (Math.random() - 0.5) * 0.2
-      );
-
-      const horizontalSpread = this.facingRight ? -(1.5 + Math.random() * 2.5) : 1.5 + Math.random() * 2.5;
-      puff.velocity.set(
-        horizontalSpread - this.velocity.x * 0.3,
-        -(3.5 + Math.random() * 3.5),
-        (Math.random() - 0.5) * 0.6
-      );
-
-      puff.mesh.scale.set(puff.baseScale, puff.baseScale, 1);
-      puff.mesh.visible = true;
-
-      const mat = puff.mesh.material as THREE.MeshBasicMaterial;
-      mat.color.setRGB(1.0, 0.75, 0.3);
-      mat.opacity = 0.85;
-    }
-  }
-
-  private emitSparks(x: number, y: number, z: number, count: number) {
-    for (let i = 0; i < count; i++) {
-      const spark = this.sparks.find(s => !s.active);
-      if (!spark) return;
-
-      spark.active = true;
-      spark.age = 0;
-      spark.maxLife = 0.22 + Math.random() * 0.25;
-      spark.position.set(x, y - 0.1, z);
-      const horiz = this.facingRight ? -(3.0 + Math.random() * 5.0) : 3.0 + Math.random() * 5.0;
-      spark.velocity.set(
-        horiz - this.velocity.x * 0.3,
-        -(5.0 + Math.random() * 5.0),
-        (Math.random() - 0.5) * 1.5
-      );
-    }
-  }
-
-  private emitDust(x: number, y: number, count: number) {
-    for (let i = 0; i < count; i++) {
-      const d = this.dustPuffs.find(dp => !dp.active);
-      if (!d) return;
-
-      d.active = true;
-      d.age = 0;
-      d.mesh.position.set(x + (Math.random() - 0.5) * 0.3, y + 0.05, 0.1);
-      d.velocity.set((Math.random() - 0.5) * 1.5, 0.3 + Math.random() * 0.6, 0);
-      d.mesh.scale.set(0.5, 0.5, 1);
-      d.mesh.visible = true;
+      laser.position.addScaledVector(laser.velocity, dt);
+      laser.mesh.position.copy(laser.position);
     }
   }
 }

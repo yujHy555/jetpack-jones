@@ -485,9 +485,10 @@ export class ObstacleManager {
     }
 
     // Update and recycle enemies
+    const platforms = this.getPlatforms();
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
-      e.update(dt, time, playerX, playerY);
+      e.update(dt, time, playerX, playerY, platforms);
 
       if (!e.active || e.position.x < playerX - 25) {
         if (e.position.x < playerX - 25) {

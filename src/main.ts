@@ -59,7 +59,7 @@ class Game {
   private startGame() {
     this.state = GameState.PLAYING;
     this.score = 0;
-    this.player.reset(0, -3.8); // Start in idle on solid ground
+    this.player.reset(0, -3.70); // Start in idle on solid ground
     this.levelGenerator.reset(0);
   }
 
