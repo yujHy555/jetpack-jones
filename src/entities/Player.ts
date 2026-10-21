@@ -44,20 +44,18 @@ export enum PlayerState {
 }
 
 /**
- * Triple-AAA Articulated 2D Skeletal Character for Jetpack Jones
- * Faithfully matches reference low-poly character with articulated bones:
- * - Head & Neck with faceted hair sweep & features
- * - Torso with shoulder harness & utility belt
- * - Dual-jointed legs (Thigh, Shin, Boot with toe roll)
- * - Dual-jointed arms (Upper, Forearm, Hand, Blaster)
- * - Muzzle flash & recoil slide on shoot
- * - Back-mounted twin-rocket chrome jetpack with animated flames, smoke, and sparks
+ * Triple-AAA Articulated 2D Skeletal Character
+ * Features:
+ * - Natural human knee backward flexion (never bends forward)
+ * - 360° Mouse Targeting & Crosshair Blaster Aiming
+ * - Full 12 Principles of Animation (Squash & Stretch, Anticipation, Arcs, Follow-Through)
+ * - Faux-Volumetric Jetpack Smoke & 3D Rocket Flames
  */
 export class Player {
   public mesh: THREE.Group;
   public state: PlayerState = PlayerState.IDLE;
 
-  // Physics & Transform
+  // Transform & Physics
   public position: THREE.Vector3 = new THREE.Vector3(0, -3.8, 0);
   public velocity: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
   public isGrounded: boolean = true;
@@ -72,13 +70,13 @@ export class Player {
   public maxFuel: number = 100;
   public invulnerableTime: number = 0;
 
-  // Skeletal Joint Hierarchy
+  // Skeletal Bones Hierarchy
   private rigRoot: THREE.Group;
   private hipBone: THREE.Group;
   private torsoBone: THREE.Group;
   private headBone: THREE.Group;
 
-  // Front & Back Legs
+  // Front & Back Legs (Knee joints bend strictly backward)
   private frontThighBone: THREE.Group;
   private frontShinBone: THREE.Group;
   private frontFootBone: THREE.Group;
@@ -87,7 +85,7 @@ export class Player {
   private backShinBone: THREE.Group;
   private backFootBone: THREE.Group;
 
-  // Front & Back Arms
+  // Front & Back Arms (360° Aiming Front Arm)
   private frontArmBone: THREE.Group;
   private frontForearmBone: THREE.Group;
   private frontHandBone: THREE.Group;
@@ -98,18 +96,24 @@ export class Player {
   private backForearmBone: THREE.Group;
   private backHandBone: THREE.Group;
 
-  // Jetpack & Thruster VFX
+  // Jetpack & Lights
   private jetpackBone: THREE.Group;
   private flameConeLeft: THREE.Mesh;
   private flameConeRight: THREE.Mesh;
   private thrusterLight: THREE.PointLight;
   private muzzleLight: THREE.PointLight;
 
-  // Animation Timers & State Blending
+  // Animation Timers & Physics Smoothing
   private animTimer: number = 0;
   private shootTimer: number = 0;
+  private currentAimAngle: number = 0; // World angle in radians
   private landSquashTimer: number = 0;
+  private jumpAnticipateTimer: number = 0;
   private wasGroundedLastFrame: boolean = true;
+
+  // Secondary Motion Follow-Through
+  private headFollowLag: number = 0;
+  private torsoTiltSmooth: number = 0;
 
   // VFX Pools
   private vfxGroup: THREE.Group;
@@ -143,10 +147,10 @@ export class Player {
     this.thrusterLight = new THREE.PointLight(0xff7700, 0, 14, 1.2);
     scene.add(this.thrusterLight);
 
-    this.muzzleLight = new THREE.PointLight(0xffea00, 0, 6, 1.5);
+    this.muzzleLight = new THREE.PointLight(0xffea00, 0, 8, 1.5);
     scene.add(this.muzzleLight);
 
-    // Shared Palette Materials from Reference Art
+    // Stylized Palette from Reference Art
     const suitOrange = new THREE.MeshStandardMaterial({
       color: 0xee5a08,
       roughness: 0.38,
@@ -188,7 +192,7 @@ export class Player {
       roughness: 0.14,
     });
 
-    // 1. Build Bones & Meshes Hierarchy
+    // 1. Build Bones Hierarchy
     this.hipBone = new THREE.Group();
     this.hipBone.position.set(0, 0.95, 0);
     this.rigRoot.add(this.hipBone);
@@ -213,7 +217,7 @@ export class Player {
     torso.position.set(0, 0.28, 0);
     this.torsoBone.add(torso);
 
-    // Shoulder Harness Straps
+    // Shoulder Harness
     const harnessL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.12), darkHarness);
     harnessL.position.set(0, 0.56, 0.16);
     this.torsoBone.add(harnessL);
@@ -222,7 +226,7 @@ export class Player {
     harnessR.position.set(0, 0.56, -0.16);
     this.torsoBone.add(harnessR);
 
-    // High dark collar
+    // Dark collar
     const collarMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.14, 8), darkHarness);
     collarMesh.position.set(0.02, 0.62, 0);
     this.torsoBone.add(collarMesh);
@@ -232,19 +236,16 @@ export class Player {
     this.headBone.position.set(0.02, 0.7, 0);
     this.torsoBone.add(this.headBone);
 
-    // Faceted Face
     const faceGeo = new THREE.BoxGeometry(0.24, 0.28, 0.22);
     const face = new THREE.Mesh(faceGeo, fleshTone);
     face.position.set(0.04, 0.14, 0);
     this.headBone.add(face);
 
-    // Nose
     const nose = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.09, 4), fleshTone);
     nose.rotation.z = -Math.PI / 2;
     nose.position.set(0.18, 0.14, 0);
     this.headBone.add(nose);
 
-    // Hair Sweep
     const hairGeo = new THREE.BoxGeometry(0.28, 0.18, 0.26);
     const hair = new THREE.Mesh(hairGeo, darkHair);
     hair.position.set(0.02, 0.3, 0);
@@ -255,12 +256,12 @@ export class Player {
     hairSpike.position.set(0.1, 0.36, 0);
     this.headBone.add(hairSpike);
 
-    // 2. Legs: Back Leg (Z = -0.1) and Front Leg (Z = +0.1)
+    // 2. Legs Hierarchy (Pivot at hip and knee)
     const legGeoThigh = new THREE.BoxGeometry(0.15, 0.44, 0.14);
     const legGeoShin = new THREE.BoxGeometry(0.13, 0.42, 0.13);
     const bootGeo = new THREE.BoxGeometry(0.28, 0.16, 0.14);
 
-    // Back Leg
+    // Back Leg (Depth Z = -0.1)
     this.backThighBone = new THREE.Group();
     this.backThighBone.position.set(-0.02, -0.05, -0.1);
     this.hipBone.add(this.backThighBone);
@@ -277,7 +278,6 @@ export class Player {
     backShinMesh.position.set(0, -0.2, 0);
     this.backShinBone.add(backShinMesh);
 
-    // Boot & Cuff
     this.backFootBone = new THREE.Group();
     this.backFootBone.position.set(0, -0.4, 0);
     this.backShinBone.add(this.backFootBone);
@@ -293,7 +293,7 @@ export class Player {
     backBoot.position.set(0.06, -0.12, 0);
     this.backFootBone.add(backBoot);
 
-    // Front Leg
+    // Front Leg (Depth Z = +0.1)
     this.frontThighBone = new THREE.Group();
     this.frontThighBone.position.set(0.02, -0.05, 0.1);
     this.hipBone.add(this.frontThighBone);
@@ -325,7 +325,7 @@ export class Player {
     frontBoot.position.set(0.06, -0.12, 0);
     this.frontFootBone.add(frontBoot);
 
-    // 3. Arms: Back Arm (Z = -0.22) & Front Arm with Blaster (Z = +0.22)
+    // 3. Arms: Back Arm (Z = -0.22) & Front Arm (Z = +0.22)
     const armGeoUpper = new THREE.BoxGeometry(0.12, 0.35, 0.12);
     const armGeoFore = new THREE.BoxGeometry(0.11, 0.32, 0.11);
     const handGeo = new THREE.BoxGeometry(0.12, 0.14, 0.12);
@@ -354,7 +354,7 @@ export class Player {
     const backHand = new THREE.Mesh(handGeo, gloveBrown);
     this.backHandBone.add(backHand);
 
-    // Front Arm (with Blaster)
+    // Front Arm (360° Rotational Aiming Rig)
     this.frontArmBone = new THREE.Group();
     this.frontArmBone.position.set(0.02, 0.5, 0.22);
     this.torsoBone.add(this.frontArmBone);
@@ -390,12 +390,12 @@ export class Player {
     const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.11, 0.08), chromeMetal);
     this.blasterMesh.add(gunBody);
 
-    const gunBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.22, 8), chromeMetal);
+    const gunBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.24, 8), chromeMetal);
     gunBarrel.rotateZ(Math.PI / 2);
-    gunBarrel.position.set(0.18, 0.02, 0);
+    gunBarrel.position.set(0.19, 0.02, 0);
     this.blasterMesh.add(gunBarrel);
 
-    // Muzzle Flash Effect (4-point star)
+    // Muzzle Flash
     const flashMat = new THREE.MeshBasicMaterial({
       color: 0xffffaa,
       transparent: true,
@@ -403,10 +403,10 @@ export class Player {
       blending: THREE.AdditiveBlending,
     });
     this.muzzleFlashMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.22, 0), flashMat);
-    this.muzzleFlashMesh.position.set(0.35, 0.02, 0);
+    this.muzzleFlashMesh.position.set(0.36, 0.02, 0);
     this.blasterMesh.add(this.muzzleFlashMesh);
 
-    // 4. Back-Mounted Jetpack
+    // 4. Back-Mounted Chrome Jetpack
     this.jetpackBone = new THREE.Group();
     this.jetpackBone.position.set(-0.24, 0.34, 0);
     this.torsoBone.add(this.jetpackBone);
@@ -423,7 +423,6 @@ export class Player {
     const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.09, 0.28), chromeMetal);
     this.jetpackBone.add(bridge);
 
-    // Exhaust Nozzles pointing down
     const nozzleGeo = new THREE.ConeGeometry(0.1, 0.18, 16, 1, true);
     nozzleGeo.rotateX(Math.PI);
 
@@ -435,7 +434,7 @@ export class Player {
     nozR.position.set(0, -0.36, 0.13);
     this.jetpackBone.add(nozR);
 
-    // Dual Animated 3D Flame Cones
+    // 3D Flames
     const flameGeo = new THREE.ConeGeometry(0.14, 0.65, 12);
     flameGeo.rotateX(Math.PI);
     flameGeo.translate(0, -0.32, 0);
@@ -465,7 +464,7 @@ export class Player {
     this.flameConeLeft.visible = false;
     this.flameConeRight.visible = false;
 
-    // 5. Initialize VFX Systems
+    // 5. VFX Systems
     this.initSmokeSystem();
     this.initSparkSystem();
     this.initDustSystem();
@@ -475,7 +474,7 @@ export class Player {
     this.laserGeo.rotateZ(Math.PI / 2);
     this.laserMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
 
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 24; i++) {
       const mesh = new THREE.Mesh(this.laserGeo, this.laserMat);
       mesh.visible = false;
       scene.add(mesh);
@@ -502,6 +501,8 @@ export class Player {
     this.invulnerableTime = 0;
     this.animTimer = 0;
     this.shootTimer = 0;
+    this.headFollowLag = 0;
+    this.torsoTiltSmooth = 0;
     this.mesh.position.copy(this.position);
     this.mesh.visible = true;
 
@@ -620,29 +621,40 @@ export class Player {
   }
 
   /**
-   * Fires a blaster laser bolt with recoil animation and muzzle flash
+   * Fires a blaster laser bolt in 360° toward target
    */
-  public shoot(): boolean {
+  public shoot(aimTargetWorld?: THREE.Vector3): boolean {
     const laser = this.lasers.find(l => !l.active);
     if (!laser) return false;
 
-    // Trigger shoot animation timer
     this.shootTimer = 0.28;
 
-    // Laser muzzle origin
-    const originX = this.position.x + (this.facingRight ? 0.65 : -0.65);
-    const originY = this.position.y + 1.25;
+    // Calculate aim angle
+    let aimAngle = this.facingRight ? 0 : Math.PI;
+    const originY = this.position.y + 1.35;
+    const originX = this.position.x + (this.facingRight ? 0.35 : -0.35);
 
-    laser.position.set(originX, originY, this.position.z);
-    laser.velocity.set(this.facingRight ? 26 : -26, 0, 0);
+    if (aimTargetWorld) {
+      aimAngle = Math.atan2(aimTargetWorld.y - originY, aimTargetWorld.x - originX);
+    }
+    this.currentAimAngle = aimAngle;
+
+    // Spawning location along aim vector
+    const muzzleDist = 0.45;
+    const spawnX = originX + Math.cos(aimAngle) * muzzleDist;
+    const spawnY = originY + Math.sin(aimAngle) * muzzleDist;
+
+    laser.position.set(spawnX, spawnY, this.position.z);
+    laser.velocity.set(Math.cos(aimAngle) * 28, Math.sin(aimAngle) * 28, 0);
     laser.active = true;
-    laser.life = 1.2;
+    laser.life = 1.3;
     laser.mesh.position.copy(laser.position);
+    laser.mesh.rotation.z = aimAngle; // Aligns cylinder with trajectory!
     laser.mesh.visible = true;
 
-    // Flash light at muzzle
-    this.muzzleLight.position.set(originX, originY, this.position.z + 0.2);
-    this.muzzleLight.intensity = 15;
+    // Muzzle flash light
+    this.muzzleLight.position.set(spawnX, spawnY, this.position.z + 0.2);
+    this.muzzleLight.intensity = 18;
 
     return true;
   }
@@ -663,7 +675,9 @@ export class Player {
     run: boolean,
     jumpPressed: boolean,
     jetpackHold: boolean,
-    platforms: { x: number; y: number; width: number; height: number }[]
+    platforms: { x: number; y: number; width: number; height: number }[],
+    aimTargetWorld?: THREE.Vector3,
+    hasMouse?: boolean
   ) {
     this.animTimer += dt;
 
@@ -675,27 +689,49 @@ export class Player {
       this.mesh.visible = true;
     }
 
-    // 2. Horizontal Movement: Walk vs Run
+    // 2. Aim Angle & Facing Direction Resolution
+    const chestY = this.position.y + 1.35;
+    if (hasMouse && aimTargetWorld) {
+      this.currentAimAngle = Math.atan2(aimTargetWorld.y - chestY, aimTargetWorld.x - this.position.x);
+
+      // Character faces towards mouse target
+      const lookRight = aimTargetWorld.x >= this.position.x;
+      if (this.facingRight !== lookRight) {
+        this.facingRight = lookRight;
+        this.rigRoot.scale.x = this.facingRight ? 1 : -1;
+      }
+    } else if (moveX !== 0) {
+      this.facingRight = moveX > 0;
+      this.rigRoot.scale.x = this.facingRight ? 1 : -1;
+      this.currentAimAngle = this.facingRight ? 0 : Math.PI;
+    }
+
+    // 3. Smooth Acceleration / Deceleration (Animation Principle: Ease In & Ease Out)
     const walkSpeed = 4.6;
     const runSpeed = 8.8;
     const currentSpeed = run ? runSpeed : walkSpeed;
 
     if (moveX !== 0) {
-      this.facingRight = moveX > 0;
-      this.rigRoot.scale.x = this.facingRight ? 1 : -1;
       this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, moveX * currentSpeed, dt * 14);
     } else {
       this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, 0, dt * 16);
     }
 
-    // 3. Jump from Ground
-    if (jumpPressed && this.isGrounded) {
-      this.velocity.y = 11.5;
-      this.isGrounded = false;
-      this.emitDust(this.position.x, this.position.y, 4);
+    // 4. Jump Anticipation & Leap
+    if (jumpPressed && this.isGrounded && this.jumpAnticipateTimer <= 0) {
+      this.jumpAnticipateTimer = 0.06; // 60ms crouch anticipation
     }
 
-    // 4. Jetpack Flight
+    if (this.jumpAnticipateTimer > 0) {
+      this.jumpAnticipateTimer -= dt;
+      if (this.jumpAnticipateTimer <= 0) {
+        this.velocity.y = 11.8;
+        this.isGrounded = false;
+        this.emitDust(this.position.x, this.position.y, 4);
+      }
+    }
+
+    // 5. Jetpack Flight Mechanics
     const isActuallyJetpacking = jetpackHold && this.fuel > 0;
     const gravity = -17.5;
     const jetpackLift = 34.0;
@@ -708,15 +744,13 @@ export class Player {
       this.fuel = Math.min(this.maxFuel, this.fuel + 8.0 * dt);
     }
 
-    // Apply gravity
     this.velocity.y += gravity * dt;
     this.velocity.y = THREE.MathUtils.clamp(this.velocity.y, -14, 12);
 
-    // Apply movement
     this.position.x += this.velocity.x * dt;
     this.position.y += this.velocity.y * dt;
 
-    // 5. Floor & Platform Collisions
+    // 6. Floor & Platform Collisions
     const floorY = -3.8;
     this.isGrounded = false;
 
@@ -726,7 +760,6 @@ export class Player {
       this.isGrounded = true;
     }
 
-    // Elevated Catwalks
     for (const plat of platforms) {
       const platTop = plat.y + plat.height / 2;
       const platLeft = plat.x - plat.width / 2;
@@ -745,7 +778,7 @@ export class Player {
       }
     }
 
-    // Landing squash detection
+    // Landing Squash detection
     if (!this.wasGroundedLastFrame && this.isGrounded) {
       this.landSquashTimer = 0.16;
       this.emitDust(this.position.x, this.position.y, 5);
@@ -754,7 +787,7 @@ export class Player {
 
     this.mesh.position.copy(this.position);
 
-    // 6. State Machine
+    // 7. State Machine
     if (isActuallyJetpacking) {
       this.state = PlayerState.JETPACK;
     } else if (!this.isGrounded) {
@@ -765,13 +798,13 @@ export class Player {
       this.state = PlayerState.IDLE;
     }
 
-    // 7. TRIPLE-AAA PROCEDURAL SKELETAL ANIMATION
-    this.animateSkeletalBones(dt, run);
+    // 8. Animate Skeletal Joints with Natural Backward Knees & 360° Arm Aiming
+    this.animateSkeletalBones(dt, run, hasMouse);
 
-    // 8. Update Jetpack Flames, Volumetric Smoke & Sparks
+    // 9. Update Jetpack Flames, Volumetric Smoke & Sparks
     this.updateJetpackVFX(dt, isActuallyJetpacking);
 
-    // 9. Update Lasers
+    // 10. Update Lasers
     for (const l of this.lasers) {
       if (!l.active) continue;
       l.life -= dt;
@@ -780,145 +813,159 @@ export class Player {
         l.mesh.visible = false;
         continue;
       }
-      l.position.x += l.velocity.x * dt;
+      l.position.addScaledVector(l.velocity, dt);
       l.mesh.position.copy(l.position);
     }
   }
 
   /**
-   * Professional Skeletal Kinematics & Animation Controller
+   * Triple-AAA Skeletal Kinematics
+   * Knees bend strictly BACKWARD (negative local rotation).
+   * Front arm tracks mouse aiming smoothly in 360°.
    */
-  private animateSkeletalBones(dt: number, isRunning: boolean) {
+  private animateSkeletalBones(dt: number, isRunning: boolean, hasMouseTarget?: boolean) {
     const t = this.animTimer;
 
-    // Reset base transforms
     this.hipBone.position.y = 0.95;
     this.torsoBone.rotation.set(0, 0, 0);
     this.headBone.rotation.set(0, 0, 0);
 
-    // Landing Squash
+    // Squash & Stretch: Land Squash
     if (this.landSquashTimer > 0) {
       this.landSquashTimer -= dt;
-      const squash = Math.sin((this.landSquashTimer / 0.16) * Math.PI) * 0.12;
+      const squash = Math.sin((this.landSquashTimer / 0.16) * Math.PI) * 0.14;
       this.hipBone.position.y -= squash;
-      this.hipBone.scale.set(1.0 + squash * 0.8, 1.0 - squash, 1.0);
+      this.hipBone.scale.set(1.0 + squash * 0.9, 1.0 - squash, 1.0);
+    } else if (this.jumpAnticipateTimer > 0) {
+      // Jump Anticipation Crouch
+      this.hipBone.position.y -= 0.15;
+      this.hipBone.scale.set(1.1, 0.88, 1.0);
+    } else if (!this.isGrounded) {
+      // Jump Airborne Stretch
+      const stretch = Math.min(0.08, Math.abs(this.velocity.y) * 0.008);
+      this.hipBone.scale.set(1.0 - stretch * 0.5, 1.0 + stretch, 1.0);
     } else {
       this.hipBone.scale.set(1, 1, 1);
     }
 
+    // Secondary motion: Torso tilt lag & head follow-through
+    const targetTorsoTilt = (this.velocity.x / 8.8) * (isRunning ? 0.32 : 0.08);
+    this.torsoTiltSmooth = THREE.MathUtils.lerp(this.torsoTiltSmooth, targetTorsoTilt, dt * 10);
+    this.headFollowLag = THREE.MathUtils.lerp(this.headFollowLag, -this.torsoTiltSmooth * 0.5, dt * 8);
+
     switch (this.state) {
       // ----------------------------------------------------
-      // A. IDLE ANIMATION (Organic breathing, subtle weight shift)
+      // A. IDLE (Organic breathing, natural backward resting knees)
       // ----------------------------------------------------
       case PlayerState.IDLE: {
-        const breathe = Math.sin(t * 3.0) * 0.03;
+        const breathe = Math.sin(t * 2.8) * 0.035;
         this.torsoBone.position.y = 0.1 + breathe;
-        this.torsoBone.rotation.z = Math.sin(t * 1.5) * 0.02;
-        this.headBone.rotation.z = -Math.sin(t * 3.0) * 0.02;
+        this.torsoBone.rotation.z = Math.sin(t * 1.4) * 0.015;
+        this.headBone.rotation.z = -Math.sin(t * 2.8) * 0.02 + this.headFollowLag;
 
-        // Grounded feet
-        this.frontThighBone.rotation.z = 0.04;
-        this.frontShinBone.rotation.z = 0.02;
-        this.frontFootBone.rotation.z = -0.06;
+        // Grounded legs with natural backward soft bend
+        this.frontThighBone.rotation.z = 0.05;
+        this.frontShinBone.rotation.z = -0.08; // BACKWARD
+        this.frontFootBone.rotation.z = 0.03;
 
-        this.backThighBone.rotation.z = -0.04;
-        this.backShinBone.rotation.z = 0.03;
-        this.backFootBone.rotation.z = 0.01;
+        this.backThighBone.rotation.z = -0.05;
+        this.backShinBone.rotation.z = -0.08; // BACKWARD
+        this.backFootBone.rotation.z = 0.03;
 
-        // Arms resting relaxed at sides
-        this.backArmBone.rotation.z = Math.sin(t * 3.0) * 0.05 + 0.1;
-        this.backForearmBone.rotation.z = 0.2;
+        // Back arm resting
+        this.backArmBone.rotation.z = Math.sin(t * 2.8) * 0.05 + 0.12;
+        this.backForearmBone.rotation.z = 0.25;
 
-        // If not shooting, front arm holds gun lowered in ready position
-        if (this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = -Math.sin(t * 3.0) * 0.05 + 0.15;
-          this.frontForearmBone.rotation.z = 0.45;
+        // Front arm lowered if not aiming with mouse
+        if (!hasMouseTarget && this.shootTimer <= 0) {
+          this.frontArmBone.rotation.z = -Math.sin(t * 2.8) * 0.05 + 0.15;
+          this.frontForearmBone.rotation.z = 0.35;
         }
         break;
       }
 
       // ----------------------------------------------------
-      // B. SIDE WALK CYCLE (Professional 8-Phase Double Pendulum)
+      // B. SIDE WALK CYCLE (Strictly Backward-Bending Knees)
       // ----------------------------------------------------
       case PlayerState.WALK: {
         const walkFreq = 9.0;
         const phase = t * walkFreq;
 
-        // Hip vertical bounce on passing steps
+        // Double-rate hip vertical bob
         const hipBob = Math.abs(Math.sin(phase)) * 0.05;
         this.hipBone.position.y = 0.95 + hipBob;
 
-        // Slight forward torso step tilt
-        this.torsoBone.rotation.z = 0.06 + Math.sin(phase) * 0.02;
-        this.headBone.rotation.z = -0.04;
+        this.torsoBone.rotation.z = this.torsoTiltSmooth;
+        this.headBone.rotation.z = this.headFollowLag;
 
-        // Dual Leg Swing (180 deg out of phase)
-        const frontLegAngle = Math.sin(phase);
-        const backLegAngle = Math.sin(phase + Math.PI);
+        // Legs in 180° opposition
+        const frontAngle = Math.sin(phase);
+        const backAngle = Math.sin(phase + Math.PI);
 
-        // Front Leg Kinematics
-        this.frontThighBone.rotation.z = frontLegAngle * 0.55;
-        this.frontShinBone.rotation.z = frontLegAngle < 0 ? Math.abs(frontLegAngle) * 0.75 : 0.05;
-        this.frontFootBone.rotation.z = -frontLegAngle * 0.3;
+        // FRONT LEG:
+        this.frontThighBone.rotation.z = frontAngle * 0.52;
+        // Knee flexes BACKWARD (strictly negative!) when swinging forward or trailing
+        const frontKneeFlex = frontAngle < 0 ? -Math.abs(frontAngle) * 0.75 : -0.08;
+        this.frontShinBone.rotation.z = frontKneeFlex;
+        this.frontFootBone.rotation.z = frontAngle * 0.25;
 
-        // Back Leg Kinematics
-        this.backThighBone.rotation.z = backLegAngle * 0.55;
-        this.backShinBone.rotation.z = backLegAngle < 0 ? Math.abs(backLegAngle) * 0.75 : 0.05;
-        this.backFootBone.rotation.z = -backLegAngle * 0.3;
+        // BACK LEG:
+        this.backThighBone.rotation.z = backAngle * 0.52;
+        const backKneeFlex = backAngle < 0 ? -Math.abs(backAngle) * 0.75 : -0.08;
+        this.backShinBone.rotation.z = backKneeFlex;
+        this.backFootBone.rotation.z = backAngle * 0.25;
 
         // Counter-arm Swing
-        this.backArmBone.rotation.z = frontLegAngle * 0.55;
-        this.backForearmBone.rotation.z = 0.3 + Math.max(0, -frontLegAngle) * 0.4;
+        this.backArmBone.rotation.z = frontAngle * 0.55;
+        this.backForearmBone.rotation.z = 0.35 + Math.max(0, -frontAngle) * 0.35;
 
-        if (this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = backLegAngle * 0.45 + 0.1;
+        if (!hasMouseTarget && this.shootTimer <= 0) {
+          this.frontArmBone.rotation.z = backAngle * 0.45 + 0.15;
           this.frontForearmBone.rotation.z = 0.4;
         }
 
-        // Footstep dust on contact
-        if (Math.abs(frontLegAngle) > 0.95 && Math.random() < 0.25) {
+        if (Math.abs(frontAngle) > 0.95 && Math.random() < 0.25) {
           this.emitDust(this.position.x, this.position.y, 1);
         }
         break;
       }
 
       // ----------------------------------------------------
-      // C. RUN CYCLE (High-Energy Sprint, Lean, High Knee Lift)
+      // C. RUN CYCLE (High Knee Lift & Deep Backward Heel Kick)
       // ----------------------------------------------------
       case PlayerState.RUN: {
         const runFreq = 14.0;
         const phase = t * runFreq;
 
-        // Athletic forward lean (18 degrees)
-        this.torsoBone.rotation.z = 0.32;
-        this.headBone.rotation.z = -0.12;
+        this.torsoBone.rotation.z = 0.34; // Deep forward athletic lean
+        this.headBone.rotation.z = -0.12 + this.headFollowLag;
 
-        // Deep vertical bounce
         const runBob = Math.abs(Math.sin(phase)) * 0.08;
         this.hipBone.position.y = 0.95 + runBob;
 
         const frontRun = Math.sin(phase);
         const backRun = Math.sin(phase + Math.PI);
 
-        // High knee lift and deep heel kickback
-        this.frontThighBone.rotation.z = frontRun * 0.85;
-        this.frontShinBone.rotation.z = frontRun < 0 ? Math.abs(frontRun) * 1.15 : 0.1;
-        this.frontFootBone.rotation.z = -frontRun * 0.4;
+        // FRONT LEG (High knee forward, deep heel kick BACKWARD):
+        this.frontThighBone.rotation.z = frontRun * 0.82;
+        // Knee bends BACKWARD towards glute:
+        this.frontShinBone.rotation.z = frontRun < 0 ? -Math.abs(frontRun) * 1.25 : -0.1;
+        this.frontFootBone.rotation.z = frontRun * 0.35;
 
-        this.backThighBone.rotation.z = backRun * 0.85;
-        this.backShinBone.rotation.z = backRun < 0 ? Math.abs(backRun) * 1.15 : 0.1;
-        this.backFootBone.rotation.z = -backRun * 0.4;
+        // BACK LEG:
+        this.backThighBone.rotation.z = backRun * 0.82;
+        this.backShinBone.rotation.z = backRun < 0 ? -Math.abs(backRun) * 1.25 : -0.1;
+        this.backFootBone.rotation.z = backRun * 0.35;
 
-        // Pumping arms in 90 degree bends
+        // Pumping back arm
         this.backArmBone.rotation.z = frontRun * 0.85;
         this.backForearmBone.rotation.z = 0.85;
 
-        if (this.shootTimer <= 0) {
+        if (!hasMouseTarget && this.shootTimer <= 0) {
           this.frontArmBone.rotation.z = backRun * 0.75 + 0.15;
           this.frontForearmBone.rotation.z = 0.8;
         }
 
-        // Running dust spray
         if (Math.abs(frontRun) > 0.9) {
           this.emitDust(this.position.x, this.position.y, 2);
         }
@@ -926,72 +973,71 @@ export class Player {
       }
 
       // ----------------------------------------------------
-      // D. JUMP & FALL (Anticipation, Tuck, Apex, Fall Reach)
+      // D. JUMP & FALL (Natural Backward Knee Tucking & Fall Reach)
       // ----------------------------------------------------
       case PlayerState.JUMP: {
-        // Upward leap: legs tuck up toward body
         this.torsoBone.rotation.z = 0.08;
-        this.headBone.rotation.z = 0.12; // Looking up
+        this.headBone.rotation.z = 0.14; // Looking up
 
-        this.frontThighBone.rotation.z = 0.65;
-        this.frontShinBone.rotation.z = 0.85; // bent knee
-        this.frontFootBone.rotation.z = -0.2;
+        // Thighs raise forward, knees flex BACKWARD underneath
+        this.frontThighBone.rotation.z = 0.55;
+        this.frontShinBone.rotation.z = -0.85; // Bends BACKWARD underneath
+        this.frontFootBone.rotation.z = 0.25;
 
         this.backThighBone.rotation.z = 0.45;
-        this.backShinBone.rotation.z = 0.75;
-        this.backFootBone.rotation.z = -0.2;
+        this.backShinBone.rotation.z = -0.75; // Bends BACKWARD underneath
+        this.backFootBone.rotation.z = 0.25;
 
-        this.backArmBone.rotation.z = -0.4; // reaching back for balance
+        this.backArmBone.rotation.z = -0.4;
         this.backForearmBone.rotation.z = 0.5;
 
-        if (this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = 0.3;
+        if (!hasMouseTarget && this.shootTimer <= 0) {
+          this.frontArmBone.rotation.z = 0.25;
           this.frontForearmBone.rotation.z = 0.4;
         }
         break;
       }
 
       case PlayerState.FALL: {
-        // Downward fall: legs extend to prepare for landing
         this.torsoBone.rotation.z = -0.04;
         this.headBone.rotation.z = -0.08; // Looking down
 
-        this.frontThighBone.rotation.z = 0.15;
-        this.frontShinBone.rotation.z = 0.15;
-        this.frontFootBone.rotation.z = 0.25; // toes pointing down
+        // Legs extend downward preparing for landing
+        this.frontThighBone.rotation.z = 0.12;
+        this.frontShinBone.rotation.z = -0.2; // Soft backward knee bend
+        this.frontFootBone.rotation.z = -0.25; // Toes pointing down
 
-        this.backThighBone.rotation.z = -0.1;
-        this.backShinBone.rotation.z = 0.2;
-        this.backFootBone.rotation.z = 0.25;
+        this.backThighBone.rotation.z = -0.08;
+        this.backShinBone.rotation.z = -0.2;
+        this.backFootBone.rotation.z = -0.25;
 
-        this.backArmBone.rotation.z = -0.2;
-        this.backForearmBone.rotation.z = 0.3;
+        this.backArmBone.rotation.z = -0.25;
+        this.backForearmBone.rotation.z = 0.35;
         break;
       }
 
       // ----------------------------------------------------
-      // E. JETPACK FLIGHT (Streamline, Trailing Leg Physics)
+      // E. JETPACK FLIGHT (Streamline with Trailing Leg Physics)
       // ----------------------------------------------------
       case PlayerState.JETPACK: {
-        // Flight lean in direction of horizontal speed
-        const flightLean = 0.25 + (this.velocity.x / 9.0) * 0.25;
+        const flightLean = 0.26 + (this.velocity.x / 9.0) * 0.25;
         this.torsoBone.rotation.z = flightLean;
-        this.headBone.rotation.z = 0.15; // Focused forward
+        this.headBone.rotation.z = 0.15;
 
-        // Legs dynamically trailing behind in aerodynamic flight
-        const legSway = Math.sin(t * 12.0) * 0.08;
-        this.frontThighBone.rotation.z = -0.45 + legSway;
-        this.frontShinBone.rotation.z = 0.35;
-        this.frontFootBone.rotation.z = 0.4;
+        // Legs dynamically trailing behind in aerodynamic flight with wind flutter
+        const flutter = Math.sin(t * 12.0) * 0.08;
+        this.frontThighBone.rotation.z = -0.42 + flutter;
+        this.frontShinBone.rotation.z = -0.32; // Backward trail
+        this.frontFootBone.rotation.z = -0.25;
 
-        this.backThighBone.rotation.z = -0.55 - legSway;
-        this.backShinBone.rotation.z = 0.45;
-        this.backFootBone.rotation.z = 0.4;
+        this.backThighBone.rotation.z = -0.52 - flutter;
+        this.backShinBone.rotation.z = -0.38; // Backward trail
+        this.backFootBone.rotation.z = -0.25;
 
-        this.backArmBone.rotation.z = -0.6; // tucked streamline
+        this.backArmBone.rotation.z = -0.55;
         this.backForearmBone.rotation.z = 0.3;
 
-        if (this.shootTimer <= 0) {
+        if (!hasMouseTarget && this.shootTimer <= 0) {
           this.frontArmBone.rotation.z = 0.2;
           this.frontForearmBone.rotation.z = 0.35;
         }
@@ -1000,31 +1046,46 @@ export class Player {
     }
 
     // ------------------------------------------------------
-    // F. PROFESSIONAL SHOOT OVERRIDE (Draw, Recoil Kick, Flash)
+    // F. 360° MOUSE AIMING & SHOOT RECOIL / MUZZLE FLASH
     // ------------------------------------------------------
+    if (hasMouseTarget) {
+      // Calculate front arm rotation in local space relative to facing direction
+      let localAngle = this.currentAimAngle;
+      if (!this.facingRight) {
+        localAngle = Math.PI - localAngle;
+      }
+      // Normalize to -PI .. +PI
+      localAngle = THREE.MathUtils.euclideanModulo(localAngle + Math.PI, Math.PI * 2) - Math.PI;
+
+      // Adjust for torso tilt
+      const aimRotation = localAngle - this.torsoBone.rotation.z;
+
+      // Point front arm bone at mouse reticle
+      this.frontArmBone.rotation.z = THREE.MathUtils.lerp(
+        this.frontArmBone.rotation.z,
+        aimRotation + Math.PI / 2, // Upper arm hangs downward by default, rotate to target
+        dt * 24
+      );
+      this.frontForearmBone.rotation.z = 0.05; // Straight arm for crisp precision aim
+    }
+
+    // Recoil Kickback Shock & Muzzle Flash on firing
     if (this.shootTimer > 0) {
       this.shootTimer -= dt;
-      const progress = 1.0 - (this.shootTimer / 0.28); // 0.0 to 1.0
+      const progress = 1.0 - this.shootTimer / 0.28;
 
-      // Front arm snaps into horizontal aim
-      this.frontArmBone.rotation.z = 1.45; // Level forward
-      this.frontForearmBone.rotation.z = 0.05;
-
-      // Recoil shock on the blaster slide and arm
       if (progress < 0.25) {
-        // Immediate kickback
+        // Immediate kickback along gun axis
         const kick = Math.sin((progress / 0.25) * Math.PI);
-        this.blasterMesh.position.x = 0.12 - kick * 0.09;
-        this.frontArmBone.rotation.z += kick * 0.12; // Muzzle climbs
-        this.torsoBone.rotation.z -= kick * 0.05; // Torso absorbs shock
+        this.blasterMesh.position.x = 0.12 - kick * 0.1;
+        this.frontArmBone.rotation.z += (this.facingRight ? 1 : -1) * kick * 0.1; // Muzzle climb
+        this.torsoBone.rotation.z -= kick * 0.04;
 
-        // Muzzle flash visibility
         (this.muzzleFlashMesh.material as THREE.MeshBasicMaterial).opacity = 1.0;
-        this.muzzleFlashMesh.scale.set(1.4, 1.4, 1.4);
+        this.muzzleFlashMesh.scale.set(1.5, 1.5, 1.5);
       } else {
-        // Smooth recovery to ready position
-        const returnProgress = (progress - 0.25) / 0.75;
-        this.blasterMesh.position.x = THREE.MathUtils.lerp(0.03, 0.12, returnProgress);
+        const returnProg = (progress - 0.25) / 0.75;
+        this.blasterMesh.position.x = THREE.MathUtils.lerp(0.02, 0.12, returnProg);
         (this.muzzleFlashMesh.material as THREE.MeshBasicMaterial).opacity = 0;
         this.muzzleLight.intensity = 0;
       }
@@ -1046,7 +1107,6 @@ export class Player {
       this.flameConeLeft.visible = true;
       this.flameConeRight.visible = true;
 
-      // Scale flicker
       const flick = 1.0 + Math.random() * 0.45;
       this.flameConeLeft.scale.set(1.0 + Math.random() * 0.2, flick, 1.0);
       this.flameConeRight.scale.copy(this.flameConeLeft.scale);
@@ -1054,7 +1114,6 @@ export class Player {
       this.thrusterLight.intensity = 18 + Math.random() * 8;
       this.thrusterLight.distance = 15;
 
-      // Emit volumetric smoke puffs & sparks
       this.emitSmoke(nozzleX, nozzleY, nozzleZ, 2);
       this.emitSparks(nozzleX, nozzleY, nozzleZ, 2);
     } else {
@@ -1074,8 +1133,8 @@ export class Player {
         continue;
       }
 
-      puff.velocity.x *= (1.0 - dt * 1.5);
-      puff.velocity.y *= (1.0 - dt * 1.2);
+      puff.velocity.x *= 1.0 - dt * 1.5;
+      puff.velocity.y *= 1.0 - dt * 1.2;
       puff.mesh.position.addScaledVector(puff.velocity, dt);
 
       const progress = puff.age / puff.maxLife;
@@ -1113,7 +1172,7 @@ export class Player {
         if (sp.age >= sp.maxLife) {
           sp.active = false;
         } else {
-          sp.velocity.x *= (1.0 - dt * 2.5);
+          sp.velocity.x *= 1.0 - dt * 2.5;
           sp.position.addScaledVector(sp.velocity, dt);
         }
       }
@@ -1174,7 +1233,7 @@ export class Player {
         z + (Math.random() - 0.5) * 0.2
       );
 
-      const horizontalSpread = this.facingRight ? -(1.5 + Math.random() * 2.5) : (1.5 + Math.random() * 2.5);
+      const horizontalSpread = this.facingRight ? -(1.5 + Math.random() * 2.5) : 1.5 + Math.random() * 2.5;
       puff.velocity.set(
         horizontalSpread - this.velocity.x * 0.3,
         -(3.5 + Math.random() * 3.5),
@@ -1199,7 +1258,7 @@ export class Player {
       spark.age = 0;
       spark.maxLife = 0.22 + Math.random() * 0.25;
       spark.position.set(x, y - 0.1, z);
-      const horiz = this.facingRight ? -(3.0 + Math.random() * 5.0) : (3.0 + Math.random() * 5.0);
+      const horiz = this.facingRight ? -(3.0 + Math.random() * 5.0) : 3.0 + Math.random() * 5.0;
       spark.velocity.set(
         horiz - this.velocity.x * 0.3,
         -(5.0 + Math.random() * 5.0),

@@ -59,7 +59,7 @@ class Game {
   private startGame() {
     this.state = GameState.PLAYING;
     this.score = 0;
-    this.player.reset(0, -3.8); // Start in idle on solid ground
+    this.player.reset(0, -3.8); // Start grounded in idle
     this.levelGenerator.reset(0);
   }
 
@@ -77,11 +77,15 @@ class Game {
     const totalTime = this.clock.getElapsedTime();
 
     this.inputManager.update();
+    // Project mouse cursor into 3D world plane Z=0 for 360° aiming
+    this.inputManager.updateAimWorldTarget(this.sceneManager.camera);
 
     if (this.state === GameState.PLAYING) {
-      // 1. Process Shoot Trigger
+      // 1. Process 360° Shoot Trigger
       if (this.inputManager.consumeShootTrigger()) {
-        const fired = this.player.shoot();
+        const fired = this.player.shoot(
+          this.inputManager.hasMouse ? this.inputManager.mouseWorldTarget : undefined
+        );
         if (fired) {
           this.audioManager.playLaser();
         }
@@ -95,7 +99,7 @@ class Game {
         this.audioManager.playWarning();
       }
 
-      // 3. Update Player Entity (Walk, Run, Jump, Jetpack)
+      // 3. Update Player Entity (Smooth Kinematics & 360° Aiming)
       const jumpPressed = this.inputManager.consumeJumpTrigger();
       const platforms = this.obstacleManager.obstacles
         .filter(o => o.active && o.type === ObstacleType.HAZARD_PLATFORM && o.collider && o.collider.halfSize)
@@ -112,7 +116,9 @@ class Game {
         this.inputManager.run,
         jumpPressed,
         this.inputManager.jetpack,
-        platforms
+        platforms,
+        this.inputManager.mouseWorldTarget,
+        this.inputManager.hasMouse
       );
 
       // 4. Update Level & Obstacles
@@ -144,7 +150,16 @@ class Game {
           width: o.collider.halfSize!.x * 2,
           height: o.collider.halfSize!.y * 2,
         }));
-      this.player.update(dt, 0, false, false, false, platforms); // Idle
+      this.player.update(
+        dt,
+        0,
+        false,
+        false,
+        false,
+        platforms,
+        this.inputManager.mouseWorldTarget,
+        this.inputManager.hasMouse
+      );
     }
 
     // 8. Update Camera & UI
@@ -157,13 +172,13 @@ class Game {
 
   private checkCollisions() {
     const pPos = this.player.position;
-    const pCenterY = pPos.y + 1.0; // Center of 2D character
+    const pCenterY = pPos.y + 1.0;
     const pRadius = 0.45;
 
     // A. Player vs Obstacles (Gears, Pistons, Tubes)
     for (const obs of this.obstacleManager.obstacles) {
       if (!obs.active) continue;
-      if (obs.type === ObstacleType.HAZARD_PLATFORM) continue; // Platforms are handled for landing
+      if (obs.type === ObstacleType.HAZARD_PLATFORM) continue;
 
       let hit = false;
       const obsPos = obs.group.position;
@@ -196,7 +211,7 @@ class Game {
       }
     }
 
-    // B. Lasers vs Destructible Obstacles (Plasma Tubes)
+    // B. Lasers in 360° vs Destructible Obstacles
     for (const laser of this.player.lasers) {
       if (!laser.active) continue;
 
@@ -244,7 +259,7 @@ class Game {
   }
 }
 
-// Robust app initialization (handles DOMContentLoaded already fired)
+// Robust app initialization
 function startApp() {
   new Game();
 }

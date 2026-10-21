@@ -1,6 +1,7 @@
+import * as THREE from 'three';
+
 /**
- * Enhanced Cross-platform Input Manager for 2D Platformer
- * Handles Walk, Run, Jump, Jetpack Flight, and Blaster.
+ * Cross-platform Input Manager with 360° Mouse Aiming & Reticle Support
  */
 export class InputManager {
   public moveX: number = 0; // -1 = Left, 0 = Neutral, +1 = Right
@@ -8,6 +9,13 @@ export class InputManager {
   public jumpJustPressed: boolean = false;
   public jetpack: boolean = false;
   public shootJustPressed: boolean = false;
+
+  // Mouse & 360° Aiming
+  public mouseScreenX: number = window.innerWidth / 2;
+  public mouseScreenY: number = window.innerHeight / 2;
+  public mouseWorldTarget: THREE.Vector3 = new THREE.Vector3(10, 0, 0);
+  public hasMouse: boolean = false;
+  private reticleEl: HTMLElement | null = null;
 
   private keys: Record<string, boolean> = {};
 
@@ -18,8 +26,10 @@ export class InputManager {
   private touchJetpack: boolean = false;
 
   constructor() {
+    this.reticleEl = document.getElementById('reticle');
     this.setupKeyboard();
     this.setupTouch();
+    this.setupMouse();
   }
 
   private setupKeyboard() {
@@ -41,21 +51,39 @@ export class InputManager {
 
       if ((e.code === 'KeyJ' || e.code === 'KeyZ' || e.code === 'Enter') && !wasPressed) {
         this.shootJustPressed = true;
+        this.triggerReticlePulse();
       }
     });
 
     window.addEventListener('keyup', (e) => {
       this.keys[e.code] = false;
     });
+  }
 
-    const canvas = document.getElementById('canvas3d');
-    if (canvas) {
-      canvas.addEventListener('mousedown', (e) => {
-        if (e.button === 0) {
-          this.shootJustPressed = true;
-        }
-      });
-    }
+  private setupMouse() {
+    window.addEventListener('mousemove', (e) => {
+      this.hasMouse = true;
+      this.mouseScreenX = e.clientX;
+      this.mouseScreenY = e.clientY;
+
+      if (this.reticleEl) {
+        this.reticleEl.style.transform = `translate3d(${e.clientX}px, ${e.clientY}px, 0)`;
+        this.reticleEl.classList.add('active');
+      }
+    });
+
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 0) {
+        this.shootJustPressed = true;
+        this.triggerReticlePulse();
+      }
+    });
+
+    window.addEventListener('mouseleave', () => {
+      if (this.reticleEl) {
+        this.reticleEl.classList.remove('active');
+      }
+    });
   }
 
   private setupTouch() {
@@ -84,10 +112,43 @@ export class InputManager {
 
     bindBtn('btn-left', () => { this.touchLeft = true; }, () => { this.touchLeft = false; });
     bindBtn('btn-right', () => { this.touchRight = true; }, () => { this.touchRight = false; });
-    bindBtn('btn-run', () => { this.touchRun = !this.touchRun; }, () => {}); // Toggle run on mobile
+    bindBtn('btn-run', () => { this.touchRun = !this.touchRun; }, () => {});
     bindBtn('btn-jump', () => { this.jumpJustPressed = true; }, () => {});
     bindBtn('btn-jetpack', () => { this.touchJetpack = true; }, () => { this.touchJetpack = false; });
-    bindBtn('btn-laser', () => { this.shootJustPressed = true; }, () => {});
+    bindBtn('btn-laser', () => {
+      this.shootJustPressed = true;
+      this.triggerReticlePulse();
+    }, () => {});
+  }
+
+  public triggerReticlePulse() {
+    if (this.reticleEl) {
+      this.reticleEl.classList.remove('reticle-shoot');
+      void this.reticleEl.offsetWidth; // Trigger reflow
+      this.reticleEl.classList.add('reticle-shoot');
+    }
+  }
+
+  /**
+   * Projects mouse screen coordinate onto game world plane (Z = 0)
+   */
+  public updateAimWorldTarget(camera: THREE.PerspectiveCamera) {
+    if (!this.hasMouse) return;
+
+    // Normalized Device Coordinates (-1 to +1)
+    const ndcX = (this.mouseScreenX / window.innerWidth) * 2 - 1;
+    const ndcY = -(this.mouseScreenY / window.innerHeight) * 2 + 1;
+
+    // Unproject to find world ray
+    const rayOrigin = new THREE.Vector3(ndcX, ndcY, -1).unproject(camera);
+    const rayTarget = new THREE.Vector3(ndcX, ndcY, 1).unproject(camera);
+    const rayDir = rayTarget.sub(rayOrigin).normalize();
+
+    // Intersect with plane Z = 0
+    if (Math.abs(rayDir.z) > 0.0001) {
+      const distance = -rayOrigin.z / rayDir.z;
+      this.mouseWorldTarget.copy(rayOrigin).addScaledVector(rayDir, distance);
+    }
   }
 
   public update() {
@@ -102,10 +163,15 @@ export class InputManager {
       if (pad) {
         if (pad.axes[0] < -0.3 || pad.buttons[14]?.pressed) mx = -1;
         if (pad.axes[0] > 0.3 || pad.buttons[15]?.pressed) mx = 1;
-        if (pad.buttons[0]?.pressed) this.jumpJustPressed = true; // A = jump
-        if (pad.buttons[7]?.pressed || pad.buttons[5]?.pressed) this.jetpack = true; // R2/RB = jetpack
-        if (pad.buttons[2]?.pressed) this.shootJustPressed = true; // X = shoot
-        if (pad.buttons[10]?.pressed || pad.buttons[4]?.pressed) this.run = true; // L3/LB = run
+        if (pad.buttons[0]?.pressed) this.jumpJustPressed = true;
+        if (pad.buttons[7]?.pressed || pad.buttons[5]?.pressed) this.jetpack = true;
+        if (pad.buttons[2]?.pressed) this.shootJustPressed = true;
+        if (pad.buttons[10]?.pressed || pad.buttons[4]?.pressed) this.run = true;
+
+        // Right stick aim if available
+        if (Math.abs(pad.axes[2]) > 0.3 || Math.abs(pad.axes[3]) > 0.3) {
+          this.hasMouse = true;
+        }
       }
     }
 
@@ -116,7 +182,6 @@ export class InputManager {
     this.run = kbRun || this.touchRun;
 
     // 3. Jetpack Thrust
-    // Holding Space, or holding Up/W, or holding the mobile Jetpack button
     const kbJetpack = !!(this.keys['Space'] || (this.keys['KeyW'] && !this.jumpJustPressed) || (this.keys['ArrowUp'] && !this.jumpJustPressed));
     this.jetpack = kbJetpack || this.touchJetpack;
   }
