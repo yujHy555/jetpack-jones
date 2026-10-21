@@ -1,13 +1,21 @@
 /**
- * Cross-platform Input Manager (Keyboard, Mouse, Touch, Gamepad)
+ * Enhanced Cross-platform Input Manager for 2D Platformer
+ * Handles Walk, Run, Jump, Jetpack Flight, and Blaster.
  */
 export class InputManager {
-  public thrust: boolean = false;
-  public dive: boolean = false;
-  public shoot: boolean = false;
+  public moveX: number = 0; // -1 = Left, 0 = Neutral, +1 = Right
+  public run: boolean = false;
+  public jumpJustPressed: boolean = false;
+  public jetpack: boolean = false;
   public shootJustPressed: boolean = false;
 
   private keys: Record<string, boolean> = {};
+
+  // Touch states
+  private touchLeft: boolean = false;
+  private touchRight: boolean = false;
+  private touchRun: boolean = false;
+  private touchJetpack: boolean = false;
 
   constructor() {
     this.setupKeyboard();
@@ -16,14 +24,22 @@ export class InputManager {
 
   private setupKeyboard() {
     window.addEventListener('keydown', (e) => {
-      // Prevent scrolling when using Space / Arrow keys in browser
-      if (['Space', 'ArrowUp', 'ArrowDown', 'KeyW', 'KeyS'].includes(e.code)) {
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS', 'KeyA', 'KeyD', 'ShiftLeft', 'ShiftRight'].includes(e.code)) {
         e.preventDefault();
       }
 
+      const wasPressed = !!this.keys[e.code];
       this.keys[e.code] = true;
 
-      if ((e.code === 'KeyJ' || e.code === 'KeyZ' || e.code === 'Enter') && !e.repeat) {
+      if ((e.code === 'KeyW' || e.code === 'ArrowUp') && !wasPressed) {
+        this.jumpJustPressed = true;
+      }
+
+      if ((e.code === 'Space') && !wasPressed) {
+        this.jumpJustPressed = true;
+      }
+
+      if ((e.code === 'KeyJ' || e.code === 'KeyZ' || e.code === 'Enter') && !wasPressed) {
         this.shootJustPressed = true;
       }
     });
@@ -32,12 +48,10 @@ export class InputManager {
       this.keys[e.code] = false;
     });
 
-    // Mouse click on canvas for shooting
     const canvas = document.getElementById('canvas3d');
     if (canvas) {
       canvas.addEventListener('mousedown', (e) => {
         if (e.button === 0) {
-          // Left click: if clicked on upper half or right half
           this.shootJustPressed = true;
         }
       });
@@ -45,84 +59,74 @@ export class InputManager {
   }
 
   private setupTouch() {
-    const btnThrust = document.getElementById('btn-thrust');
-    const btnLaser = document.getElementById('btn-laser');
+    const bindBtn = (id: string, onStart: () => void, onEnd: () => void) => {
+      const el = document.getElementById(id);
+      if (!el) return;
 
-    if (btnThrust) {
-      const startThrust = (e: Event) => {
+      const start = (e: Event) => {
         e.preventDefault();
-        this.thrust = true;
-        btnThrust.classList.add('active');
+        el.classList.add('active');
+        onStart();
       };
-      const stopThrust = (e: Event) => {
+      const end = (e: Event) => {
         e.preventDefault();
-        this.thrust = false;
-        btnThrust.classList.remove('active');
-      };
-
-      btnThrust.addEventListener('touchstart', startThrust, { passive: false });
-      btnThrust.addEventListener('touchend', stopThrust, { passive: false });
-      btnThrust.addEventListener('touchcancel', stopThrust, { passive: false });
-      btnThrust.addEventListener('mousedown', startThrust);
-      btnThrust.addEventListener('mouseup', stopThrust);
-      btnThrust.addEventListener('mouseleave', stopThrust);
-    }
-
-    if (btnLaser) {
-      const startLaser = (e: Event) => {
-        e.preventDefault();
-        this.shoot = true;
-        this.shootJustPressed = true;
-        btnLaser.classList.add('active');
-      };
-      const stopLaser = (e: Event) => {
-        e.preventDefault();
-        this.shoot = false;
-        btnLaser.classList.remove('active');
+        el.classList.remove('active');
+        onEnd();
       };
 
-      btnLaser.addEventListener('touchstart', startLaser, { passive: false });
-      btnLaser.addEventListener('touchend', stopLaser, { passive: false });
-      btnLaser.addEventListener('touchcancel', stopLaser, { passive: false });
-      btnLaser.addEventListener('mousedown', startLaser);
-      btnLaser.addEventListener('mouseup', stopLaser);
-      btnLaser.addEventListener('mouseleave', stopLaser);
-    }
+      el.addEventListener('touchstart', start, { passive: false });
+      el.addEventListener('touchend', end, { passive: false });
+      el.addEventListener('touchcancel', end, { passive: false });
+      el.addEventListener('mousedown', start);
+      el.addEventListener('mouseup', end);
+      el.addEventListener('mouseleave', end);
+    };
+
+    bindBtn('btn-left', () => { this.touchLeft = true; }, () => { this.touchLeft = false; });
+    bindBtn('btn-right', () => { this.touchRight = true; }, () => { this.touchRight = false; });
+    bindBtn('btn-run', () => { this.touchRun = !this.touchRun; }, () => {}); // Toggle run on mobile
+    bindBtn('btn-jump', () => { this.jumpJustPressed = true; }, () => {});
+    bindBtn('btn-jetpack', () => { this.touchJetpack = true; }, () => { this.touchJetpack = false; });
+    bindBtn('btn-laser', () => { this.shootJustPressed = true; }, () => {});
   }
 
   public update() {
-    // Check Keyboard states
-    const kbThrust = !!(this.keys['Space'] || this.keys['KeyW'] || this.keys['ArrowUp']);
-    const kbDive = !!(this.keys['KeyS'] || this.keys['ArrowDown']);
-    const kbShoot = !!(this.keys['KeyJ'] || this.keys['KeyZ'] || this.keys['Enter']);
+    // 1. Horizontal Move Input
+    let mx = 0;
+    if (this.keys['KeyA'] || this.keys['ArrowLeft'] || this.touchLeft) mx -= 1;
+    if (this.keys['KeyD'] || this.keys['ArrowRight'] || this.touchRight) mx += 1;
 
-    // Check Gamepad
-    let padThrust = false;
-    let padDive = false;
-    let padShoot = false;
-
+    // Gamepad axes
     const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const pad of gamepads) {
       if (pad) {
-        // Button A (0) or Trigger (7) for thrust
-        if (pad.buttons[0]?.pressed || pad.buttons[7]?.pressed) padThrust = true;
-        // Button X (2) or B (1) for laser
-        if (pad.buttons[2]?.pressed || pad.buttons[1]?.pressed) {
-          if (!this.shoot) this.shootJustPressed = true;
-          padShoot = true;
-        }
-        // Dpad down or Left stick down
-        if (pad.buttons[13]?.pressed || (pad.axes[1] && pad.axes[1] > 0.5)) padDive = true;
+        if (pad.axes[0] < -0.3 || pad.buttons[14]?.pressed) mx = -1;
+        if (pad.axes[0] > 0.3 || pad.buttons[15]?.pressed) mx = 1;
+        if (pad.buttons[0]?.pressed) this.jumpJustPressed = true; // A = jump
+        if (pad.buttons[7]?.pressed || pad.buttons[5]?.pressed) this.jetpack = true; // R2/RB = jetpack
+        if (pad.buttons[2]?.pressed) this.shootJustPressed = true; // X = shoot
+        if (pad.buttons[10]?.pressed || pad.buttons[4]?.pressed) this.run = true; // L3/LB = run
       }
     }
 
-    // Merge with touch button states
-    const btnThrustActive = document.getElementById('btn-thrust')?.classList.contains('active') ?? false;
-    const btnLaserActive = document.getElementById('btn-laser')?.classList.contains('active') ?? false;
+    this.moveX = mx;
 
-    this.thrust = kbThrust || padThrust || btnThrustActive;
-    this.dive = kbDive || padDive;
-    this.shoot = kbShoot || padShoot || btnLaserActive;
+    // 2. Sprint / Run
+    const kbRun = !!(this.keys['ShiftLeft'] || this.keys['ShiftRight']);
+    this.run = kbRun || this.touchRun;
+
+    // 3. Jetpack Thrust
+    // Holding Space, or holding Up/W, or holding the mobile Jetpack button
+    const kbJetpack = !!(this.keys['Space'] || (this.keys['KeyW'] && !this.jumpJustPressed) || (this.keys['ArrowUp'] && !this.jumpJustPressed));
+    this.jetpack = kbJetpack || this.touchJetpack;
+  }
+
+  public consumeJumpTrigger(): boolean {
+    if (this.jumpJustPressed) {
+      this.jumpJustPressed = false;
+      return true;
+    }
+    return false;
   }
 
   public consumeShootTrigger(): boolean {

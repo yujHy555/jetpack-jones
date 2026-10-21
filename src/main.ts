@@ -27,7 +27,6 @@ class Game {
   private state: GameState = GameState.START;
   private score: number = 0;
   private clock: THREE.Clock;
-  private lastTime: number = 0;
 
   constructor() {
     this.sceneManager = new SceneManager();
@@ -60,7 +59,7 @@ class Game {
   private startGame() {
     this.state = GameState.PLAYING;
     this.score = 0;
-    this.player.reset(0, 0.5);
+    this.player.reset(0, -3.8); // Start in idle on solid ground
     this.levelGenerator.reset(0);
   }
 
@@ -74,7 +73,7 @@ class Game {
   private loop(currentTime: number) {
     requestAnimationFrame((t) => this.loop(t));
 
-    const dt = Math.min(this.clock.getDelta(), 0.05); // Clamp dt to prevent tunneling
+    const dt = Math.min(this.clock.getDelta(), 0.05);
     const totalTime = this.clock.getElapsedTime();
 
     this.inputManager.update();
@@ -89,16 +88,25 @@ class Game {
       }
 
       // 2. Audio Jetpack Thruster Sound
-      const isThrusting = this.inputManager.thrust && this.player.fuel > 0;
-      this.audioManager.setJetpackThrust(isThrusting);
+      const isJetpacking = this.inputManager.jetpack && this.player.fuel > 0;
+      this.audioManager.setJetpackThrust(isJetpacking);
 
-      // Low fuel warning
       if (this.player.fuel < 18 && this.player.fuel > 0 && Math.sin(totalTime * 8) > 0.8) {
         this.audioManager.playWarning();
       }
 
-      // 3. Update Player Entity
-      this.player.update(dt, this.inputManager.thrust, this.inputManager.dive);
+      // 3. Update Player Entity (Walk, Run, Jump, Jetpack)
+      const jumpPressed = this.inputManager.consumeJumpTrigger();
+      const platforms = this.obstacleManager.getPlatforms();
+
+      this.player.update(
+        dt,
+        this.inputManager.moveX,
+        this.inputManager.run,
+        jumpPressed,
+        this.inputManager.jetpack,
+        platforms
+      );
 
       // 4. Update Level & Obstacles
       this.levelGenerator.update(this.player.position.x);
@@ -108,18 +116,21 @@ class Game {
       // 5. Collision Checks
       this.checkCollisions();
 
-      // 6. Score & Distance tracking
-      this.score += this.player.velocity.x * dt * 8.0;
+      // 6. Score tracking
+      if (this.player.position.x * 10 > this.score) {
+        this.score = Math.floor(this.player.position.x * 10);
+      }
 
       // 7. Check Game Over
       if (this.player.life <= 0) {
         this.onGameOver();
       }
     } else {
-      // Idle scene animation when paused/start screen
+      // Idle scene animation on start screen
       this.parallaxLayers.update(0, totalTime);
       this.obstacleManager.update(dt, totalTime, 0);
-      this.player.update(dt, false, false);
+      const platforms = this.obstacleManager.getPlatforms();
+      this.player.update(dt, 0, false, false, false, platforms); // Idle
     }
 
     // 8. Update Camera & UI
@@ -132,17 +143,19 @@ class Game {
 
   private checkCollisions() {
     const pPos = this.player.position;
-    const pRadius = 0.52;
+    const pCenterY = pPos.y + 1.0; // Center of 2D character
+    const pRadius = 0.45;
 
-    // A. Player vs Obstacles
+    // A. Player vs Obstacles (Gears, Pistons, Tubes)
     for (const obs of this.obstacleManager.obstacles) {
       if (!obs.active) continue;
+      if (obs.type === ObstacleType.HAZARD_PLATFORM) continue; // Platforms are handled for landing
 
       let hit = false;
       const obsPos = obs.group.position;
 
       if (obs.collider.type === 'circle') {
-        const distSq = (pPos.x - obsPos.x) ** 2 + (pPos.y - obsPos.y) ** 2;
+        const distSq = (pPos.x - obsPos.x) ** 2 + (pCenterY - obsPos.y) ** 2;
         const totalRadius = pRadius + (obs.collider.radius || 1.0);
         if (distSq < totalRadius * totalRadius) {
           hit = true;
@@ -154,10 +167,9 @@ class Game {
         const minY = obsPos.y - half.y;
         const maxY = obsPos.y + half.y;
 
-        // Closest point on AABB box
         const closestX = Math.max(minX, Math.min(pPos.x, maxX));
-        const closestY = Math.max(minY, Math.min(pPos.y, maxY));
-        const distSq = (pPos.x - closestX) ** 2 + (pPos.y - closestY) ** 2;
+        const closestY = Math.max(minY, Math.min(pCenterY, maxY));
+        const distSq = (pPos.x - closestX) ** 2 + (pCenterY - closestY) ** 2;
 
         if (distSq < pRadius * pRadius) {
           hit = true;
@@ -180,8 +192,8 @@ class Game {
         const obsPos = obs.group.position;
         const half = obs.collider.halfSize || new THREE.Vector2(0.65, 1.7);
         if (
-          Math.abs(laser.position.x - obsPos.x) < half.x + 0.3 &&
-          Math.abs(laser.position.y - obsPos.y) < half.y + 0.3
+          Math.abs(laser.position.x - obsPos.x) < half.x + 0.35 &&
+          Math.abs(laser.position.y - obsPos.y) < half.y + 0.35
         ) {
           laser.active = false;
           laser.mesh.visible = false;
@@ -200,7 +212,7 @@ class Game {
     for (const p of this.obstacleManager.pickups) {
       if (!p.active) continue;
 
-      const distSq = (pPos.x - p.position.x) ** 2 + (pPos.y - p.position.y) ** 2;
+      const distSq = (pPos.x - p.position.x) ** 2 + (pCenterY - p.position.y) ** 2;
       const combinedRadius = pRadius + p.radius;
 
       if (distSq < combinedRadius * combinedRadius) {

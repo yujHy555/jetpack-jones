@@ -425,6 +425,21 @@ export class ObstacleManager {
     this.scene.remove(p.mesh);
   }
 
+  public getPlatforms(): { x: number; y: number; width: number; height: number }[] {
+    const list: { x: number; y: number; width: number; height: number }[] = [];
+    for (const obs of this.obstacles) {
+      if (obs.active && obs.type === ObstacleType.HAZARD_PLATFORM && obs.collider.halfSize) {
+        list.push({
+          x: obs.group.position.x,
+          y: obs.group.position.y,
+          width: obs.collider.halfSize.x * 2,
+          height: obs.collider.halfSize.y * 2,
+        });
+      }
+    }
+    return list;
+  }
+
   public update(dt: number, time: number, playerX: number) {
     // Update and recycle obstacles
     for (let i = this.obstacles.length - 1; i >= 0; i--) {

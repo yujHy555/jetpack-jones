@@ -61,15 +61,15 @@ export class SceneManager {
   }
 
   /**
-   * Smooth 2.5D camera tracking with lead distance
+   * Smooth 2.5D camera tracking with dynamic deadzone
    */
   public updateCamera(targetX: number, targetY: number, dt: number) {
-    // Camera leads slightly ahead of Jones (+3 units) to see coming obstacles
-    const targetCamX = targetX + 3.2;
-    const targetCamY = targetY * 0.45; // Gentle vertical tracking
+    // Camera leads slightly ahead and frames the platformer view
+    const targetCamX = targetX + 1.8;
+    const targetCamY = targetY + 1.2;
 
-    this.camera.position.x = THREE.MathUtils.lerp(this.camera.position.x, targetCamX, dt * 8);
-    this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, targetCamY, dt * 5);
+    this.camera.position.x = THREE.MathUtils.lerp(this.camera.position.x, targetCamX, dt * 6.5);
+    this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, THREE.MathUtils.clamp(targetCamY, -1.2, 5.0), dt * 5.5);
 
     // Keep key light following the action
     this.keyLight.position.x = this.camera.position.x + 5;
