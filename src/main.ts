@@ -54,11 +54,21 @@ class Game {
   }
 
   private setupUIEvents() {
+    const camSlider = document.getElementById('slider-handheld') as HTMLInputElement;
+    const camLabel = document.getElementById('label-handheld');
+    if (camSlider && camLabel) {
+      camSlider.addEventListener('input', () => {
+        const val = parseInt(camSlider.value, 10);
+        this.sceneManager.handheldIntensity = val / 100;
+        camLabel.textContent = `${val}%`;
+      });
+    }
+
     const camBtn = document.getElementById('btn-handheld');
     if (camBtn) {
       camBtn.addEventListener('click', () => {
         const enabled = this.sceneManager.toggleHandheld();
-        camBtn.textContent = enabled ? '🎥 CAM: ON [H]' : '🎥 CAM: OFF [H]';
+        camBtn.textContent = enabled ? '🎥 ON [H]' : '🎥 OFF [H]';
       });
     }
 
@@ -286,7 +296,7 @@ class Game {
       }
     }
 
-    // B. Player vs Alien Blob Enemies
+    // B. Player vs Alien Blob Enemies & Flying Drones
     for (const enemy of this.obstacleManager.enemies) {
       if (!enemy.active) continue;
 
@@ -304,7 +314,41 @@ class Game {
       }
     }
 
-    // C. Lasers in 360° vs Destructible Obstacles & Alien Blobs
+    // Drone Bots vs Player (Body collision & Red Laser Bolts)
+    for (const drone of this.obstacleManager.drones) {
+      if (!drone.active) continue;
+
+      // Drone Body vs Player
+      const distSq = (pPos.x - drone.position.x) ** 2 + (pCenterY - drone.position.y) ** 2;
+      if (distSq < (pRadius + drone.radius) ** 2) {
+        if (this.player.invulnerableTime <= 0) {
+          const knockX = drone.position.x > pPos.x ? -1 : 1;
+          this.player.takeDamage(15, knockX);
+          this.audioManager.playHitImpact();
+          this.sceneManager.triggerShake(0.30, 0.20);
+        }
+      }
+
+      // Drone Red Lasers vs Player
+      for (const rLaser of drone.lasers) {
+        if (!rLaser.active) continue;
+        const lDistSq = (pPos.x - rLaser.position.x) ** 2 + (pCenterY - rLaser.position.y) ** 2;
+        if (lDistSq < (pRadius + 0.25) ** 2) {
+          rLaser.active = false;
+          rLaser.mesh.visible = false;
+          rLaser.light.visible = false;
+
+          if (this.player.invulnerableTime <= 0) {
+            const knockX = rLaser.velocity.x > 0 ? 1 : -1;
+            this.player.takeDamage(20, knockX);
+            this.audioManager.playHitImpact();
+            this.sceneManager.triggerShake(0.35, 0.24);
+          }
+        }
+      }
+    }
+
+    // C. Lasers in 360° vs Destructible Obstacles, Alien Blobs & Flying Drones
     for (const laser of this.player.lasers) {
       if (!laser.active) continue;
 
@@ -324,6 +368,34 @@ class Game {
             this.audioManager.playAlienSquish();
             this.sceneManager.triggerShake(0.35, 0.22);
             this.score += 300;
+          }
+          break;
+        }
+      }
+
+      if (!laser.active) continue;
+
+      // 2. Check against Flying Attack Drone Bots
+      for (const drone of this.obstacleManager.drones) {
+        if (!drone.active) continue;
+
+        const distSq = (laser.position.x - drone.position.x) ** 2 + (laser.position.y - drone.position.y) ** 2;
+        if (distSq < (drone.radius + 0.28) ** 2) {
+          laser.active = false;
+          laser.mesh.visible = false;
+          this.audioManager.playEnemyImpact();
+          const died = drone.takeDamage(1);
+          this.sceneManager.triggerShake(0.22, 0.16);
+
+          if (died) {
+            this.audioManager.playExplosion();
+            this.sceneManager.triggerShake(0.38, 0.26);
+            this.score += 350;
+            if (this.lockedEnemy === drone) {
+              this.lockedEnemy = null;
+              if (this.lockOnMesh) this.lockOnMesh.visible = false;
+              document.getElementById('reticle')?.classList.remove('locked');
+            }
           }
           break;
         }
@@ -460,9 +532,24 @@ class Game {
       }
     }
 
+    for (const drone of this.obstacleManager.drones) {
+      if (!drone.active) continue;
+      const targetPos = new THREE.Vector3(drone.position.x, drone.position.y, 0);
+      const d = mousePos.distanceTo(targetPos);
+      if (d < closestDist) {
+        closestDist = d;
+        closestEnemy = drone;
+      }
+    }
+
     if (closestEnemy) {
       this.lockedEnemy = closestEnemy;
-      const enemyCenter = new THREE.Vector3(closestEnemy.position.x, closestEnemy.position.y + 0.45, 0);
+      const isDrone = !!closestEnemy.lasers;
+      const enemyCenter = new THREE.Vector3(
+        closestEnemy.position.x,
+        closestEnemy.position.y + (isDrone ? 0 : 0.45),
+        0
+      );
 
       // Snap mouse aiming target directly to locked enemy center!
       this.inputManager.mouseWorldTarget.copy(enemyCenter);

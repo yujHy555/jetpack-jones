@@ -20,6 +20,9 @@ export class LevelGenerator {
 
     // First Alien Blob enemy encounter on ground!
     this.obstacleManager.spawnBlob(14, -3.70, 3.5);
+
+    // First Flying Attack Drone bot in air!
+    this.obstacleManager.spawnDrone(22, 1.2, 5.0);
   }
 
   public update(playerX: number) {
@@ -43,11 +46,12 @@ export class LevelGenerator {
         break;
 
       case 1:
-        // Ground Hazard Gear with Overhead Catwalk Bridge + Alien Blob on ground
+        // Ground Hazard Gear with Overhead Catwalk Bridge + Alien Blob on ground + Flying Drone
         this.obstacleManager.spawnGear(x + 2, -2.3, 2.0, 1.2);
         this.obstacleManager.spawnPlatform(x + 2, 1.0, 6.5, 0.5);
         this.spawnCoinLine(x, 2.0, 3);
         this.obstacleManager.spawnBlob(x + 6, -3.70, 2.5);
+        this.obstacleManager.spawnDrone(x + 3, 2.5, 4.0);
         break;
 
       case 2:
@@ -59,10 +63,11 @@ export class LevelGenerator {
         break;
 
       case 3:
-        // Destructible Plasma Containment Tube + Alien Blob on Catwalk
+        // Destructible Plasma Containment Tube + Alien Blob on Catwalk + Aerial Drone
         this.obstacleManager.spawnPlatform(x, -0.8, 6.0, 0.5);
         this.obstacleManager.spawnPlasmaTube(x, 1.0);
         this.obstacleManager.spawnBlob(x + 2.0, -0.55, 2.0);
+        this.obstacleManager.spawnDrone(x - 2.0, 2.8, 5.0);
         this.spawnCoinLine(x - 3, 0.2, 3);
         this.obstacleManager.spawnFuelPickup(x + 3.5, -3.0);
         break;

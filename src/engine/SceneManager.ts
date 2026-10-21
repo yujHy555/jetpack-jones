@@ -17,6 +17,7 @@ export class SceneManager {
 
   // Handheld Camera Mode
   public handheldEnabled: boolean = true;
+  public handheldIntensity: number = 0.7; // 0.0 (static) to 1.0 (full organic handheld sway)
   private handheldTime: number = 0;
 
   constructor() {
@@ -44,13 +45,27 @@ export class SceneManager {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.35;
 
+    // Lightweight soft shadows
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
     // Environment Lighting
     this.ambientLight = new THREE.AmbientLight(0x282630, 2.2);
     this.scene.add(this.ambientLight);
 
-    // Warm key directional light (industrial factory lighting)
+    // Warm key directional light (casting soft real-time shadows)
     this.keyLight = new THREE.DirectionalLight(0xffeedd, 3.4);
     this.keyLight.position.set(6, 12, 9);
+    this.keyLight.castShadow = true;
+    this.keyLight.shadow.mapSize.width = 1024;
+    this.keyLight.shadow.mapSize.height = 1024;
+    this.keyLight.shadow.camera.near = 0.5;
+    this.keyLight.shadow.camera.far = 40;
+    this.keyLight.shadow.camera.left = -16;
+    this.keyLight.shadow.camera.right = 16;
+    this.keyLight.shadow.camera.top = 16;
+    this.keyLight.shadow.camera.bottom = -10;
+    this.keyLight.shadow.bias = -0.001;
     this.scene.add(this.keyLight);
 
     // Cyan-blue fill rim light
@@ -92,13 +107,14 @@ export class SceneManager {
     this.camera.position.x = THREE.MathUtils.lerp(this.camera.position.x, targetCamX, dt * 6.5);
     this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, targetCamY, dt * 6.5);
 
-    // Subtle Organic Handheld Camera Breathing & Sway
-    if (this.handheldEnabled) {
+    // Subtle Organic Handheld Camera Breathing & Sway (scaled by user slider)
+    if (this.handheldEnabled && this.handheldIntensity > 0) {
       this.handheldTime += dt;
-      const hx = Math.sin(this.handheldTime * 1.1) * 0.045 + Math.sin(this.handheldTime * 2.3 + 1.2) * 0.022;
-      const hy = Math.cos(this.handheldTime * 0.9) * 0.055 + Math.sin(this.handheldTime * 1.7 + 0.8) * 0.022;
-      const rotZ = Math.sin(this.handheldTime * 0.75) * 0.005; // ~0.28 deg
-      const rotX = Math.cos(this.handheldTime * 0.85) * 0.004;
+      const mult = this.handheldIntensity;
+      const hx = (Math.sin(this.handheldTime * 1.1) * 0.05 + Math.sin(this.handheldTime * 2.3 + 1.2) * 0.025) * mult;
+      const hy = (Math.cos(this.handheldTime * 0.9) * 0.06 + Math.sin(this.handheldTime * 1.7 + 0.8) * 0.025) * mult;
+      const rotZ = Math.sin(this.handheldTime * 0.75) * 0.0055 * mult;
+      const rotX = Math.cos(this.handheldTime * 0.85) * 0.0045 * mult;
 
       this.camera.position.x += hx;
       this.camera.position.y += hy;

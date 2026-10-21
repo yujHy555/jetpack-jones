@@ -88,6 +88,8 @@ export class EnemyBlob {
   // Epic Death Sequence State
   private isDying: boolean = false;
   private deathFreezeTimer: number = 0;
+  private jiggleTimer: number = 0;
+  private shadowMesh: THREE.Mesh;
 
   // Epic Stylized Comic Death FX Pools (ZERO remains left behind!)
   private dropletPool: SlimeParticle[] = [];
@@ -121,7 +123,20 @@ export class EnemyBlob {
       opacity: 0.90,
     });
     this.bodyMesh = new THREE.Mesh(bodyGeo, slimeMat);
+    this.bodyMesh.castShadow = true;
     this.group.add(this.bodyMesh);
+
+    // Dynamic Contact Shadow Decal
+    const shadowGeo = new THREE.CircleGeometry(0.55, 16);
+    shadowGeo.rotateX(-Math.PI / 2);
+    const shadowMat = new THREE.MeshBasicMaterial({
+      color: 0x0a0d14,
+      transparent: true,
+      opacity: 0.45,
+      depthWrite: false,
+    });
+    this.shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
+    scene.add(this.shadowMesh);
 
     // Decorative cellular spots on the membrane
     const spotGeo = new THREE.SphereGeometry(0.06, 6, 6);
@@ -391,7 +406,8 @@ export class EnemyBlob {
 
     this.health -= amount;
 
-    // Googly eyes spin violently on hit!
+    // Bullet hit jiggle reaction & eye spin
+    this.jiggleTimer = 0.38;
     this.eyeDizzySpin += 6.0;
     this.centerPupilVel.x += (Math.random() - 0.5) * 4.0;
     this.centerPupilVel.y += (Math.random() - 0.5) * 4.0;
@@ -627,11 +643,26 @@ export class EnemyBlob {
     let currentGroundY = this.baseY;
     for (const plat of platforms) {
       const pTop = plat.y + plat.height / 2;
+      const pBottom = plat.y - plat.height / 2;
       const pLeft = plat.x - plat.width / 2;
       const pRight = plat.x + plat.width / 2;
 
-      if (this.position.x >= pLeft && this.position.x <= pRight) {
-        if (this.position.y >= pTop - 0.35 && pTop > currentGroundY) {
+      // 1. Horizontal wall collision: reverse patrol and stay outside if bumping into side of platform
+      if (this.position.y < pTop - 0.15 && this.position.y + 0.8 > pBottom) {
+        if (this.position.x + this.radius >= pLeft && this.position.x < plat.x && this.patrolDir > 0) {
+          this.position.x = pLeft - this.radius;
+          this.patrolDir = -1;
+          this.velocity.x = -Math.abs(this.velocity.x);
+        } else if (this.position.x - this.radius <= pRight && this.position.x > plat.x && this.patrolDir < 0) {
+          this.position.x = pRight + this.radius;
+          this.patrolDir = 1;
+          this.velocity.x = Math.abs(this.velocity.x);
+        }
+      }
+
+      // 2. Standing or landing on top of platform
+      if (this.position.x >= pLeft - 0.15 && this.position.x <= pRight + 0.15) {
+        if (this.position.y >= pTop - 0.45 && pTop > currentGroundY) {
           currentGroundY = pTop;
         }
       }
@@ -642,9 +673,17 @@ export class EnemyBlob {
     if (this.position.x <= this.minX) this.patrolDir = 1;
     if (this.position.x >= this.maxX) this.patrolDir = -1;
 
-    // A. Anticipation Squash
     const timeUntilHop = this.hopCooldown - this.hopTimer;
-    if (this.isGrounded && timeUntilHop < 0.28 && timeUntilHop > 0) {
+
+    // Bullet Hit Jiggle Reaction
+    if (this.jiggleTimer > 0) {
+      this.jiggleTimer -= dt;
+      const jiggleFreq = 34.0;
+      const jiggleAmp = (this.jiggleTimer / 0.38) * 0.45;
+      const jiggleY = 1.0 + Math.sin(time * jiggleFreq) * jiggleAmp;
+      const jiggleXZ = 1.0 - Math.sin(time * jiggleFreq) * jiggleAmp * 0.55;
+      this.bodyMesh.scale.set(jiggleXZ, jiggleY, jiggleXZ);
+    } else if (this.isGrounded && timeUntilHop < 0.28 && timeUntilHop > 0) {
       const squashProg = 1.0 - timeUntilHop / 0.28;
       const sy = 1.0 - squashProg * 0.55;
       const sx = 1.0 + squashProg * 0.45;
@@ -656,6 +695,16 @@ export class EnemyBlob {
         idleBreathing,
         1.0 / Math.sqrt(idleBreathing)
       );
+    }
+
+    // Update dynamic ground shadow decal
+    if (this.shadowMesh) {
+      this.shadowMesh.position.set(this.position.x, surfaceY + 0.015, 0);
+      const heightAbove = Math.max(0, this.position.y - surfaceY);
+      const shadowScale = Math.max(0.3, 1.0 - heightAbove * 0.15);
+      this.shadowMesh.scale.set(shadowScale, shadowScale, shadowScale);
+      (this.shadowMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0.08, 0.45 - heightAbove * 0.08);
+      this.shadowMesh.visible = this.active && !this.isDying;
     }
 
     // B. Hop Launch
@@ -829,6 +878,7 @@ export class EnemyBlob {
     scene.remove(this.comicStarburstMesh);
     scene.remove(this.comicShockRing1);
     scene.remove(this.comicShockRing2);
+    if (this.shadowMesh) scene.remove(this.shadowMesh);
     for (const d of this.dropletPool) scene.remove(d.mesh);
     for (const p of this.puffPool) scene.remove(p.mesh);
     for (const s of this.sparklePool) scene.remove(s.mesh);

@@ -158,6 +158,9 @@ export class Player {
   private idleTimer: number = 0;
   private prevTapPhase: number = 0;
 
+  // Dynamic Contact Shadow
+  private shadowMesh!: THREE.Mesh;
+
   // Enhanced Procedural Landing Suspension & Knee Flexion Physics
   private landingSuspension: number = 0;
   private prevVelocityY: number = 0;
@@ -981,6 +984,25 @@ export class Player {
       });
     }
 
+    // Dynamic Contact Shadow Decal
+    const shadowGeo = new THREE.CircleGeometry(0.48, 16);
+    shadowGeo.rotateX(-Math.PI / 2);
+    const shadowMat = new THREE.MeshBasicMaterial({
+      color: 0x0a0d14,
+      transparent: true,
+      opacity: 0.45,
+      depthWrite: false,
+    });
+    this.shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
+    scene.add(this.shadowMesh);
+
+    // Cast shadows on player meshes
+    this.mesh.traverse(obj => {
+      if ((obj as THREE.Mesh).isMesh) {
+        obj.castShadow = true;
+      }
+    });
+
     this.reset();
   }
 
@@ -1379,6 +1401,26 @@ export class Player {
 
     // 7. Update Transforms & Animations
     this.mesh.position.copy(this.position);
+
+    // Update Dynamic Contact Shadow Decal
+    if (this.shadowMesh) {
+      let surfaceY = GROUND_Y;
+      for (const plat of platforms) {
+        const platTop = plat.y + plat.height / 2;
+        const platLeft = plat.x - plat.width / 2;
+        const platRight = plat.x + plat.width / 2;
+        if (this.position.x >= platLeft && this.position.x <= platRight) {
+          if (platTop <= this.position.y + 0.25 && platTop > surfaceY) {
+            surfaceY = platTop;
+          }
+        }
+      }
+      this.shadowMesh.position.set(this.position.x, surfaceY + 0.015, 0);
+      const heightAbove = Math.max(0, this.position.y - surfaceY);
+      const sScale = Math.max(0.25, 1.0 - heightAbove * 0.14);
+      this.shadowMesh.scale.set(sScale, sScale, sScale);
+      (this.shadowMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0.08, 0.45 - heightAbove * 0.07);
+    }
     this.animateSkeletalRig(dt, hasMouseTarget);
     this.updateJetpackVFX(dt, isActuallyJetpacking);
     this.updateHelmetLEDs(dt);

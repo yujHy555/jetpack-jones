@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { EnemyBlob } from '../entities/EnemyBlob';
+import { DroneEnemy } from '../entities/DroneEnemy';
 
 export enum ObstacleType {
   GEAR = 'gear',
@@ -46,6 +47,7 @@ export class ObstacleManager {
   public obstacles: ActiveObstacle[] = [];
   public pickups: ActivePickup[] = [];
   public enemies: EnemyBlob[] = [];
+  public drones: DroneEnemy[] = [];
   private nextId = 1;
 
   // Cached Materials
@@ -163,15 +165,25 @@ export class ObstacleManager {
     for (const e of this.enemies) {
       e.destroy(this.scene);
     }
+    for (const d of this.drones) {
+      d.destroy(this.scene);
+    }
     this.obstacles = [];
     this.pickups = [];
     this.enemies = [];
+    this.drones = [];
   }
 
   public spawnBlob(x: number, y: number, patrolRange: number = 3.5): EnemyBlob {
     const blob = new EnemyBlob(this.scene, x, y, patrolRange);
     this.enemies.push(blob);
     return blob;
+  }
+
+  public spawnDrone(x: number, y: number = 1.2, patrolRange: number = 6.0): DroneEnemy {
+    const drone = new DroneEnemy(this.scene, x, y, patrolRange);
+    this.drones.push(drone);
+    return drone;
   }
 
   /**
@@ -390,11 +402,15 @@ export class ObstacleManager {
     const mesh = new THREE.Mesh(geo, this.outpostPlatformMat);
     group.add(mesh);
 
-    // Dark steel bumper rim along the front and rear edge
-    const rimGeo = new THREE.BoxGeometry(width + 0.05, 0.08, 1.36);
-    const rim = new THREE.Mesh(rimGeo, this.darkIronMat);
-    rim.position.y = height / 2 - 0.04;
-    group.add(rim);
+    // Dark steel bumper trims on front and back faces (cleanly separated, zero Z-fighting on top surface!)
+    const bumperGeo = new THREE.BoxGeometry(width, height * 0.7, 0.08);
+    const bumperFront = new THREE.Mesh(bumperGeo, this.darkIronMat);
+    bumperFront.position.set(0, -0.05, 0.65);
+    group.add(bumperFront);
+
+    const bumperBack = new THREE.Mesh(bumperGeo, this.darkIronMat);
+    bumperBack.position.set(0, -0.05, -0.65);
+    group.add(bumperBack);
 
     // Support strut beams underneath
     const strutGeo = new THREE.BoxGeometry(0.22, 1.2, 0.9);
@@ -579,6 +595,19 @@ export class ObstacleManager {
           e.destroy(this.scene);
         }
         this.enemies.splice(i, 1);
+      }
+    }
+
+    // Update and recycle attack drones
+    for (let i = this.drones.length - 1; i >= 0; i--) {
+      const d = this.drones[i];
+      d.update(dt, time, playerX, playerY);
+
+      if (!d.active || d.position.x < playerX - 35) {
+        if (d.position.x < playerX - 35) {
+          d.destroy(this.scene);
+        }
+        this.drones.splice(i, 1);
       }
     }
   }
