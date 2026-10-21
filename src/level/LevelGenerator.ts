@@ -36,7 +36,7 @@ export class LevelGenerator {
         this.obstacleManager.spawnPlatform(x, -2.0, 4.5, 0.5);
         this.obstacleManager.spawnPlatform(x + 5.5, 0.0, 4.5, 0.5);
         this.obstacleManager.spawnFuelPickup(x + 5.5, 1.2);
-        this.spawnCoinArc(x, -1.0, 3);
+        this.spawnCoinLine(x, -1.2, 3);
         break;
 
       case 1:
@@ -58,7 +58,7 @@ export class LevelGenerator {
         // Destructible Plasma Containment Tube on Platform
         this.obstacleManager.spawnPlatform(x, -1.0, 5.5, 0.5);
         this.obstacleManager.spawnPlasmaTube(x, 0.8);
-        this.spawnCoinArc(x - 3, 0.2, 3);
+        this.spawnCoinLine(x - 3, 0.0, 3);
         this.obstacleManager.spawnFuelPickup(x + 3, 0.2);
         break;
 
@@ -68,7 +68,7 @@ export class LevelGenerator {
         this.obstacleManager.spawnGear(x + 4, -2.8, 1.8, 1.2);
         this.obstacleManager.spawnPlatform(x + 1, 1.8, 4.0, 0.5);
         this.obstacleManager.spawnFuelPickup(x + 1, 3.2);
-        this.spawnCoinArc(x - 2, -0.5, 4);
+        this.spawnCoinLine(x - 2, -0.8, 4);
         break;
 
       case 5:
@@ -78,16 +78,14 @@ export class LevelGenerator {
         this.obstacleManager.spawnPiston(x + 1.5, 4.8, 3.5);
         this.obstacleManager.spawnPlasmaTube(x - 2.5, 1.2);
         this.obstacleManager.spawnFuelPickup(x + 4, 1.0);
-        this.spawnCoinArc(x, -2.6, 3);
+        this.spawnCoinLine(x, -2.6, 3);
         break;
     }
   }
 
-  private spawnCoinArc(startX: number, baseY: number, count: number) {
+  private spawnCoinLine(startX: number, y: number, count: number) {
     for (let i = 0; i < count; i++) {
-      const cx = startX + i * 1.4;
-      const cy = baseY + Math.sin((i / (count - 1)) * Math.PI) * 1.1;
-      this.obstacleManager.spawnCoinPickup(cx, cy);
+      this.obstacleManager.spawnCoinPickup(startX + i * 1.2, y);
     }
   }
 }

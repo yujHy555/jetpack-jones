@@ -7,8 +7,6 @@ import * as THREE from 'three';
 export class ParallaxLayers {
   public group: THREE.Group;
   private bgElements: THREE.Group[] = [];
-  private moltenPipeMesh!: THREE.Mesh;
-  private moltenMaterial!: THREE.MeshBasicMaterial;
 
   constructor(scene: THREE.Scene) {
     this.group = new THREE.Group();
@@ -29,11 +27,6 @@ export class ParallaxLayers {
       color: 0x3e4249,
       roughness: 0.35,
       metalness: 0.8,
-    });
-
-    // Molten orange energy conduit material (from Image 2)
-    this.moltenMaterial = new THREE.MeshBasicMaterial({
-      color: 0xff6600,
     });
 
     // Construct repeating background factory modules
@@ -76,16 +69,6 @@ export class ParallaxLayers {
       this.group.add(module);
       this.bgElements.push(module);
     }
-
-    // Curved Molten Pipe with fiery inner glow (Image 2 signature element)
-    const curve = new THREE.QuadraticBezierCurve3(
-      new THREE.Vector3(0, -5, -2),
-      new THREE.Vector3(0, 0, -2),
-      new THREE.Vector3(3, 0, -2)
-    );
-    const tubeGeo = new THREE.TubeGeometry(curve, 20, 0.45, 12, false);
-    this.moltenPipeMesh = new THREE.Mesh(tubeGeo, this.moltenMaterial);
-    this.group.add(this.moltenPipeMesh);
   }
 
   private createFloorAndCeiling() {
@@ -115,12 +98,5 @@ export class ParallaxLayers {
         mod.position.x += 5 * 24;
       }
     }
-
-    // Subtle molten conduit pulse
-    const glow = 0.85 + Math.sin(time * 6) * 0.15;
-    this.moltenMaterial.color.setRGB(1.0 * glow, 0.42 * glow, 0.05 * glow);
-
-    // Follow player loosely along X
-    this.moltenPipeMesh.position.x = THREE.MathUtils.floorPowerOfTwo(Math.floor(playerX / 20)) * 20;
   }
 }
