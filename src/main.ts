@@ -60,7 +60,7 @@ class Game {
   private startGame() {
     this.state = GameState.PLAYING;
     this.score = 0;
-    this.player.reset(0, 0);
+    this.player.reset(0, 0.5);
     this.levelGenerator.reset(0);
   }
 
@@ -119,7 +119,7 @@ class Game {
       // Idle scene animation when paused/start screen
       this.parallaxLayers.update(0, totalTime);
       this.obstacleManager.update(dt, totalTime, 0);
-      this.player.smoke.update(dt);
+      this.player.update(dt, false, false);
     }
 
     // 8. Update Camera & UI

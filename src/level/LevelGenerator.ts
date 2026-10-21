@@ -2,8 +2,8 @@ import { ObstacleManager } from './Obstacles';
 
 export class LevelGenerator {
   private obstacleManager: ObstacleManager;
-  private nextSpawnX: number = 16;
-  private spawnInterval: number = 14;
+  private nextSpawnX: number = 28;
+  private spawnInterval: number = 15;
 
   constructor(obstacleManager: ObstacleManager) {
     this.obstacleManager = obstacleManager;
@@ -11,7 +11,7 @@ export class LevelGenerator {
 
   public reset(startX: number = 0) {
     this.obstacleManager.clear();
-    this.nextSpawnX = startX + 16;
+    this.nextSpawnX = startX + 28;
   }
 
   public update(playerX: number) {
