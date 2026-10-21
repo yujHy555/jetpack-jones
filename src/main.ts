@@ -97,7 +97,14 @@ class Game {
 
       // 3. Update Player Entity (Walk, Run, Jump, Jetpack)
       const jumpPressed = this.inputManager.consumeJumpTrigger();
-      const platforms = this.obstacleManager.getPlatforms();
+      const platforms = this.obstacleManager.obstacles
+        .filter(o => o.active && o.type === ObstacleType.HAZARD_PLATFORM && o.collider && o.collider.halfSize)
+        .map(o => ({
+          x: o.group.position.x,
+          y: o.group.position.y,
+          width: o.collider.halfSize!.x * 2,
+          height: o.collider.halfSize!.y * 2,
+        }));
 
       this.player.update(
         dt,
@@ -129,7 +136,14 @@ class Game {
       // Idle scene animation on start screen
       this.parallaxLayers.update(0, totalTime);
       this.obstacleManager.update(dt, totalTime, 0);
-      const platforms = this.obstacleManager.getPlatforms();
+      const platforms = this.obstacleManager.obstacles
+        .filter(o => o.active && o.type === ObstacleType.HAZARD_PLATFORM && o.collider && o.collider.halfSize)
+        .map(o => ({
+          x: o.group.position.x,
+          y: o.group.position.y,
+          width: o.collider.halfSize!.x * 2,
+          height: o.collider.halfSize!.y * 2,
+        }));
       this.player.update(dt, 0, false, false, false, platforms); // Idle
     }
 
