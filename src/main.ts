@@ -230,7 +230,13 @@ class Game {
   }
 }
 
-// Initialize on page load
-window.addEventListener('DOMContentLoaded', () => {
+// Robust app initialization (handles DOMContentLoaded already fired)
+function startApp() {
   new Game();
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', startApp);
+} else {
+  startApp();
+}

@@ -15,8 +15,9 @@ export class SceneManager {
     this.canvas = document.getElementById('canvas3d') as HTMLCanvasElement;
     this.scene = new THREE.Scene();
 
-    // Subtle atmospheric haze
-    this.scene.fog = new THREE.FogExp2(0x121010, 0.032);
+    // Scene background and atmospheric haze
+    this.scene.background = new THREE.Color(0x141216);
+    this.scene.fog = new THREE.FogExp2(0x141216, 0.028);
 
     // Camera setup - locked horizontal perspective for 2.5D platformer
     const aspect = window.innerWidth / window.innerHeight;

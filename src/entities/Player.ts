@@ -168,76 +168,95 @@ export class Player {
   }
 
   /**
-   * Loads reference character PNG and removes the background color in browser canvas
+   * Loads reference character PNG with robust fallback and background transparency
    */
   private build2DCharacter() {
     const planeGeo = new THREE.PlaneGeometry(1.0, 2.05); // Aspect ratio matches 284x714
     planeGeo.translate(0, 1.02, 0); // Pivot at feet
 
-    // Fallback material while image loads
+    // Visible stylized fallback material
     const initialMat = new THREE.MeshStandardMaterial({
-      color: 0xee6611,
+      color: 0xee5511,
       roughness: 0.35,
       transparent: true,
+      side: THREE.DoubleSide
     });
 
     this.spritePlane = new THREE.Mesh(planeGeo, initialMat);
     this.characterGroup.add(this.spritePlane);
 
-    // Load and process image
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = '/assets/character.png';
+    // Robust texture loader
+    const loader = new THREE.TextureLoader();
+    loader.load(
+      '/assets/character.png',
+      (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
 
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0);
+        // Try background color removal on offscreen canvas
+        try {
+          const img = texture.image as HTMLImageElement;
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imgData.data;
 
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imgData.data;
+            // Background color is light beige/grey (~238, 223, 216)
+            const bgR = data[0], bgG = data[1], bgB = data[2];
 
-      // Sample background color near corners (light beige)
-      const bgR = data[0], bgG = data[1], bgB = data[2];
+            for (let i = 0; i < data.length; i += 4) {
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
 
-      // Key out background pixels with smooth alpha feathering
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
+              const dr = r - bgR;
+              const dg = g - bgG;
+              const db = b - bgB;
+              const dist = Math.sqrt(dr * dr + dg * dg + db * db);
 
-        const dr = r - bgR;
-        const dg = g - bgG;
-        const db = b - bgB;
-        const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+              if (dist < 34) {
+                data[i + 3] = 0; // Transparent
+              } else if (dist < 48) {
+                data[i + 3] = Math.floor(((dist - 34) / 14) * 255);
+              }
+            }
 
-        if (dist < 32) {
-          data[i + 3] = 0; // Transparent background
-        } else if (dist < 46) {
-          // Feathered edge
-          data[i + 3] = Math.floor(((dist - 32) / 14) * 255);
+            ctx.putImageData(imgData, 0, 0);
+            const keyedTex = new THREE.CanvasTexture(canvas);
+            keyedTex.colorSpace = THREE.SRGBColorSpace;
+            this.spritePlane.material = new THREE.MeshStandardMaterial({
+              map: keyedTex,
+              transparent: true,
+              roughness: 0.4,
+              metalness: 0.05,
+              alphaTest: 0.02,
+              side: THREE.DoubleSide
+            });
+            return;
+          }
+        } catch (e) {
+          console.warn('Canvas keying fallback:', e);
         }
+
+        // Direct texture fallback if getImageData is restricted
+        this.spritePlane.material = new THREE.MeshStandardMaterial({
+          map: texture,
+          transparent: true,
+          roughness: 0.4,
+          metalness: 0.05,
+          side: THREE.DoubleSide
+        });
+      },
+      undefined,
+      (err) => {
+        console.warn('Texture load error:', err);
       }
-
-      ctx.putImageData(imgData, 0, 0);
-
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.colorSpace = THREE.SRGBColorSpace;
-      texture.minFilter = THREE.LinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-
-      const cleanMat = new THREE.MeshStandardMaterial({
-        map: texture,
-        transparent: true,
-        roughness: 0.4,
-        metalness: 0.05,
-        alphaTest: 0.05,
-      });
-
-      this.spritePlane.material = cleanMat;
-    };
+    );
   }
 
   /**
