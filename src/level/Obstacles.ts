@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { EnemyBlob } from '../entities/EnemyBlob';
 
 export enum ObstacleType {
   GEAR = 'gear',
@@ -42,6 +43,7 @@ export class ObstacleManager {
   private scene: THREE.Scene;
   public obstacles: ActiveObstacle[] = [];
   public pickups: ActivePickup[] = [];
+  public enemies: EnemyBlob[] = [];
   private nextId = 1;
 
   // Cached Materials
@@ -123,8 +125,18 @@ export class ObstacleManager {
     for (const p of this.pickups) {
       this.scene.remove(p.mesh);
     }
+    for (const e of this.enemies) {
+      e.destroy(this.scene);
+    }
     this.obstacles = [];
     this.pickups = [];
+    this.enemies = [];
+  }
+
+  public spawnBlob(x: number, y: number, patrolRange: number = 3.5): EnemyBlob {
+    const blob = new EnemyBlob(this.scene, x, y, patrolRange);
+    this.enemies.push(blob);
+    return blob;
   }
 
   /**
@@ -440,7 +452,7 @@ export class ObstacleManager {
     return list;
   }
 
-  public update(dt: number, time: number, playerX: number) {
+  public update(dt: number, time: number, playerX: number, playerY: number = 0) {
     // Update and recycle obstacles
     for (let i = this.obstacles.length - 1; i >= 0; i--) {
       const obs = this.obstacles[i];
@@ -451,7 +463,7 @@ export class ObstacleManager {
       obs.update(dt, time);
 
       // Despawn if far behind camera
-      if (obs.group.position.x < playerX - 18) {
+      if (obs.group.position.x < playerX - 25) {
         this.removeObstacle(obs);
         this.obstacles.splice(i, 1);
       }
@@ -466,9 +478,22 @@ export class ObstacleManager {
       }
       p.update(dt, time);
 
-      if (p.mesh.position.x < playerX - 18) {
+      if (p.mesh.position.x < playerX - 25) {
         this.removePickup(p);
         this.pickups.splice(i, 1);
+      }
+    }
+
+    // Update and recycle enemies
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      e.update(dt, time, playerX, playerY);
+
+      if (!e.active || e.position.x < playerX - 25) {
+        if (e.position.x < playerX - 25) {
+          e.destroy(this.scene);
+        }
+        this.enemies.splice(i, 1);
       }
     }
   }

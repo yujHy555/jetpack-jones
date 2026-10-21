@@ -46,10 +46,12 @@ export enum PlayerState {
 /**
  * Triple-AAA Articulated 2D Skeletal Character
  * Features:
- * - Natural human knee backward flexion (never bends forward)
- * - 360° Mouse Targeting & Crosshair Blaster Aiming
- * - Full 12 Principles of Animation (Squash & Stretch, Anticipation, Arcs, Follow-Through)
- * - Faux-Volumetric Jetpack Smoke & 3D Rocket Flames
+ * - Cool Retro Space Helmet with Amber Visor and Antenna
+ * - New Heavy Laser Blaster aligned with 360° Mouse Reticle
+ * - Movement Key Facing Direction Priority
+ * - Natural Backward-Flexing Knees
+ * - High-Impact Muzzle Flash & Screen Recoil
+ * - Rich Faux-Volumetric Smoke and Twin Thruster Flame Cones
  */
 export class Player {
   public mesh: THREE.Group;
@@ -76,7 +78,7 @@ export class Player {
   private torsoBone: THREE.Group;
   private headBone: THREE.Group;
 
-  // Front & Back Legs (Knee joints bend strictly backward)
+  // Legs (Strictly backward-bending knee joints)
   private frontThighBone: THREE.Group;
   private frontShinBone: THREE.Group;
   private frontFootBone: THREE.Group;
@@ -85,7 +87,7 @@ export class Player {
   private backShinBone: THREE.Group;
   private backFootBone: THREE.Group;
 
-  // Front & Back Arms (360° Aiming Front Arm)
+  // Arms (360° Rotational Aiming)
   private frontArmBone: THREE.Group;
   private frontForearmBone: THREE.Group;
   private frontHandBone: THREE.Group;
@@ -118,9 +120,9 @@ export class Player {
   // VFX Pools
   private vfxGroup: THREE.Group;
   private smokePuffs: SmokePuff[] = [];
-  private maxSmoke = 70;
+  private maxSmoke = 75;
   private sparks: Spark[] = [];
-  private maxSparks = 60;
+  private maxSparks = 65;
   private sparkGeo!: THREE.BufferGeometry;
   private sparkPositions!: Float32Array;
   private sparkColors!: Float32Array;
@@ -144,13 +146,13 @@ export class Player {
     this.mesh.add(this.rigRoot);
 
     // Dynamic Lights
-    this.thrusterLight = new THREE.PointLight(0xff7700, 0, 14, 1.2);
+    this.thrusterLight = new THREE.PointLight(0xff7700, 0, 16, 1.2);
     scene.add(this.thrusterLight);
 
     this.muzzleLight = new THREE.PointLight(0xffea00, 0, 8, 1.5);
     scene.add(this.muzzleLight);
 
-    // Stylized Palette from Reference Art
+    // Stylized PBR Palette
     const suitOrange = new THREE.MeshStandardMaterial({
       color: 0xee5a08,
       roughness: 0.38,
@@ -167,7 +169,7 @@ export class Player {
       metalness: 0.15,
     });
     const cyanStripe = new THREE.MeshBasicMaterial({
-      color: 0x82eaf5,
+      color: 0x00f5ff,
     });
     const gloveBrown = new THREE.MeshStandardMaterial({
       color: 0x352e2c,
@@ -182,14 +184,24 @@ export class Player {
       color: 0xf5c2a3,
       roughness: 0.45,
     });
-    const darkHair = new THREE.MeshStandardMaterial({
-      color: 0x1a1a20,
-      roughness: 0.6,
+    const creamHelmet = new THREE.MeshStandardMaterial({
+      color: 0xf6f3eb,
+      roughness: 0.28,
+      metalness: 0.06,
+    });
+    const amberVisor = new THREE.MeshPhysicalMaterial({
+      color: 0xff7700,
+      roughness: 0.05,
+      metalness: 0.15,
+      transmission: 0.55,
+      transparent: true,
+      opacity: 0.95,
+      reflectivity: 0.9,
     });
     const chromeMetal = new THREE.MeshStandardMaterial({
-      color: 0xe8e8ee,
-      metalness: 0.94,
-      roughness: 0.14,
+      color: 0xeeeeee,
+      metalness: 0.95,
+      roughness: 0.12,
     });
 
     // 1. Build Bones Hierarchy
@@ -226,42 +238,86 @@ export class Player {
     harnessR.position.set(0, 0.56, -0.16);
     this.torsoBone.add(harnessR);
 
-    // Dark collar
-    const collarMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.14, 8), darkHarness);
+    // Dark neck collar
+    const collarMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.14, 12), darkHarness);
     collarMesh.position.set(0.02, 0.62, 0);
     this.torsoBone.add(collarMesh);
 
     // Head Bone
     this.headBone = new THREE.Group();
-    this.headBone.position.set(0.02, 0.7, 0);
+    this.headBone.position.set(0.02, 0.72, 0);
     this.torsoBone.add(this.headBone);
 
-    const faceGeo = new THREE.BoxGeometry(0.24, 0.28, 0.22);
+    // Stylized Face inside helmet
+    const faceGeo = new THREE.BoxGeometry(0.24, 0.26, 0.22);
     const face = new THREE.Mesh(faceGeo, fleshTone);
-    face.position.set(0.04, 0.14, 0);
+    face.position.set(0.02, 0.14, 0);
     this.headBone.add(face);
 
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.09, 4), fleshTone);
-    nose.rotation.z = -Math.PI / 2;
-    nose.position.set(0.18, 0.14, 0);
-    this.headBone.add(nose);
+    // COOL SPACE HELMET
+    const helmetGroup = new THREE.Group();
+    helmetGroup.position.set(0.02, 0.16, 0);
+    this.headBone.add(helmetGroup);
 
-    const hairGeo = new THREE.BoxGeometry(0.28, 0.18, 0.26);
-    const hair = new THREE.Mesh(hairGeo, darkHair);
-    hair.position.set(0.02, 0.3, 0);
-    this.headBone.add(hair);
+    // Outer Aerodynamic Helmet Shell
+    const helmetGeo = new THREE.SphereGeometry(0.32, 20, 20);
+    const helmetMesh = new THREE.Mesh(helmetGeo, creamHelmet);
+    helmetGroup.add(helmetMesh);
 
-    const hairSpike = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.18, 4), darkHair);
-    hairSpike.rotation.z = -0.4;
-    hairSpike.position.set(0.1, 0.36, 0);
-    this.headBone.add(hairSpike);
+    // Mechanical Chin Rim
+    const chinRimGeo = new THREE.TorusGeometry(0.27, 0.05, 10, 20);
+    chinRimGeo.rotateX(Math.PI / 2);
+    const chinRim = new THREE.Mesh(chinRimGeo, darkHarness);
+    chinRim.position.y = -0.12;
+    helmetGroup.add(chinRim);
 
-    // 2. Legs Hierarchy (Pivot at hip and knee)
+    // Translucent Amber Bubble Visor
+    const visorGeo = new THREE.SphereGeometry(0.28, 20, 20, 0, Math.PI * 2, 0, Math.PI * 0.52);
+    visorGeo.rotateZ(-Math.PI / 2);
+    const visor = new THREE.Mesh(visorGeo, amberVisor);
+    visor.position.set(0.08, 0, 0);
+    helmetGroup.add(visor);
+
+    // Side Circular Communicators with Cyan Status Lights
+    const commGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.06, 12);
+    commGeo.rotateX(Math.PI / 2);
+
+    const commL = new THREE.Mesh(commGeo, darkHarness);
+    commL.position.set(0, 0, 0.32);
+    helmetGroup.add(commL);
+
+    const commR = new THREE.Mesh(commGeo, darkHarness);
+    commR.position.set(0, 0, -0.32);
+    helmetGroup.add(commR);
+
+    // Cyan Status Light dots on communicators
+    const commLedL = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), cyanStripe);
+    commLedL.position.set(0, 0, 0.36);
+    helmetGroup.add(commLedL);
+
+    const commLedR = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), cyanStripe);
+    commLedR.position.set(0, 0, -0.36);
+    helmetGroup.add(commLedR);
+
+    // Helmet Antenna with glowing golden beacon
+    const antennaStem = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.28, 8), chromeMetal);
+    antennaStem.position.set(-0.15, 0.38, -0.18);
+    antennaStem.rotation.z = -0.25;
+    helmetGroup.add(antennaStem);
+
+    const antennaBeacon = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffaa00 })
+    );
+    antennaBeacon.position.set(-0.19, 0.53, -0.18);
+    helmetGroup.add(antennaBeacon);
+
+    // 2. Legs: Back Leg (Z = -0.1) & Front Leg (Z = +0.1)
     const legGeoThigh = new THREE.BoxGeometry(0.15, 0.44, 0.14);
     const legGeoShin = new THREE.BoxGeometry(0.13, 0.42, 0.13);
     const bootGeo = new THREE.BoxGeometry(0.28, 0.16, 0.14);
 
-    // Back Leg (Depth Z = -0.1)
+    // Back Leg
     this.backThighBone = new THREE.Group();
     this.backThighBone.position.set(-0.02, -0.05, -0.1);
     this.hipBone.add(this.backThighBone);
@@ -293,7 +349,7 @@ export class Player {
     backBoot.position.set(0.06, -0.12, 0);
     this.backFootBone.add(backBoot);
 
-    // Front Leg (Depth Z = +0.1)
+    // Front Leg
     this.frontThighBone = new THREE.Group();
     this.frontThighBone.position.set(0.02, -0.05, 0.1);
     this.hipBone.add(this.frontThighBone);
@@ -354,7 +410,7 @@ export class Player {
     const backHand = new THREE.Mesh(handGeo, gloveBrown);
     this.backHandBone.add(backHand);
 
-    // Front Arm (360° Rotational Aiming Rig)
+    // Front Arm (360° Rotational Aiming)
     this.frontArmBone = new THREE.Group();
     this.frontArmBone.position.set(0.02, 0.5, 0.22);
     this.torsoBone.add(this.frontArmBone);
@@ -382,28 +438,60 @@ export class Player {
     const frontHand = new THREE.Mesh(handGeo, gloveBrown);
     this.frontHandBone.add(frontHand);
 
-    // Blaster in hand
+    // BRAND NEW COOL RETRO-FUTURISTIC LASER BLASTER
+    // Constructed strictly along forward line of aim (+X)!
     this.blasterMesh = new THREE.Group();
-    this.blasterMesh.position.set(0.12, -0.04, 0);
+    this.blasterMesh.position.set(0, -0.06, 0);
     this.frontHandBone.add(this.blasterMesh);
 
-    const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.11, 0.08), chromeMetal);
-    this.blasterMesh.add(gunBody);
+    // Tactical Pistol Grip
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.16, 0.08), darkHarness);
+    grip.rotation.z = -0.2;
+    grip.position.set(0.02, -0.06, 0);
+    this.blasterMesh.add(grip);
 
-    const gunBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.24, 8), chromeMetal);
-    gunBarrel.rotateZ(Math.PI / 2);
-    gunBarrel.position.set(0.19, 0.02, 0);
-    this.blasterMesh.add(gunBarrel);
+    // Main Chrome Receiver Chassis
+    const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.12, 0.1), chromeMetal);
+    receiver.position.set(0.12, 0.03, 0);
+    this.blasterMesh.add(receiver);
 
-    // Muzzle Flash
+    // Glowing Cyan Energy Plasma Core in receiver
+    const coreMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.12), cyanStripe);
+    coreMesh.position.set(0.1, 0.03, 0);
+    this.blasterMesh.add(coreMesh);
+
+    // Precision Forward Barrel
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.28, 12), chromeMetal);
+    barrel.rotateZ(Math.PI / 2); // Axis along X!
+    barrel.position.set(0.36, 0.03, 0);
+    this.blasterMesh.add(barrel);
+
+    // Ribbed Cooling Coils
+    for (let cx = 0.26; cx <= 0.42; cx += 0.06) {
+      const coil = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 8, 12), cyanStripe);
+      coil.rotateY(Math.PI / 2);
+      coil.position.set(cx, 0.03, 0);
+      this.blasterMesh.add(coil);
+    }
+
+    // Dual Muzzle Prongs at the tip
+    const prongTop = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.022, 0.03), chromeMetal);
+    prongTop.position.set(0.52, 0.05, 0);
+    this.blasterMesh.add(prongTop);
+
+    const prongBot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.022, 0.03), chromeMetal);
+    prongBot.position.set(0.52, 0.01, 0);
+    this.blasterMesh.add(prongBot);
+
+    // Muzzle Flash Star at the tip
     const flashMat = new THREE.MeshBasicMaterial({
-      color: 0xffffaa,
+      color: 0xffffff,
       transparent: true,
       opacity: 0,
       blending: THREE.AdditiveBlending,
     });
-    this.muzzleFlashMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.22, 0), flashMat);
-    this.muzzleFlashMesh.position.set(0.36, 0.02, 0);
+    this.muzzleFlashMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.25, 0), flashMat);
+    this.muzzleFlashMesh.position.set(0.6, 0.03, 0);
     this.blasterMesh.add(this.muzzleFlashMesh);
 
     // 4. Back-Mounted Chrome Jetpack
@@ -434,10 +522,10 @@ export class Player {
     nozR.position.set(0, -0.36, 0.13);
     this.jetpackBone.add(nozR);
 
-    // 3D Flames
-    const flameGeo = new THREE.ConeGeometry(0.14, 0.65, 12);
+    // Dual Animated 3D Flame Cones
+    const flameGeo = new THREE.ConeGeometry(0.14, 0.68, 12);
     flameGeo.rotateX(Math.PI);
-    flameGeo.translate(0, -0.32, 0);
+    flameGeo.translate(0, -0.34, 0);
 
     const flameMat = new THREE.MeshBasicMaterial({
       color: 0xff5500,
@@ -453,9 +541,9 @@ export class Player {
     this.flameConeRight.position.set(0, -0.38, 0.13);
     this.jetpackBone.add(this.flameConeRight);
 
-    const innerFlameGeo = new THREE.ConeGeometry(0.07, 0.4, 12);
+    const innerFlameGeo = new THREE.ConeGeometry(0.07, 0.42, 12);
     innerFlameGeo.rotateX(Math.PI);
-    innerFlameGeo.translate(0, -0.2, 0);
+    innerFlameGeo.translate(0, -0.21, 0);
     const innerFlameMat = new THREE.MeshBasicMaterial({ color: 0xffffbb });
 
     this.flameConeLeft.add(new THREE.Mesh(innerFlameGeo, innerFlameMat));
@@ -470,9 +558,9 @@ export class Player {
     this.initDustSystem();
 
     // 6. Laser Projectiles
-    this.laserGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.7, 8);
+    this.laserGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.75, 8);
     this.laserGeo.rotateZ(Math.PI / 2);
-    this.laserMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+    this.laserMat = new THREE.MeshBasicMaterial({ color: 0x00f5ff }); // Glowing Cyan Laser
 
     for (let i = 0; i < 24; i++) {
       const mesh = new THREE.Mesh(this.laserGeo, this.laserMat);
@@ -481,7 +569,7 @@ export class Player {
       this.lasers.push({
         mesh,
         position: new THREE.Vector3(),
-        velocity: new THREE.Vector3(26, 0, 0),
+        velocity: new THREE.Vector3(28, 0, 0),
         active: false,
         life: 0,
       });
@@ -631,8 +719,8 @@ export class Player {
 
     // Calculate aim angle
     let aimAngle = this.facingRight ? 0 : Math.PI;
-    const originY = this.position.y + 1.35;
-    const originX = this.position.x + (this.facingRight ? 0.35 : -0.35);
+    const originY = this.position.y + 1.25;
+    const originX = this.position.x + (this.facingRight ? 0.4 : -0.4);
 
     if (aimTargetWorld) {
       aimAngle = Math.atan2(aimTargetWorld.y - originY, aimTargetWorld.x - originX);
@@ -640,16 +728,16 @@ export class Player {
     this.currentAimAngle = aimAngle;
 
     // Spawning location along aim vector
-    const muzzleDist = 0.45;
+    const muzzleDist = 0.55;
     const spawnX = originX + Math.cos(aimAngle) * muzzleDist;
     const spawnY = originY + Math.sin(aimAngle) * muzzleDist;
 
     laser.position.set(spawnX, spawnY, this.position.z);
-    laser.velocity.set(Math.cos(aimAngle) * 28, Math.sin(aimAngle) * 28, 0);
+    laser.velocity.set(Math.cos(aimAngle) * 30, Math.sin(aimAngle) * 30, 0);
     laser.active = true;
     laser.life = 1.3;
     laser.mesh.position.copy(laser.position);
-    laser.mesh.rotation.z = aimAngle; // Aligns cylinder with trajectory!
+    laser.mesh.rotation.z = aimAngle; // Aligns laser cylinder with trajectory
     laser.mesh.visible = true;
 
     // Muzzle flash light
@@ -689,24 +777,29 @@ export class Player {
       this.mesh.visible = true;
     }
 
-    // 2. Aim Angle & Facing Direction Resolution
-    const chestY = this.position.y + 1.35;
-    if (hasMouse && aimTargetWorld) {
-      this.currentAimAngle = Math.atan2(aimTargetWorld.y - chestY, aimTargetWorld.x - this.position.x);
-
-      // Character faces towards mouse target
+    // 2. Facing Direction Resolution
+    // MOVEMENT KEY TAKES PRECEDENCE: player turns to direction of arrow or movement key when pressed!
+    if (moveX !== 0) {
+      this.facingRight = moveX > 0;
+      this.rigRoot.scale.x = this.facingRight ? 1 : -1;
+    } else if (hasMouse && aimTargetWorld) {
+      // If stationary: face towards mouse crosshair target
       const lookRight = aimTargetWorld.x >= this.position.x;
       if (this.facingRight !== lookRight) {
         this.facingRight = lookRight;
         this.rigRoot.scale.x = this.facingRight ? 1 : -1;
       }
-    } else if (moveX !== 0) {
-      this.facingRight = moveX > 0;
-      this.rigRoot.scale.x = this.facingRight ? 1 : -1;
+    }
+
+    // Aim Angle
+    const chestY = this.position.y + 1.25;
+    if (hasMouse && aimTargetWorld) {
+      this.currentAimAngle = Math.atan2(aimTargetWorld.y - chestY, aimTargetWorld.x - this.position.x);
+    } else {
       this.currentAimAngle = this.facingRight ? 0 : Math.PI;
     }
 
-    // 3. Smooth Acceleration / Deceleration (Animation Principle: Ease In & Ease Out)
+    // 3. Smooth Acceleration / Deceleration
     const walkSpeed = 4.6;
     const runSpeed = 8.8;
     const currentSpeed = run ? runSpeed : walkSpeed;
@@ -719,7 +812,7 @@ export class Player {
 
     // 4. Jump Anticipation & Leap
     if (jumpPressed && this.isGrounded && this.jumpAnticipateTimer <= 0) {
-      this.jumpAnticipateTimer = 0.06; // 60ms crouch anticipation
+      this.jumpAnticipateTimer = 0.06;
     }
 
     if (this.jumpAnticipateTimer > 0) {
@@ -778,7 +871,7 @@ export class Player {
       }
     }
 
-    // Landing Squash detection
+    // Landing Squash
     if (!this.wasGroundedLastFrame && this.isGrounded) {
       this.landSquashTimer = 0.16;
       this.emitDust(this.position.x, this.position.y, 5);
@@ -798,7 +891,7 @@ export class Player {
       this.state = PlayerState.IDLE;
     }
 
-    // 8. Animate Skeletal Joints with Natural Backward Knees & 360° Arm Aiming
+    // 8. Animate Skeletal Joints with Natural Backward Knees & True Aim Vector
     this.animateSkeletalBones(dt, run, hasMouse);
 
     // 9. Update Jetpack Flames, Volumetric Smoke & Sparks
@@ -820,8 +913,8 @@ export class Player {
 
   /**
    * Triple-AAA Skeletal Kinematics
-   * Knees bend strictly BACKWARD (negative local rotation).
-   * Front arm tracks mouse aiming smoothly in 360°.
+   * Knees bend strictly BACKWARD.
+   * Blaster barrel aligns directly with 360° mouse aiming vector!
    */
   private animateSkeletalBones(dt: number, isRunning: boolean, hasMouseTarget?: boolean) {
     const t = this.animTimer;
@@ -830,32 +923,30 @@ export class Player {
     this.torsoBone.rotation.set(0, 0, 0);
     this.headBone.rotation.set(0, 0, 0);
 
-    // Squash & Stretch: Land Squash
+    // Squash & Stretch
     if (this.landSquashTimer > 0) {
       this.landSquashTimer -= dt;
       const squash = Math.sin((this.landSquashTimer / 0.16) * Math.PI) * 0.14;
       this.hipBone.position.y -= squash;
       this.hipBone.scale.set(1.0 + squash * 0.9, 1.0 - squash, 1.0);
     } else if (this.jumpAnticipateTimer > 0) {
-      // Jump Anticipation Crouch
       this.hipBone.position.y -= 0.15;
       this.hipBone.scale.set(1.1, 0.88, 1.0);
     } else if (!this.isGrounded) {
-      // Jump Airborne Stretch
       const stretch = Math.min(0.08, Math.abs(this.velocity.y) * 0.008);
       this.hipBone.scale.set(1.0 - stretch * 0.5, 1.0 + stretch, 1.0);
     } else {
       this.hipBone.scale.set(1, 1, 1);
     }
 
-    // Secondary motion: Torso tilt lag & head follow-through
+    // Torso tilt lag & head follow-through
     const targetTorsoTilt = (this.velocity.x / 8.8) * (isRunning ? 0.32 : 0.08);
     this.torsoTiltSmooth = THREE.MathUtils.lerp(this.torsoTiltSmooth, targetTorsoTilt, dt * 10);
     this.headFollowLag = THREE.MathUtils.lerp(this.headFollowLag, -this.torsoTiltSmooth * 0.5, dt * 8);
 
     switch (this.state) {
       // ----------------------------------------------------
-      // A. IDLE (Organic breathing, natural backward resting knees)
+      // A. IDLE (Soft breathing, backward knees)
       // ----------------------------------------------------
       case PlayerState.IDLE: {
         const breathe = Math.sin(t * 2.8) * 0.035;
@@ -863,7 +954,6 @@ export class Player {
         this.torsoBone.rotation.z = Math.sin(t * 1.4) * 0.015;
         this.headBone.rotation.z = -Math.sin(t * 2.8) * 0.02 + this.headFollowLag;
 
-        // Grounded legs with natural backward soft bend
         this.frontThighBone.rotation.z = 0.05;
         this.frontShinBone.rotation.z = -0.08; // BACKWARD
         this.frontFootBone.rotation.z = 0.03;
@@ -872,11 +962,9 @@ export class Player {
         this.backShinBone.rotation.z = -0.08; // BACKWARD
         this.backFootBone.rotation.z = 0.03;
 
-        // Back arm resting
         this.backArmBone.rotation.z = Math.sin(t * 2.8) * 0.05 + 0.12;
         this.backForearmBone.rotation.z = 0.25;
 
-        // Front arm lowered if not aiming with mouse
         if (!hasMouseTarget && this.shootTimer <= 0) {
           this.frontArmBone.rotation.z = -Math.sin(t * 2.8) * 0.05 + 0.15;
           this.frontForearmBone.rotation.z = 0.35;
@@ -891,28 +979,25 @@ export class Player {
         const walkFreq = 9.0;
         const phase = t * walkFreq;
 
-        // Double-rate hip vertical bob
         const hipBob = Math.abs(Math.sin(phase)) * 0.05;
         this.hipBone.position.y = 0.95 + hipBob;
 
         this.torsoBone.rotation.z = this.torsoTiltSmooth;
         this.headBone.rotation.z = this.headFollowLag;
 
-        // Legs in 180° opposition
         const frontAngle = Math.sin(phase);
         const backAngle = Math.sin(phase + Math.PI);
 
-        // FRONT LEG:
+        // FRONT LEG
         this.frontThighBone.rotation.z = frontAngle * 0.52;
-        // Knee flexes BACKWARD (strictly negative!) when swinging forward or trailing
         const frontKneeFlex = frontAngle < 0 ? -Math.abs(frontAngle) * 0.75 : -0.08;
-        this.frontShinBone.rotation.z = frontKneeFlex;
+        this.frontShinBone.rotation.z = frontKneeFlex; // BACKWARD
         this.frontFootBone.rotation.z = frontAngle * 0.25;
 
-        // BACK LEG:
+        // BACK LEG
         this.backThighBone.rotation.z = backAngle * 0.52;
         const backKneeFlex = backAngle < 0 ? -Math.abs(backAngle) * 0.75 : -0.08;
-        this.backShinBone.rotation.z = backKneeFlex;
+        this.backShinBone.rotation.z = backKneeFlex; // BACKWARD
         this.backFootBone.rotation.z = backAngle * 0.25;
 
         // Counter-arm Swing
@@ -931,13 +1016,13 @@ export class Player {
       }
 
       // ----------------------------------------------------
-      // C. RUN CYCLE (High Knee Lift & Deep Backward Heel Kick)
+      // C. RUN CYCLE (High Knee Drive & Backward Heel Kick)
       // ----------------------------------------------------
       case PlayerState.RUN: {
         const runFreq = 14.0;
         const phase = t * runFreq;
 
-        this.torsoBone.rotation.z = 0.34; // Deep forward athletic lean
+        this.torsoBone.rotation.z = 0.34;
         this.headBone.rotation.z = -0.12 + this.headFollowLag;
 
         const runBob = Math.abs(Math.sin(phase)) * 0.08;
@@ -946,15 +1031,14 @@ export class Player {
         const frontRun = Math.sin(phase);
         const backRun = Math.sin(phase + Math.PI);
 
-        // FRONT LEG (High knee forward, deep heel kick BACKWARD):
+        // FRONT LEG
         this.frontThighBone.rotation.z = frontRun * 0.82;
-        // Knee bends BACKWARD towards glute:
-        this.frontShinBone.rotation.z = frontRun < 0 ? -Math.abs(frontRun) * 1.25 : -0.1;
+        this.frontShinBone.rotation.z = frontRun < 0 ? -Math.abs(frontRun) * 1.25 : -0.1; // BACKWARD
         this.frontFootBone.rotation.z = frontRun * 0.35;
 
-        // BACK LEG:
+        // BACK LEG
         this.backThighBone.rotation.z = backRun * 0.82;
-        this.backShinBone.rotation.z = backRun < 0 ? -Math.abs(backRun) * 1.25 : -0.1;
+        this.backShinBone.rotation.z = backRun < 0 ? -Math.abs(backRun) * 1.25 : -0.1; // BACKWARD
         this.backFootBone.rotation.z = backRun * 0.35;
 
         // Pumping back arm
@@ -973,19 +1057,18 @@ export class Player {
       }
 
       // ----------------------------------------------------
-      // D. JUMP & FALL (Natural Backward Knee Tucking & Fall Reach)
+      // D. JUMP & FALL (Natural Backward Knee Tucking)
       // ----------------------------------------------------
       case PlayerState.JUMP: {
         this.torsoBone.rotation.z = 0.08;
-        this.headBone.rotation.z = 0.14; // Looking up
+        this.headBone.rotation.z = 0.14;
 
-        // Thighs raise forward, knees flex BACKWARD underneath
         this.frontThighBone.rotation.z = 0.55;
-        this.frontShinBone.rotation.z = -0.85; // Bends BACKWARD underneath
+        this.frontShinBone.rotation.z = -0.85; // BACKWARD underneath
         this.frontFootBone.rotation.z = 0.25;
 
         this.backThighBone.rotation.z = 0.45;
-        this.backShinBone.rotation.z = -0.75; // Bends BACKWARD underneath
+        this.backShinBone.rotation.z = -0.75; // BACKWARD underneath
         this.backFootBone.rotation.z = 0.25;
 
         this.backArmBone.rotation.z = -0.4;
@@ -1000,15 +1083,14 @@ export class Player {
 
       case PlayerState.FALL: {
         this.torsoBone.rotation.z = -0.04;
-        this.headBone.rotation.z = -0.08; // Looking down
+        this.headBone.rotation.z = -0.08;
 
-        // Legs extend downward preparing for landing
         this.frontThighBone.rotation.z = 0.12;
-        this.frontShinBone.rotation.z = -0.2; // Soft backward knee bend
-        this.frontFootBone.rotation.z = -0.25; // Toes pointing down
+        this.frontShinBone.rotation.z = -0.2; // BACKWARD
+        this.frontFootBone.rotation.z = -0.25;
 
         this.backThighBone.rotation.z = -0.08;
-        this.backShinBone.rotation.z = -0.2;
+        this.backShinBone.rotation.z = -0.2; // BACKWARD
         this.backFootBone.rotation.z = -0.25;
 
         this.backArmBone.rotation.z = -0.25;
@@ -1017,14 +1099,13 @@ export class Player {
       }
 
       // ----------------------------------------------------
-      // E. JETPACK FLIGHT (Streamline with Trailing Leg Physics)
+      // E. JETPACK FLIGHT
       // ----------------------------------------------------
       case PlayerState.JETPACK: {
         const flightLean = 0.26 + (this.velocity.x / 9.0) * 0.25;
         this.torsoBone.rotation.z = flightLean;
         this.headBone.rotation.z = 0.15;
 
-        // Legs dynamically trailing behind in aerodynamic flight with wind flutter
         const flutter = Math.sin(t * 12.0) * 0.08;
         this.frontThighBone.rotation.z = -0.42 + flutter;
         this.frontShinBone.rotation.z = -0.32; // Backward trail
@@ -1046,27 +1127,28 @@ export class Player {
     }
 
     // ------------------------------------------------------
-    // F. 360° MOUSE AIMING & SHOOT RECOIL / MUZZLE FLASH
+    // F. 360° MOUSE RETICLE AIMING & PRECISION BARREL ALIGNMENT
     // ------------------------------------------------------
     if (hasMouseTarget) {
-      // Calculate front arm rotation in local space relative to facing direction
+      // Calculate front arm angle directly toward mouse target
       let localAngle = this.currentAimAngle;
       if (!this.facingRight) {
         localAngle = Math.PI - localAngle;
       }
-      // Normalize to -PI .. +PI
       localAngle = THREE.MathUtils.euclideanModulo(localAngle + Math.PI, Math.PI * 2) - Math.PI;
 
       // Adjust for torso tilt
       const aimRotation = localAngle - this.torsoBone.rotation.z;
 
-      // Point front arm bone at mouse reticle
+      // Point front arm bone directly at mouse reticle:
+      // The upper arm hangs along -Y, forearm along -Y, blaster extends along +X.
+      // So rotating frontArmBone by `aimRotation` aligns the blaster barrel strictly along the aim vector!
       this.frontArmBone.rotation.z = THREE.MathUtils.lerp(
         this.frontArmBone.rotation.z,
-        aimRotation + Math.PI / 2, // Upper arm hangs downward by default, rotate to target
-        dt * 24
+        aimRotation,
+        dt * 26
       );
-      this.frontForearmBone.rotation.z = 0.05; // Straight arm for crisp precision aim
+      this.frontForearmBone.rotation.z = 0.0;
     }
 
     // Recoil Kickback Shock & Muzzle Flash on firing
@@ -1077,20 +1159,20 @@ export class Player {
       if (progress < 0.25) {
         // Immediate kickback along gun axis
         const kick = Math.sin((progress / 0.25) * Math.PI);
-        this.blasterMesh.position.x = 0.12 - kick * 0.1;
-        this.frontArmBone.rotation.z += (this.facingRight ? 1 : -1) * kick * 0.1; // Muzzle climb
+        this.blasterMesh.position.x = -kick * 0.12;
+        this.frontArmBone.rotation.z += 0.08 * kick; // Subtle muzzle climb
         this.torsoBone.rotation.z -= kick * 0.04;
 
         (this.muzzleFlashMesh.material as THREE.MeshBasicMaterial).opacity = 1.0;
         this.muzzleFlashMesh.scale.set(1.5, 1.5, 1.5);
       } else {
         const returnProg = (progress - 0.25) / 0.75;
-        this.blasterMesh.position.x = THREE.MathUtils.lerp(0.02, 0.12, returnProg);
+        this.blasterMesh.position.x = THREE.MathUtils.lerp(-0.06, 0.0, returnProg);
         (this.muzzleFlashMesh.material as THREE.MeshBasicMaterial).opacity = 0;
         this.muzzleLight.intensity = 0;
       }
     } else {
-      this.blasterMesh.position.x = 0.12;
+      this.blasterMesh.position.x = 0;
       (this.muzzleFlashMesh.material as THREE.MeshBasicMaterial).opacity = 0;
       this.muzzleLight.intensity = 0;
     }
@@ -1111,8 +1193,8 @@ export class Player {
       this.flameConeLeft.scale.set(1.0 + Math.random() * 0.2, flick, 1.0);
       this.flameConeRight.scale.copy(this.flameConeLeft.scale);
 
-      this.thrusterLight.intensity = 18 + Math.random() * 8;
-      this.thrusterLight.distance = 15;
+      this.thrusterLight.intensity = 20 + Math.random() * 8;
+      this.thrusterLight.distance = 16;
 
       this.emitSmoke(nozzleX, nozzleY, nozzleZ, 2);
       this.emitSparks(nozzleX, nozzleY, nozzleZ, 2);

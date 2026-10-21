@@ -59,7 +59,7 @@ class Game {
   private startGame() {
     this.state = GameState.PLAYING;
     this.score = 0;
-    this.player.reset(0, -3.8); // Start grounded in idle
+    this.player.reset(0, -3.8); // Start in idle on solid ground
     this.levelGenerator.reset(0);
   }
 
@@ -67,6 +67,7 @@ class Game {
     this.state = GameState.GAMEOVER;
     this.audioManager.setJetpackThrust(false);
     this.audioManager.playExplosion();
+    this.sceneManager.triggerShake(0.5, 0.4);
     this.hud.showGameOver(this.score, () => this.startGame());
   }
 
@@ -77,7 +78,7 @@ class Game {
     const totalTime = this.clock.getElapsedTime();
 
     this.inputManager.update();
-    // Project mouse cursor into 3D world plane Z=0 for 360° aiming
+    // Project mouse cursor to 3D world plane Z=0 for 360° aiming
     this.inputManager.updateAimWorldTarget(this.sceneManager.camera);
 
     if (this.state === GameState.PLAYING) {
@@ -88,6 +89,7 @@ class Game {
         );
         if (fired) {
           this.audioManager.playLaser();
+          this.sceneManager.triggerShake(0.08, 0.08); // Satisfying gun recoil shake
         }
       }
 
@@ -99,7 +101,7 @@ class Game {
         this.audioManager.playWarning();
       }
 
-      // 3. Update Player Entity (Smooth Kinematics & 360° Aiming)
+      // 3. Update Player Entity
       const jumpPressed = this.inputManager.consumeJumpTrigger();
       const platforms = this.obstacleManager.obstacles
         .filter(o => o.active && o.type === ObstacleType.HAZARD_PLATFORM && o.collider && o.collider.halfSize)
@@ -121,9 +123,9 @@ class Game {
         this.inputManager.hasMouse
       );
 
-      // 4. Update Level & Obstacles
+      // 4. Update Level & Obstacles & Alien Blobs
       this.levelGenerator.update(this.player.position.x);
-      this.obstacleManager.update(dt, totalTime, this.player.position.x);
+      this.obstacleManager.update(dt, totalTime, this.player.position.x, this.player.position.y);
       this.parallaxLayers.update(this.player.position.x, totalTime);
 
       // 5. Collision Checks
@@ -141,7 +143,7 @@ class Game {
     } else {
       // Idle scene animation on start screen
       this.parallaxLayers.update(0, totalTime);
-      this.obstacleManager.update(dt, totalTime, 0);
+      this.obstacleManager.update(dt, totalTime, 0, 0);
       const platforms = this.obstacleManager.obstacles
         .filter(o => o.active && o.type === ObstacleType.HAZARD_PLATFORM && o.collider && o.collider.halfSize)
         .map(o => ({
@@ -162,7 +164,7 @@ class Game {
       );
     }
 
-    // 8. Update Camera & UI
+    // 8. Update Camera with unrestricted tracking & screen shake
     this.sceneManager.updateCamera(this.player.position.x, this.player.position.y, dt);
     this.hud.update(this.score, this.player.life, this.player.fuel);
 
@@ -175,7 +177,7 @@ class Game {
     const pCenterY = pPos.y + 1.0;
     const pRadius = 0.45;
 
-    // A. Player vs Obstacles (Gears, Pistons, Tubes)
+    // A. Player vs Mechanical Obstacles (Gears, Pistons, Tubes)
     for (const obs of this.obstacleManager.obstacles) {
       if (!obs.active) continue;
       if (obs.type === ObstacleType.HAZARD_PLATFORM) continue;
@@ -208,13 +210,54 @@ class Game {
       if (hit && this.player.invulnerableTime <= 0) {
         this.player.takeDamage(25);
         this.audioManager.playExplosion();
+        this.sceneManager.triggerShake(0.35, 0.25);
       }
     }
 
-    // B. Lasers in 360° vs Destructible Obstacles
+    // B. Player vs Alien Blob Enemies
+    for (const enemy of this.obstacleManager.enemies) {
+      if (!enemy.active) continue;
+
+      const distSq = (pPos.x - enemy.position.x) ** 2 + (pCenterY - (enemy.position.y + 0.4)) ** 2;
+      const combinedRadius = pRadius + enemy.radius;
+
+      if (distSq < combinedRadius * combinedRadius) {
+        if (this.player.invulnerableTime <= 0) {
+          this.player.takeDamage(20);
+          this.audioManager.playExplosion();
+          this.sceneManager.triggerShake(0.3, 0.2);
+          enemy.velocity.x = (enemy.position.x > pPos.x ? 1 : -1) * 4.0;
+        }
+      }
+    }
+
+    // C. Lasers in 360° vs Destructible Obstacles & Alien Blobs
     for (const laser of this.player.lasers) {
       if (!laser.active) continue;
 
+      // 1. Check against Alien Blob Enemies
+      for (const enemy of this.obstacleManager.enemies) {
+        if (!enemy.active) continue;
+
+        const distSq = (laser.position.x - enemy.position.x) ** 2 + (laser.position.y - (enemy.position.y + 0.4)) ** 2;
+        if (distSq < (enemy.radius + 0.2) ** 2) {
+          laser.active = false;
+          laser.mesh.visible = false;
+          const died = enemy.takeDamage(1);
+          this.sceneManager.triggerShake(0.18, 0.12);
+
+          if (died) {
+            this.audioManager.playExplosion();
+            this.sceneManager.triggerShake(0.28, 0.2);
+            this.score += 300;
+          }
+          break;
+        }
+      }
+
+      if (!laser.active) continue;
+
+      // 2. Check against Plasma Tubes
       for (const obs of this.obstacleManager.obstacles) {
         if (!obs.active || !obs.destructible) continue;
 
@@ -227,9 +270,12 @@ class Game {
           laser.active = false;
           laser.mesh.visible = false;
           obs.health -= 1;
+          this.sceneManager.triggerShake(0.14, 0.1);
+
           if (obs.health <= 0) {
             this.obstacleManager.removeObstacle(obs);
             this.audioManager.playExplosion();
+            this.sceneManager.triggerShake(0.3, 0.22);
             this.score += 250;
           }
           break;
@@ -237,7 +283,7 @@ class Game {
       }
     }
 
-    // C. Player vs Pickups (Fuel & Coins)
+    // D. Player vs Pickups (Fuel & Coins)
     for (const p of this.obstacleManager.pickups) {
       if (!p.active) continue;
 
