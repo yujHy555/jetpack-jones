@@ -143,6 +143,9 @@ export class Player {
   private helmetLedMaterials: THREE.MeshBasicMaterial[] = [];
   private antennaBeaconMat!: THREE.MeshBasicMaterial;
 
+  // Utility Belt Flashing LEDs
+  private beltLedMaterials: THREE.MeshBasicMaterial[] = [];
+
   // Animation Timers & Physics Smoothing
   private animTimer: number = 0;
   private shootTimer: number = 0;
@@ -293,13 +296,89 @@ export class Player {
     this.hipBone.position.set(0, 1.05, 0);
     this.rigRoot.add(this.hipBone);
 
-    // Utility belt and buckle
+    // --------------------------------------------------------
+    // UTILITY BELT & CONSOLE WITH FLASHING LED LIGHTS
+    // --------------------------------------------------------
     const belt = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.14, 0.32), darkHarness);
     this.hipBone.add(belt);
 
-    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.34), chromeMetal);
-    buckle.position.set(0.12, 0, 0);
+    // Chrome Buckle Frame
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.16, 0.18), chromeMetal);
+    buckle.position.set(0.185, 0, 0);
     this.hipBone.add(buckle);
+
+    // Dark Inner Console Panel on Buckle
+    const consolePanel = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.12, 0.14), vintageConsoleMat);
+    consolePanel.position.set(0.20, 0, 0);
+    this.hipBone.add(consolePanel);
+
+    // 4 Flashing LED Lights on Buckle Console (Cyan, Emerald, Amber, Crimson)
+    const beltLedColors = [0x00f5ff, 0x39ff14, 0xffaa00, 0xff1144];
+    const ledPositions = [
+      [0.032, 0.04],   // Top-Left (Cyan)
+      [0.032, -0.04],  // Top-Right (Emerald)
+      [-0.032, 0.04],  // Bottom-Left (Amber)
+      [-0.032, -0.04], // Bottom-Right (Crimson)
+    ];
+
+    for (let i = 0; i < 4; i++) {
+      const ledMat = new THREE.MeshBasicMaterial({ color: beltLedColors[i] });
+      this.beltLedMaterials.push(ledMat);
+
+      const ledMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.016, 8, 8),
+        ledMat
+      );
+      const [ly, lz] = ledPositions[i];
+      ledMesh.position.set(0.212, ly, lz);
+      this.hipBone.add(ledMesh);
+
+      // Subtle metallic bezel around each LED
+      const bezel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.020, 0.020, 0.006, 8),
+        chromeMetal
+      );
+      bezel.rotation.z = Math.PI / 2;
+      bezel.position.set(0.208, ly, lz);
+      this.hipBone.add(bezel);
+    }
+
+    // Segmented Side Utility Cargo Pouches with Chrome Clasps
+    for (const zSide of [0.18, -0.18]) {
+      const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.07), darkHarness);
+      pouch.position.set(0.02, -0.01, zSide);
+      this.hipBone.add(pouch);
+
+      // Flap with white stripe detail
+      const flap = createStripeWithBorder(0.022, 0.08, 0.008, 0.005);
+      flap.rotation.y = zSide > 0 ? Math.PI / 2 : -Math.PI / 2;
+      flap.position.set(0.02, 0.02, zSide + (zSide > 0 ? 0.038 : -0.038));
+      this.hipBone.add(flap);
+
+      const clasp = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.025, 0.02), chromeMetal);
+      clasp.position.set(0.02, -0.025, zSide + (zSide > 0 ? 0.04 : -0.04));
+      this.hipBone.add(clasp);
+    }
+
+    // Rear Cylindrical Plasma Energy Canisters
+    for (const zCanister of [0.13, -0.13]) {
+      const canister = new THREE.Group();
+      canister.position.set(-0.19, -0.02, zCanister);
+      this.hipBone.add(canister);
+
+      const canBody = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.025, 0.025, 0.12, 10),
+        chromeMetal
+      );
+      canister.add(canBody);
+
+      // Glowing Cyan Plasma Core Window
+      const canCore = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.027, 0.027, 0.05, 10),
+        cyanStripe
+      );
+      canister.add(canCore);
+    }
 
     // Torso Bone
     this.torsoBone = new THREE.Group();
@@ -1062,8 +1141,8 @@ export class Player {
       }
       relAngle = THREE.MathUtils.euclideanModulo(relAngle + Math.PI, Math.PI * 2) - Math.PI;
 
-      // Aim limits: stops high before intersecting helmet dome (~61°), generous downward (~-72°)
-      const maxUpwardAngle = Math.PI * 0.34;
+      // Aim limits: rotated slightly less up (~45° to stay comfortably clear of helmet), generous downward (~-72°)
+      const maxUpwardAngle = Math.PI * 0.25;
       const maxDownwardAngle = -Math.PI * 0.40;
       const clampedRel = THREE.MathUtils.clamp(relAngle, maxDownwardAngle, maxUpwardAngle);
 
@@ -1171,8 +1250,8 @@ export class Player {
       }
       relAngle = THREE.MathUtils.euclideanModulo(relAngle + Math.PI, Math.PI * 2) - Math.PI;
 
-      // Stops high before intersecting helmet dome (~61°), generous downward (~-72°)
-      const maxUpwardAngle = Math.PI * 0.34;
+      // Stops comfortably below helmet dome (~45°), generous downward (~-72°)
+      const maxUpwardAngle = Math.PI * 0.25;
       const maxDownwardAngle = -Math.PI * 0.40;
       const clampedRel = THREE.MathUtils.clamp(relAngle, maxDownwardAngle, maxUpwardAngle);
 
@@ -1262,11 +1341,6 @@ export class Player {
       const impactForce = THREE.MathUtils.clamp(-prevVy / 13.0, 0.25, 1.0);
       this.landingSuspension = impactForce;
       this.emitDust(this.position.x, this.position.y, Math.floor(4 + impactForce * 6));
-
-      // Hard high fall impact -> trigger acrobatic stunt ragdoll tumble-roll forward!
-      if (prevVy < -11.5) {
-        this.triggerStuntRagdoll(this.facingRight ? 4.5 : -4.5, 3.2);
-      }
     }
     this.prevVelocityY = this.velocity.y;
     this.wasGroundedLastFrame = this.isGrounded;
@@ -1287,6 +1361,7 @@ export class Player {
     this.animateSkeletalRig(dt, hasMouseTarget);
     this.updateJetpackVFX(dt, isActuallyJetpacking);
     this.updateHelmetLEDs(dt);
+    this.updateBeltLEDs(dt);
     this.updateBubbleBurstVFX(dt);
     this.updateParticles(dt);
     this.updateLasers(dt);
@@ -1613,8 +1688,8 @@ export class Player {
       }
       localAngle = THREE.MathUtils.euclideanModulo(localAngle + Math.PI, Math.PI * 2) - Math.PI;
 
-      // Safe forward arc limit: stops high before intersecting helmet dome (~61°), generous downward (~-72°)
-      const maxUpwardAngle = Math.PI * 0.34;
+      // Safe forward arc limit: rotated slightly less up (~45° to stay comfortably clear of helmet), generous downward (~-72°)
+      const maxUpwardAngle = Math.PI * 0.25;
       const maxDownwardAngle = -Math.PI * 0.40;
       const clampedLocal = THREE.MathUtils.clamp(localAngle, maxDownwardAngle, maxUpwardAngle);
 
@@ -1653,36 +1728,51 @@ export class Player {
     }
 
     // ------------------------------------------------------
-    // G. PHYSICAL RAGDOLL REACTION (Acrobatic Tumble Spin & Joint Flail)
+    // G. PHYSICAL RAGDOLL HIT REACTION (Joint Flailing on Damage)
     // ------------------------------------------------------
+    this.rigRoot.rotation.z = 0; // Rig root stays firmly upright — NO ROTATION AROUND FEET!
+
     if (this.ragdollTimer > 0) {
       this.ragdollTimer -= dt;
-      const prog = this.ragdollTimer / 0.65;
+      const prog = this.ragdollTimer / 0.45;
 
-      // Acrobatic 360° stunt spin roll!
-      this.rigRoot.rotation.z += (this.ragdollImpulseX > 0 ? -1 : 1) * dt * 11.0;
-
-      // Head snaps back with neck inertia
+      // Head snaps back with neck-whip
       this.headBone.rotation.z = -0.55 * prog;
 
-      // Torso twists
+      // Torso recoils and twists naturally from center
       this.torsoBone.rotation.z += (this.ragdollImpulseX > 0 ? -0.45 : 0.45) * prog;
 
       // Arms fling outwards erratically
-      this.frontArmBone.rotation.z += -0.85 * prog;
-      this.frontForearmBone.rotation.z += 0.65 * prog;
-      this.backArmBone.rotation.z += 0.95 * prog;
-      this.backForearmBone.rotation.z += 0.55 * prog;
+      this.frontArmBone.rotation.z += -0.75 * prog;
+      this.frontForearmBone.rotation.z += 0.50 * prog;
+      this.backArmBone.rotation.z += 0.85 * prog;
 
-      // Legs kick and bicycle in the air
-      this.frontThighBone.rotation.z += 0.85 * prog;
-      this.frontShinBone.rotation.z -= 0.75 * prog;
-      this.backThighBone.rotation.z -= 0.65 * prog;
-      this.backShinBone.rotation.z -= 0.85 * prog;
-    } else {
-      // Spring back to upright standing rotation
-      this.rigRoot.rotation.z = THREE.MathUtils.lerp(this.rigRoot.rotation.z, 0, dt * 14);
+      // Legs kick and buckle
+      this.frontThighBone.rotation.z += 0.65 * prog;
+      this.frontShinBone.rotation.z -= 0.55 * prog;
+      this.backThighBone.rotation.z += -0.45 * prog;
     }
+  }
+
+  private updateBeltLEDs(dt: number) {
+    if (this.beltLedMaterials.length < 4) return;
+    const time = this.animTimer;
+
+    // 0: Pulsing Cyan Plasma LED (high-tech sensor scan)
+    const cyanOn = Math.sin(time * 14.0) > 0.0;
+    this.beltLedMaterials[0].color.setHex(cyanOn ? 0x00f5ff : 0x002233);
+
+    // 1: Heartbeat Emerald Green LED (life support / fuel pressure)
+    const greenPulse = Math.sin(time * 7.5) > 0.2;
+    this.beltLedMaterials[1].color.setHex(greenPulse ? 0x39ff14 : 0x073303);
+
+    // 2: Double-strobe Amber LED (shield battery status)
+    const amberBlink = (Math.sin(time * 18.0) + Math.sin(time * 9.0)) > 0.35;
+    this.beltLedMaterials[2].color.setHex(amberBlink ? 0xffaa00 : 0x331a00);
+
+    // 3: Alternating Crimson LED (hazard proximity tracker)
+    const redAlert = Math.sin(time * 11.0 + Math.PI * 0.5) > 0.15;
+    this.beltLedMaterials[3].color.setHex(redAlert ? 0xff1144 : 0x330008);
   }
 
   private updateHelmetLEDs(dt: number) {

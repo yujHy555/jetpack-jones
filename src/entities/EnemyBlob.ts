@@ -152,7 +152,7 @@ export class EnemyBlob {
 
     // Large Glossy White Sclera
     const eyeWhite = new THREE.Mesh(
-      new THREE.SphereGeometry(0.20, 16, 16),
+      new THREE.SphereGeometry(0.20, 18, 18),
       new THREE.MeshStandardMaterial({
         color: 0xffffff,
         roughness: 0.1,
@@ -161,34 +161,35 @@ export class EnemyBlob {
     );
     this.eyeCenterGroup.add(eyeWhite);
 
-    // Googly Pupil Group (Loose disc with specular glint!)
+    // Googly Pupil Group (Sitting proudly on front surface facing camera Z > 0!)
     this.centerGooglyPupil = new THREE.Group();
-    this.centerGooglyPupil.position.set(0.12, 0, 0);
+    this.centerGooglyPupil.position.set(0, 0, 0.202);
     this.eyeCenterGroup.add(this.centerGooglyPupil);
 
-    const mainPupilMat = new THREE.MeshBasicMaterial({ color: 0x0a0a0a });
+    const mainPupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
     const shineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
+    // Deep Solid Pure Black Googly Pupil Disc
     const centerPupilDisc = new THREE.Mesh(
-      new THREE.SphereGeometry(0.09, 12, 12),
+      new THREE.SphereGeometry(0.095, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.52),
       mainPupilMat
     );
-    centerPupilDisc.scale.set(0.6, 1.0, 1.0);
+    centerPupilDisc.rotation.x = Math.PI / 2; // Face forward towards camera!
     this.centerGooglyPupil.add(centerPupilDisc);
 
-    // Cute White Specular Reflection Pip on Googly Eye
+    // Cute White Specular Reflection Pips on Googly Eye
     const centerShinePip = new THREE.Mesh(
-      new THREE.SphereGeometry(0.028, 8, 8),
+      new THREE.SphereGeometry(0.032, 8, 8),
       shineMat
     );
-    centerShinePip.position.set(0.05, 0.04, 0.04);
+    centerShinePip.position.set(0.035, 0.035, 0.04);
     this.centerGooglyPupil.add(centerShinePip);
 
     const centerShinePipSmall = new THREE.Mesh(
-      new THREE.SphereGeometry(0.015, 6, 6),
+      new THREE.SphereGeometry(0.016, 6, 6),
       shineMat
     );
-    centerShinePipSmall.position.set(0.05, -0.03, -0.03);
+    centerShinePipSmall.position.set(-0.028, -0.028, 0.03);
     this.centerGooglyPupil.add(centerShinePipSmall);
 
     // 4. Dual Twitching Satellite Stalk Eyes with Googly Pupils
@@ -205,7 +206,7 @@ export class EnemyBlob {
 
       // Eyeball Sclera
       const miniEye = new THREE.Mesh(
-        new THREE.SphereGeometry(0.08, 12, 12),
+        new THREE.SphereGeometry(0.08, 14, 14),
         new THREE.MeshStandardMaterial({
           color: 0xffffff,
           roughness: 0.1,
@@ -214,23 +215,23 @@ export class EnemyBlob {
       miniEye.position.set(-0.04, 0.22, 0);
       stalkGroup.add(miniEye);
 
-      // Stalk Googly Pupil Group
+      // Stalk Googly Pupil Group (Facing camera!)
       const stalkPupilGroup = new THREE.Group();
-      stalkPupilGroup.position.set(0.04, 0, 0);
+      stalkPupilGroup.position.set(0, 0, 0.082);
       miniEye.add(stalkPupilGroup);
 
       const miniPupil = new THREE.Mesh(
-        new THREE.SphereGeometry(0.04, 8, 8),
+        new THREE.SphereGeometry(0.042, 12, 12, 0, Math.PI * 2, 0, Math.PI * 0.52),
         mainPupilMat
       );
-      miniPupil.scale.set(0.5, 1.0, 1.0);
+      miniPupil.rotation.x = Math.PI / 2;
       stalkPupilGroup.add(miniPupil);
 
       const miniPip = new THREE.Mesh(
-        new THREE.SphereGeometry(0.012, 6, 6),
+        new THREE.SphereGeometry(0.014, 6, 6),
         shineMat
       );
-      miniPip.position.set(0.02, 0.015, 0.015);
+      miniPip.position.set(0.015, 0.015, 0.02);
       stalkPupilGroup.add(miniPip);
 
       this.group.add(stalkGroup);
@@ -462,8 +463,11 @@ export class EnemyBlob {
       this.centerPupilVel.y *= -0.55;
     }
 
-    // Apply googly pupil transform
-    this.centerGooglyPupil.position.set(0.12, this.centerPupilPos.y, this.centerPupilPos.x);
+    // Position center googly pupil on the outer visible hemisphere (Z > 0)
+    const px = this.centerPupilPos.x;
+    const py = this.centerPupilPos.y;
+    const pz = Math.sqrt(Math.max(0.02, 0.205 * 0.205 - px * px - py * py));
+    this.centerGooglyPupil.position.set(px, py, pz);
 
     // Stalk Eyes loose spring wobble
     const twitchL = Math.sin(time * 7.5) * 0.18 + Math.cos(time * 13.0) * 0.08;
@@ -473,11 +477,13 @@ export class EnemyBlob {
 
     this.stalkPupilPosL.x = THREE.MathUtils.lerp(this.stalkPupilPosL.x, targetPx * 0.45, dt * 14);
     this.stalkPupilPosL.y = THREE.MathUtils.lerp(this.stalkPupilPosL.y, targetPy * 0.45, dt * 14);
-    this.stalkGooglyPupilL.position.set(0.04, this.stalkPupilPosL.y, this.stalkPupilPosL.x);
+    const stalkZ_L = Math.sqrt(Math.max(0.005, 0.084 * 0.084 - this.stalkPupilPosL.x ** 2 - this.stalkPupilPosL.y ** 2));
+    this.stalkGooglyPupilL.position.set(this.stalkPupilPosL.x, this.stalkPupilPosL.y, stalkZ_L);
 
     this.stalkPupilPosR.x = THREE.MathUtils.lerp(this.stalkPupilPosR.x, targetPx * 0.45, dt * 14);
     this.stalkPupilPosR.y = THREE.MathUtils.lerp(this.stalkPupilPosR.y, targetPy * 0.45, dt * 14);
-    this.stalkGooglyPupilR.position.set(0.04, this.stalkPupilPosR.y, this.stalkPupilPosR.x);
+    const stalkZ_R = Math.sqrt(Math.max(0.005, 0.084 * 0.084 - this.stalkPupilPosR.x ** 2 - this.stalkPupilPosR.y ** 2));
+    this.stalkGooglyPupilR.position.set(this.stalkPupilPosR.x, this.stalkPupilPosR.y, stalkZ_R);
 
     // 2. Identify Current Supporting Surface
     let surfaceY = GROUND_Y;

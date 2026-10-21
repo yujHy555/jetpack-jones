@@ -28,6 +28,10 @@ class Game {
   private score: number = 0;
   private clock: THREE.Clock;
 
+  // Lock-on Target Tracking System
+  private lockedEnemy: any = null;
+  private lockOnMesh!: THREE.Group;
+
   constructor() {
     this.sceneManager = new SceneManager();
     this.inputManager = new InputManager();
@@ -41,6 +45,7 @@ class Game {
     this.parallaxLayers = new ParallaxLayers(this.sceneManager.scene);
     this.levelGenerator = new LevelGenerator(this.obstacleManager);
 
+    this.setupLockOnSystem();
     this.setupUIEvents();
     (window as any).__JETPACK_GAME__ = this;
     this.hud.showStartScreen(() => this.startGame());
@@ -93,6 +98,8 @@ class Game {
     this.inputManager.update();
     // Project mouse cursor to 3D world plane Z=0 for 360° aiming
     this.inputManager.updateAimWorldTarget(this.sceneManager.camera);
+    // Update Smart Target Lock-On System
+    this.updateLockOnSystem(dt, totalTime);
 
     if (this.state === GameState.PLAYING) {
       // 1. Process 360° Shoot Trigger
@@ -324,6 +331,111 @@ class Game {
           this.score += 500;
         }
       }
+    }
+  }
+
+  /**
+   * High-Tech Sci-Fi Lock-On Reticle System
+   * Features:
+   * - Outer neon amber tracking ring
+   * - Inner pulsating diamond reticle
+   * - 4 corner targeting brackets
+   */
+  private setupLockOnSystem() {
+    this.lockOnMesh = new THREE.Group();
+    this.lockOnMesh.visible = false;
+    this.sceneManager.scene.add(this.lockOnMesh);
+
+    // 1. Outer Pulsating Neon Amber Ring
+    const outerRingGeo = new THREE.RingGeometry(0.68, 0.74, 32);
+    const outerRingMat = new THREE.MeshBasicMaterial({
+      color: 0xff3300,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const outerRing = new THREE.Mesh(outerRingGeo, outerRingMat);
+    this.lockOnMesh.add(outerRing);
+
+    // 2. Inner Rapid Pulsing Circle
+    const innerRingGeo = new THREE.RingGeometry(0.46, 0.50, 24);
+    const innerRingMat = new THREE.MeshBasicMaterial({
+      color: 0xffaa00,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.85,
+    });
+    const innerRing = new THREE.Mesh(innerRingGeo, innerRingMat);
+    this.lockOnMesh.add(innerRing);
+
+    // 3. Four Sci-Fi Crosshair Corner Brackets
+    const bracketGeoH = new THREE.BoxGeometry(0.20, 0.035, 0.02);
+    const bracketGeoV = new THREE.BoxGeometry(0.035, 0.20, 0.02);
+    const bracketMat = new THREE.MeshBasicMaterial({ color: 0x00f5ff });
+
+    const bracketPositions = [
+      [0.60, 0.60],
+      [-0.60, 0.60],
+      [0.60, -0.60],
+      [-0.60, -0.60],
+    ];
+
+    for (const [bx, by] of bracketPositions) {
+      const bH = new THREE.Mesh(bracketGeoH, bracketMat);
+      bH.position.set(bx, by, 0);
+      this.lockOnMesh.add(bH);
+
+      const bV = new THREE.Mesh(bracketGeoV, bracketMat);
+      bV.position.set(bx, by, 0);
+      this.lockOnMesh.add(bV);
+    }
+  }
+
+  /**
+   * Smart Lock-On Targeting Detection & Position Snapping
+   */
+  private updateLockOnSystem(dt: number, totalTime: number) {
+    if (this.state !== GameState.PLAYING || !this.inputManager.hasMouse) {
+      if (this.lockOnMesh) this.lockOnMesh.visible = false;
+      this.lockedEnemy = null;
+      document.getElementById('reticle')?.classList.remove('locked');
+      return;
+    }
+
+    const mousePos = this.inputManager.mouseWorldTarget;
+    let closestEnemy: any = null;
+    let closestDist = 2.5; // Lock-on acquisition radius
+
+    for (const enemy of this.obstacleManager.enemies) {
+      if (!enemy.active) continue;
+      const targetPos = new THREE.Vector3(enemy.position.x, enemy.position.y + 0.45, 0);
+      const d = mousePos.distanceTo(targetPos);
+      if (d < closestDist) {
+        closestDist = d;
+        closestEnemy = enemy;
+      }
+    }
+
+    if (closestEnemy) {
+      this.lockedEnemy = closestEnemy;
+      const enemyCenter = new THREE.Vector3(closestEnemy.position.x, closestEnemy.position.y + 0.45, 0);
+
+      // Snap mouse aiming target directly to locked enemy center!
+      this.inputManager.mouseWorldTarget.copy(enemyCenter);
+
+      // Position and animate pulsating lock-on circle
+      this.lockOnMesh.position.set(enemyCenter.x, enemyCenter.y, 0.40);
+      this.lockOnMesh.visible = true;
+
+      const pulse = 1.0 + Math.sin(totalTime * 14.0) * 0.12;
+      this.lockOnMesh.scale.set(pulse, pulse, 1.0);
+      this.lockOnMesh.rotation.z += dt * 2.8;
+
+      document.getElementById('reticle')?.classList.add('locked');
+    } else {
+      this.lockedEnemy = null;
+      this.lockOnMesh.visible = false;
+      document.getElementById('reticle')?.classList.remove('locked');
     }
   }
 }
