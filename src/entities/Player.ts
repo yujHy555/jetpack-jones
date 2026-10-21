@@ -151,6 +151,14 @@ export class Player {
   private wasGroundedLastFrame: boolean = true;
   private headFollowLag: number = 0;
 
+  // Idle Impatient Pose & Foot Tap State
+  private idleTimer: number = 0;
+  private prevTapPhase: number = 0;
+
+  // Enhanced Procedural Landing Suspension & Knee Flexion Physics
+  private landingSuspension: number = 0;
+  private prevVelocityY: number = 0;
+
   // VFX Pools
   private vfxGroup: THREE.Group;
   private smokePuffs: SmokePuff[] = [];
@@ -246,6 +254,38 @@ export class Player {
       metalness: 0.10,
     });
 
+    // CRISP WHITE STRIPES WITH THIN BLACK STROKES ON SUIT DESIGN
+    const thinBlackStrokeMat = new THREE.MeshStandardMaterial({
+      color: 0x0a0a0c,
+      roughness: 0.65,
+      metalness: 0.20,
+    });
+    const stripeWhiteMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.25,
+      metalness: 0.10,
+    });
+
+    const createStripeWithBorder = (
+      width: number,
+      height: number,
+      depth: number,
+      borderPx: number = 0.008
+    ): THREE.Group => {
+      const g = new THREE.Group();
+      const blackBack = new THREE.Mesh(
+        new THREE.BoxGeometry(width + borderPx * 2, height, depth),
+        thinBlackStrokeMat
+      );
+      g.add(blackBack);
+      const whiteFore = new THREE.Mesh(
+        new THREE.BoxGeometry(width, height, depth + 0.002),
+        stripeWhiteMat
+      );
+      g.add(whiteFore);
+      return g;
+    };
+
     // --------------------------------------------------------
     // 1. SKELETAL RIG HIERARCHY
     // --------------------------------------------------------
@@ -269,6 +309,26 @@ export class Player {
     const torso = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.55, 0.3), suitOrange);
     torso.position.set(0, 0.28, 0);
     this.torsoBone.add(torso);
+
+    // Front Chest Dual White Stripes with Thin Black Borders
+    const stripeChestL = createStripeWithBorder(0.026, 0.48, 0.010, 0.007);
+    stripeChestL.position.set(0.171, 0.28, 0.055);
+    this.torsoBone.add(stripeChestL);
+
+    const stripeChestR = createStripeWithBorder(0.026, 0.48, 0.010, 0.007);
+    stripeChestR.position.set(0.171, 0.28, -0.055);
+    this.torsoBone.add(stripeChestR);
+
+    // Torso Side Seam White Stripes with Thin Black Borders
+    const stripeSideL = createStripeWithBorder(0.032, 0.46, 0.010, 0.007);
+    stripeSideL.rotation.y = Math.PI / 2;
+    stripeSideL.position.set(0, 0.28, 0.151);
+    this.torsoBone.add(stripeSideL);
+
+    const stripeSideR = createStripeWithBorder(0.032, 0.46, 0.010, 0.007);
+    stripeSideR.rotation.y = -Math.PI / 2;
+    stripeSideR.position.set(0, 0.28, -0.151);
+    this.torsoBone.add(stripeSideR);
 
     // Shoulder Harness
     const harnessL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.12), darkHarness);
@@ -409,6 +469,12 @@ export class Player {
     backThighMesh.position.set(0, -0.22, 0);
     this.backThighBone.add(backThighMesh);
 
+    // Outer Thigh Racing Stripe with Thin Black Borders
+    const thighStripeBack = createStripeWithBorder(0.028, 0.40, 0.010, 0.007);
+    thighStripeBack.rotation.y = -Math.PI / 2;
+    thighStripeBack.position.set(0, -0.22, -0.071);
+    this.backThighBone.add(thighStripeBack);
+
     this.backShinBone = new THREE.Group();
     this.backShinBone.position.set(0, -0.44, 0);
     this.backThighBone.add(this.backShinBone);
@@ -429,6 +495,12 @@ export class Player {
     const frontThighMesh = new THREE.Mesh(legGeoThigh, suitOrange);
     frontThighMesh.position.set(0, -0.22, 0);
     this.frontThighBone.add(frontThighMesh);
+
+    // Outer Thigh Racing Stripe with Thin Black Borders
+    const thighStripeFront = createStripeWithBorder(0.028, 0.40, 0.010, 0.007);
+    thighStripeFront.rotation.y = Math.PI / 2;
+    thighStripeFront.position.set(0, -0.22, 0.071);
+    this.frontThighBone.add(thighStripeFront);
 
     this.frontShinBone = new THREE.Group();
     this.frontShinBone.position.set(0, -0.44, 0);
@@ -504,6 +576,13 @@ export class Player {
     const frontUpperMesh = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.11, 0.11), suitOrange);
     frontUpperMesh.position.set(0.15, 0, 0);
     this.frontArmBone.add(frontUpperMesh);
+
+    // Outer Arm Racing Stripe with Thin Black Borders
+    const armStripeFront = createStripeWithBorder(0.024, 0.26, 0.010, 0.006);
+    armStripeFront.rotation.y = Math.PI / 2;
+    armStripeFront.rotation.z = Math.PI / 2;
+    armStripeFront.position.set(0.15, 0, 0.056);
+    this.frontArmBone.add(armStripeFront);
 
     // Elbow joint at (0.30, 0, 0) in frontArmBone
     this.frontForearmBone = new THREE.Group();
@@ -635,6 +714,13 @@ export class Player {
     const backUpperMesh = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.11, 0.11), suitOrangeDark);
     backUpperMesh.position.set(0.15, 0, 0);
     this.backArmBone.add(backUpperMesh);
+
+    // Outer Arm Racing Stripe with Thin Black Borders
+    const armStripeBack = createStripeWithBorder(0.024, 0.26, 0.010, 0.006);
+    armStripeBack.rotation.y = -Math.PI / 2;
+    armStripeBack.rotation.z = Math.PI / 2;
+    armStripeBack.position.set(0.15, 0, -0.056);
+    this.backArmBone.add(armStripeBack);
 
     this.backForearmBone = new THREE.Group();
     this.backForearmBone.position.set(0.30, 0, 0);
@@ -976,9 +1062,10 @@ export class Player {
       }
       relAngle = THREE.MathUtils.euclideanModulo(relAngle + Math.PI, Math.PI * 2) - Math.PI;
 
-      // 180° forward arc limit [-86°, +86°]
-      const forwardArcLimit = Math.PI * 0.48;
-      const clampedRel = THREE.MathUtils.clamp(relAngle, -forwardArcLimit, forwardArcLimit);
+      // Aim limits: stops high before intersecting helmet dome (~61°), generous downward (~-72°)
+      const maxUpwardAngle = Math.PI * 0.34;
+      const maxDownwardAngle = -Math.PI * 0.40;
+      const clampedRel = THREE.MathUtils.clamp(relAngle, maxDownwardAngle, maxUpwardAngle);
 
       aimAngle = this.facingRight ? clampedRel : (Math.PI - clampedRel);
     }
@@ -1031,6 +1118,19 @@ export class Player {
     this.isGrounded = false;
   }
 
+  /**
+   * High-Energy Acrobatic Stunt Ragdoll Tumble
+   * Showcases player's joint flailing, 360° stunt tumble roll, and recovery roll!
+   */
+  public triggerStuntRagdoll(impulseX: number = 7.5, impulseY: number = 6.0) {
+    this.ragdollTimer = 0.65;
+    this.ragdollImpulseX = this.facingRight ? 1 : -1;
+    this.velocity.x = this.ragdollImpulseX * impulseX;
+    this.velocity.y = impulseY;
+    this.isGrounded = false;
+    this.emitDust(this.position.x, this.position.y, 8);
+  }
+
   public addFuel(amount: number = 35) {
     this.fuel = Math.min(this.maxFuel, this.fuel + amount);
   }
@@ -1056,7 +1156,7 @@ export class Player {
     // ALWAYS visible — NO FLASHING!
     this.mesh.visible = true;
 
-    // 1. Aim Tracking with 180° Forward Arc Limit
+    // 1. Aim Tracking with Arc Limits (clears helmet dome cleanly)
     if (hasMouseTarget && mouseWorldTarget) {
       const originY = this.position.y + 1.55; // Shoulder height
       const originX = this.position.x;
@@ -1071,9 +1171,10 @@ export class Player {
       }
       relAngle = THREE.MathUtils.euclideanModulo(relAngle + Math.PI, Math.PI * 2) - Math.PI;
 
-      // 180° forward arc limit: strictly within [-86°, +86°] in facing direction
-      const forwardArcLimit = Math.PI * 0.48;
-      const clampedRel = THREE.MathUtils.clamp(relAngle, -forwardArcLimit, forwardArcLimit);
+      // Stops high before intersecting helmet dome (~61°), generous downward (~-72°)
+      const maxUpwardAngle = Math.PI * 0.34;
+      const maxDownwardAngle = -Math.PI * 0.40;
+      const clampedRel = THREE.MathUtils.clamp(relAngle, maxDownwardAngle, maxUpwardAngle);
 
       this.currentAimAngle = this.facingRight ? clampedRel : (Math.PI - clampedRel);
     }
@@ -1129,6 +1230,7 @@ export class Player {
 
     // 5. Floor & Platform Collisions (Exact alignment to GROUND_Y = -3.70)
     const floorY = GROUND_Y;
+    const prevVy = this.velocity.y;
     this.isGrounded = false;
 
     if (this.position.y <= floorY) {
@@ -1155,11 +1257,18 @@ export class Player {
       }
     }
 
-    // Landing Squash
+    // Enhanced Procedural Landing Suspension & Knee Flexion Physics
     if (!this.wasGroundedLastFrame && this.isGrounded) {
-      this.landSquashTimer = 0.16;
-      this.emitDust(this.position.x, this.position.y, 5);
+      const impactForce = THREE.MathUtils.clamp(-prevVy / 13.0, 0.25, 1.0);
+      this.landingSuspension = impactForce;
+      this.emitDust(this.position.x, this.position.y, Math.floor(4 + impactForce * 6));
+
+      // Hard high fall impact -> trigger acrobatic stunt ragdoll tumble-roll forward!
+      if (prevVy < -11.5) {
+        this.triggerStuntRagdoll(this.facingRight ? 4.5 : -4.5, 3.2);
+      }
     }
+    this.prevVelocityY = this.velocity.y;
     this.wasGroundedLastFrame = this.isGrounded;
 
     // 6. State Machine
@@ -1208,13 +1317,16 @@ export class Player {
 
     switch (this.state) {
       // ----------------------------------------------------
-      // A. IDLE
+      // A. IDLE & IMPATIENT FOOT TAP / LOOK AROUND POSE
       // ----------------------------------------------------
       case PlayerState.IDLE: {
+        this.idleTimer += dt;
         const breathe = Math.sin(t * 3.2);
         this.torsoBone.rotation.z = breathe * 0.025;
         this.torsoBone.position.y = 0.1 + breathe * 0.015;
         this.headBone.rotation.z = -breathe * 0.02;
+        this.headBone.rotation.y = 0;
+        this.torsoBone.rotation.y = 0;
         this.jetpackBone.rotation.z = 0;
 
         this.frontThighBone.rotation.z = 0.05;
@@ -1225,14 +1337,51 @@ export class Player {
         this.backShinBone.rotation.z = -0.05;
         this.backFootBone.rotation.z = 0.0;
 
-        // Left arm has full natural idle breathing animation
-        this.backArmBone.rotation.z = -0.55 + Math.sin(t * 3.2) * 0.04;
-        this.backForearmBone.rotation.z = 0.45;
+        // Left arm hangs relaxed and natural BY HIS SIDE by default!
+        this.backArmBone.rotation.z = -1.45 + Math.sin(t * 2.5) * 0.03;
+        this.backForearmBone.rotation.z = 0.14;
+
+        // IMPATIENT IDLE PERSONALITY: Taps foot & looks around after 2 seconds!
+        if (this.idleTimer > 2.0) {
+          const impT = (this.idleTimer - 2.0) % 4.2;
+
+          // Phase 1 (0 to 1.6s): Rhythmic Impatient Foot Tapping
+          if (impT < 1.6) {
+            const tapFreq = 3.0 * Math.PI * 2; // ~3 taps/sec
+            const tapSin = Math.sin(impT * tapFreq);
+            const tapLift = Math.max(0, tapSin);
+            this.frontFootBone.rotation.z = tapLift * 0.45; // Toe snaps up and down
+            this.frontShinBone.rotation.z = -0.05 - tapLift * 0.08;
+            this.frontThighBone.rotation.z = 0.05 + tapLift * 0.04;
+            this.hipBone.position.x = -0.02; // Weight shift onto back foot
+
+            // Audible boot tap on down-stroke
+            if (tapSin < 0 && this.prevTapPhase >= 0) {
+              this.onFootstep?.();
+            }
+            this.prevTapPhase = tapSin;
+          } else {
+            this.prevTapPhase = 1;
+            this.hipBone.position.x = 0;
+          }
+
+          // Phase 2 (1.6 to 3.4s): Impatient Look Around (Where are the aliens?)
+          if (impT >= 1.6 && impT < 3.4) {
+            const lookProg = (impT - 1.6) / 1.8;
+            const lookAngle = Math.sin(lookProg * Math.PI * 2) * 0.55;
+            this.headBone.rotation.y = lookAngle; // Head turns left then right
+            this.headBone.rotation.z = 0.10 + Math.sin(lookProg * Math.PI * 4) * 0.08;
+            this.torsoBone.rotation.y = lookAngle * 0.25;
+          } else if (impT >= 3.4) {
+            this.headBone.rotation.y = 0;
+            this.torsoBone.rotation.y = 0;
+          }
+        }
 
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          // Right shooting arm rests in ready pistol carry position at waist
-          this.frontArmBone.rotation.z = -0.55;
-          this.frontForearmBone.rotation.z = 0.40;
+          // Right shooting arm rests naturally by his side with pistol carried at hip
+          this.frontArmBone.rotation.z = -1.35;
+          this.frontForearmBone.rotation.z = 0.22;
         }
         break;
       }
@@ -1241,6 +1390,9 @@ export class Player {
       // B. WALK
       // ----------------------------------------------------
       case PlayerState.WALK: {
+        this.idleTimer = 0;
+        this.headBone.rotation.y = 0;
+        this.torsoBone.rotation.y = 0;
         const walkFreq = 8.5;
         const phase = t * walkFreq;
 
@@ -1263,21 +1415,22 @@ export class Player {
         const frontStride = Math.sin(phase);
         const backStride = Math.sin(phase + Math.PI);
 
+        // Enhanced leg & knee bend kinematics
         this.frontThighBone.rotation.z = frontStride * 0.55;
-        this.frontShinBone.rotation.z = frontStride < 0 ? -Math.abs(frontStride) * 0.85 : -0.1;
-        this.frontFootBone.rotation.z = frontStride * 0.2;
+        this.frontShinBone.rotation.z = frontStride < 0 ? -Math.abs(frontStride) * 0.95 : -0.08;
+        this.frontFootBone.rotation.z = frontStride * 0.22;
 
         this.backThighBone.rotation.z = backStride * 0.55;
-        this.backShinBone.rotation.z = backStride < 0 ? -Math.abs(backStride) * 0.85 : -0.1;
-        this.backFootBone.rotation.z = backStride * 0.2;
+        this.backShinBone.rotation.z = backStride < 0 ? -Math.abs(backStride) * 0.95 : -0.08;
+        this.backFootBone.rotation.z = backStride * 0.22;
 
-        // Left arm has full natural walking animation (counter-swing to stride)
-        this.backArmBone.rotation.z = -0.45 + frontStride * 0.65;
-        this.backForearmBone.rotation.z = 0.45 + Math.abs(frontStride) * 0.25;
+        // Left arm has full natural walking animation (centered by his side)
+        this.backArmBone.rotation.z = -1.42 + frontStride * 0.45;
+        this.backForearmBone.rotation.z = 0.18 + Math.abs(frontStride) * 0.20;
 
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = -0.50 + backStride * 0.20;
-          this.frontForearmBone.rotation.z = 0.35;
+          this.frontArmBone.rotation.z = -1.32 + backStride * 0.35;
+          this.frontForearmBone.rotation.z = 0.24;
         }
         break;
       }
@@ -1286,6 +1439,9 @@ export class Player {
       // C. RUN
       // ----------------------------------------------------
       case PlayerState.RUN: {
+        this.idleTimer = 0;
+        this.headBone.rotation.y = 0;
+        this.torsoBone.rotation.y = 0;
         const runFreq = 14.0;
         const phase = t * runFreq;
 
@@ -1308,21 +1464,22 @@ export class Player {
         const frontRun = Math.sin(phase);
         const backRun = Math.sin(phase + Math.PI);
 
+        // Athletic sprinting knee bend & push-off
         this.frontThighBone.rotation.z = frontRun * 0.82;
-        this.frontShinBone.rotation.z = frontRun < 0 ? -Math.abs(frontRun) * 1.25 : -0.1;
+        this.frontShinBone.rotation.z = frontRun < 0 ? -Math.abs(frontRun) * 1.35 : -0.1;
         this.frontFootBone.rotation.z = frontRun * 0.35;
 
         this.backThighBone.rotation.z = backRun * 0.82;
-        this.backShinBone.rotation.z = backRun < 0 ? -Math.abs(backRun) * 1.25 : -0.1;
+        this.backShinBone.rotation.z = backRun < 0 ? -Math.abs(backRun) * 1.35 : -0.1;
         this.backFootBone.rotation.z = backRun * 0.35;
 
-        // Left arm has full natural running animation (energetic pumping motion)
-        this.backArmBone.rotation.z = -0.30 + frontRun * 0.95;
-        this.backForearmBone.rotation.z = 0.65 + Math.abs(frontRun) * 0.35;
+        // Left arm has full natural running pump (centered at his side)
+        this.backArmBone.rotation.z = -1.18 + frontRun * 0.65;
+        this.backForearmBone.rotation.z = 0.65;
 
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = -0.40 + backRun * 0.25;
-          this.frontForearmBone.rotation.z = 0.45;
+          this.frontArmBone.rotation.z = -1.15 + backRun * 0.45;
+          this.frontForearmBone.rotation.z = 0.55;
         }
 
         if (Math.abs(frontRun) > 0.9) {
@@ -1335,6 +1492,9 @@ export class Player {
       // D. JUMP & FALL
       // ----------------------------------------------------
       case PlayerState.JUMP: {
+        this.idleTimer = 0;
+        this.headBone.rotation.y = 0;
+        this.torsoBone.rotation.y = 0;
         this.torsoBone.rotation.z = -0.06;
         this.headBone.rotation.z = 0.12;
         this.jetpackBone.rotation.z = 0;
@@ -1347,36 +1507,39 @@ export class Player {
         this.backShinBone.rotation.z = -0.75;
         this.backFootBone.rotation.z = 0.25;
 
-        // Left arm has full natural jumping animation (dynamic aerial balance)
-        this.backArmBone.rotation.z = -0.65;
-        this.backForearmBone.rotation.z = 0.55;
+        // Left arm dynamic stabilization (by side)
+        this.backArmBone.rotation.z = -1.30;
+        this.backForearmBone.rotation.z = 0.28;
 
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = -0.30;
-          this.frontForearmBone.rotation.z = 0.35;
+          this.frontArmBone.rotation.z = -1.25;
+          this.frontForearmBone.rotation.z = 0.30;
         }
         break;
       }
 
       case PlayerState.FALL: {
+        this.idleTimer = 0;
+        this.headBone.rotation.y = 0;
+        this.torsoBone.rotation.y = 0;
         this.torsoBone.rotation.z = 0.05;
         this.headBone.rotation.z = -0.06;
         this.jetpackBone.rotation.z = 0;
 
         this.frontThighBone.rotation.z = 0.12;
-        this.frontShinBone.rotation.z = -0.2;
+        this.frontShinBone.rotation.z = -0.25;
         this.frontFootBone.rotation.z = -0.25;
 
         this.backThighBone.rotation.z = -0.08;
-        this.backShinBone.rotation.z = -0.2;
+        this.backShinBone.rotation.z = -0.25;
         this.backFootBone.rotation.z = -0.25;
 
-        // Left arm dynamic fall balance
-        this.backArmBone.rotation.z = -0.45;
-        this.backForearmBone.rotation.z = 0.35;
+        // Left arm dynamic stabilization (by side)
+        this.backArmBone.rotation.z = -1.30;
+        this.backForearmBone.rotation.z = 0.28;
 
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = -0.40;
+          this.frontArmBone.rotation.z = -1.25;
           this.frontForearmBone.rotation.z = 0.30;
         }
         break;
@@ -1386,6 +1549,9 @@ export class Player {
       // E. JETPACK FLIGHT POSE (Flames shoot safely clear of legs)
       // ----------------------------------------------------
       case PlayerState.JETPACK: {
+        this.idleTimer = 0;
+        this.headBone.rotation.y = 0;
+        this.torsoBone.rotation.y = 0;
         const forwardLean = -0.16 - (this.velocity.x / 11.0) * 0.18;
         this.torsoBone.rotation.z = THREE.MathUtils.lerp(
           this.torsoBone.rotation.z,
@@ -1407,12 +1573,12 @@ export class Player {
         this.backShinBone.rotation.z = -0.78;
         this.backFootBone.rotation.z = 0.22;
 
-        // Left arm flight stabilization
-        this.backArmBone.rotation.z = -0.45;
-        this.backForearmBone.rotation.z = 0.65;
+        // Left arm flight stabilization (by side)
+        this.backArmBone.rotation.z = -1.35;
+        this.backForearmBone.rotation.z = 0.35;
 
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = -0.25;
+          this.frontArmBone.rotation.z = -1.25;
           this.frontForearmBone.rotation.z = 0.35;
         }
         break;
@@ -1420,7 +1586,25 @@ export class Player {
     }
 
     // ------------------------------------------------------
-    // F. RIGHT SHOOTING ARM 180° FORWARD ARC & NATURAL ELBOW FLEXION
+    // PROCEDURAL LANDING SUSPENSION & KNEE FLEXION KINEMATICS
+    // ------------------------------------------------------
+    if (this.landingSuspension > 0.001) {
+      this.landingSuspension = THREE.MathUtils.damp(this.landingSuspension, 0, 10.0, dt);
+      const crouch = this.landingSuspension;
+      // Dynamic pelvis dip
+      this.hipBone.position.y -= crouch * 0.22;
+      // Inverse kinematic knee shock absorption:
+      this.frontThighBone.rotation.z += crouch * 0.52;
+      this.frontShinBone.rotation.z -= crouch * 1.05;
+      this.frontFootBone.rotation.z += crouch * 0.53;
+
+      this.backThighBone.rotation.z += crouch * 0.52;
+      this.backShinBone.rotation.z -= crouch * 1.05;
+      this.backFootBone.rotation.z += crouch * 0.53;
+    }
+
+    // ------------------------------------------------------
+    // F. RIGHT SHOOTING ARM ARC CLAMP & NATURAL ELBOW FLEXION
     // ------------------------------------------------------
     if (hasMouseTarget || this.shootTimer > 0) {
       let localAngle = this.currentAimAngle;
@@ -1429,15 +1613,15 @@ export class Player {
       }
       localAngle = THREE.MathUtils.euclideanModulo(localAngle + Math.PI, Math.PI * 2) - Math.PI;
 
-      // 180° forward arc limit [-86°, +86°]: strictly prevents flipping 360° backwards!
-      const forwardArcLimit = Math.PI * 0.48;
-      const clampedLocal = THREE.MathUtils.clamp(localAngle, -forwardArcLimit, forwardArcLimit);
+      // Safe forward arc limit: stops high before intersecting helmet dome (~61°), generous downward (~-72°)
+      const maxUpwardAngle = Math.PI * 0.34;
+      const maxDownwardAngle = -Math.PI * 0.40;
+      const clampedLocal = THREE.MathUtils.clamp(localAngle, maxDownwardAngle, maxUpwardAngle);
 
       // Adjust for torso lean
       const aimRotation = clampedLocal - this.torsoBone.rotation.z;
 
-      // Natural, correct human elbow flexion in all directions:
-      // Forearm flexes comfortably inward/underneath by 0.14 rad
+      // Natural human elbow flexion in all directions:
       const elbowFlex = 0.14;
       this.frontArmBone.rotation.z = THREE.MathUtils.lerp(
         this.frontArmBone.rotation.z,
@@ -1449,7 +1633,6 @@ export class Player {
         elbowFlex,
         dt * 28
       );
-      // NOTE: Left arm (backArmBone) is completely free and retains its walking/running/jumping animations!
     }
 
     // Recoil Kickback Shock on firing
@@ -1470,27 +1653,35 @@ export class Player {
     }
 
     // ------------------------------------------------------
-    // G. PHYSICAL RAGDOLL HIT REACTION (Joint Flailing on Damage)
+    // G. PHYSICAL RAGDOLL REACTION (Acrobatic Tumble Spin & Joint Flail)
     // ------------------------------------------------------
     if (this.ragdollTimer > 0) {
       this.ragdollTimer -= dt;
-      const prog = this.ragdollTimer / 0.45;
+      const prog = this.ragdollTimer / 0.65;
 
-      // Head snaps back with neck-whip
+      // Acrobatic 360° stunt spin roll!
+      this.rigRoot.rotation.z += (this.ragdollImpulseX > 0 ? -1 : 1) * dt * 11.0;
+
+      // Head snaps back with neck inertia
       this.headBone.rotation.z = -0.55 * prog;
 
-      // Torso recoils and twists
+      // Torso twists
       this.torsoBone.rotation.z += (this.ragdollImpulseX > 0 ? -0.45 : 0.45) * prog;
 
       // Arms fling outwards erratically
-      this.frontArmBone.rotation.z += -0.75 * prog;
-      this.frontForearmBone.rotation.z += 0.5 * prog;
-      this.backArmBone.rotation.z += 0.85 * prog;
+      this.frontArmBone.rotation.z += -0.85 * prog;
+      this.frontForearmBone.rotation.z += 0.65 * prog;
+      this.backArmBone.rotation.z += 0.95 * prog;
+      this.backForearmBone.rotation.z += 0.55 * prog;
 
-      // Legs kick and buckle
-      this.frontThighBone.rotation.z += 0.65 * prog;
-      this.frontShinBone.rotation.z += -0.55 * prog;
-      this.backThighBone.rotation.z += -0.45 * prog;
+      // Legs kick and bicycle in the air
+      this.frontThighBone.rotation.z += 0.85 * prog;
+      this.frontShinBone.rotation.z -= 0.75 * prog;
+      this.backThighBone.rotation.z -= 0.65 * prog;
+      this.backShinBone.rotation.z -= 0.85 * prog;
+    } else {
+      // Spring back to upright standing rotation
+      this.rigRoot.rotation.z = THREE.MathUtils.lerp(this.rigRoot.rotation.z, 0, dt * 14);
     }
   }
 

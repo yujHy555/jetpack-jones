@@ -9,12 +9,13 @@ interface SlimeParticle {
   active: boolean;
 }
 
-interface ShrapnelPiece {
-  mesh: THREE.Mesh;
+interface StylizedBubbleSplat {
+  mesh: THREE.Group;
+  coreMesh: THREE.Mesh;
   velocity: THREE.Vector3;
-  rotSpeed: THREE.Vector3;
   age: number;
   maxLife: number;
+  baseScale: number;
   active: boolean;
 }
 
@@ -53,15 +54,24 @@ export class EnemyBlob {
   public active: boolean = true;
   public isGrounded: boolean = true;
 
-  // Body & Stalks
+  // Body & Googly Eyes with Pupils
   private bodyMesh: THREE.Mesh;
   private coreMesh: THREE.Mesh;
   private eyeCenterGroup: THREE.Group;
-  private centerPupilMesh: THREE.Mesh;
+  private centerGooglyPupil: THREE.Group;
   private stalkEyeLeft: THREE.Group;
   private stalkEyeRight: THREE.Group;
-  private stalkPupilL: THREE.Mesh;
-  private stalkPupilR: THREE.Mesh;
+  private stalkGooglyPupilL: THREE.Group;
+  private stalkGooglyPupilR: THREE.Group;
+
+  // Googly Physics State
+  private centerPupilPos = new THREE.Vector2(0, 0);
+  private centerPupilVel = new THREE.Vector2(0, 0);
+  private stalkPupilPosL = new THREE.Vector2(0, 0);
+  private stalkPupilVelL = new THREE.Vector2(0, 0);
+  private stalkPupilPosR = new THREE.Vector2(0, 0);
+  private stalkPupilVelR = new THREE.Vector2(0, 0);
+  private eyeDizzySpin: number = 0;
 
   // AI & Physics
   private hopTimer: number = 0;
@@ -72,7 +82,7 @@ export class EnemyBlob {
   public baseY: number;
   private landingSquashTimer: number = 0;
 
-  // Slime Trail System
+  // Slime Trail System (Cleaned up completely on death!)
   private static puddleGeo = new THREE.CylinderGeometry(0.24, 0.28, 0.02, 10);
   private static puddleMat = new THREE.MeshBasicMaterial({
     color: 0x39ff14,
@@ -82,22 +92,10 @@ export class EnemyBlob {
   private slimePuddles: SlimePuddle[] = [];
   private puddleTimer: number = 0;
 
-  // Juicy Blobby Explosion & Shrapnel Pool
-  private static dropletGeo = new THREE.SphereGeometry(0.12, 8, 8);
-  private static dropletMat = new THREE.MeshBasicMaterial({ color: 0x39ff14 });
-  private static dropletMatPink = new THREE.MeshBasicMaterial({ color: 0xcc00ff });
-  private dropletPool: SlimeParticle[] = [];
-
-  private static shrapnelGeo = new THREE.TetrahedronGeometry(0.14, 0);
-  private static shrapnelMat = new THREE.MeshStandardMaterial({
-    color: 0x1f0b2b,
-    roughness: 0.3,
-    metalness: 0.8,
-  });
-  private shrapnelPool: ShrapnelPiece[] = [];
-
-  // Shockwave Ring
-  private shockwaveRing: THREE.Mesh;
+  // 2D Stylized Comic Bubble Splat FX Pool (Zero remains left behind!)
+  private bubbleSplatPool: StylizedBubbleSplat[] = [];
+  private comicSplatBurstMesh: THREE.Mesh;
+  private comicSplatBurstTimer: number = 0;
 
   constructor(scene: THREE.Scene, startX: number, startY: number, patrolRange: number = 3.0) {
     this.group = new THREE.Group();
@@ -152,19 +150,48 @@ export class EnemyBlob {
     this.eyeCenterGroup.position.set(0.24, 0.50, 0.18);
     this.group.add(this.eyeCenterGroup);
 
+    // Large Glossy White Sclera
     const eyeWhite = new THREE.Mesh(
-      new THREE.SphereGeometry(0.20, 14, 14),
-      new THREE.MeshBasicMaterial({ color: 0xffffff })
+      new THREE.SphereGeometry(0.20, 16, 16),
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.1,
+        metalness: 0.05,
+      })
     );
     this.eyeCenterGroup.add(eyeWhite);
 
-    const pupilGeo = new THREE.SphereGeometry(0.10, 8, 8);
-    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x0a0a0a });
-    this.centerPupilMesh = new THREE.Mesh(pupilGeo, pupilMat);
-    this.centerPupilMesh.position.set(0.12, 0, 0);
-    this.eyeCenterGroup.add(this.centerPupilMesh);
+    // Googly Pupil Group (Loose disc with specular glint!)
+    this.centerGooglyPupil = new THREE.Group();
+    this.centerGooglyPupil.position.set(0.12, 0, 0);
+    this.eyeCenterGroup.add(this.centerGooglyPupil);
 
-    // 4. Dual Twitching Satellite Stalk Eyes
+    const mainPupilMat = new THREE.MeshBasicMaterial({ color: 0x0a0a0a });
+    const shineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+    const centerPupilDisc = new THREE.Mesh(
+      new THREE.SphereGeometry(0.09, 12, 12),
+      mainPupilMat
+    );
+    centerPupilDisc.scale.set(0.6, 1.0, 1.0);
+    this.centerGooglyPupil.add(centerPupilDisc);
+
+    // Cute White Specular Reflection Pip on Googly Eye
+    const centerShinePip = new THREE.Mesh(
+      new THREE.SphereGeometry(0.028, 8, 8),
+      shineMat
+    );
+    centerShinePip.position.set(0.05, 0.04, 0.04);
+    this.centerGooglyPupil.add(centerShinePip);
+
+    const centerShinePipSmall = new THREE.Mesh(
+      new THREE.SphereGeometry(0.015, 6, 6),
+      shineMat
+    );
+    centerShinePipSmall.position.set(0.05, -0.03, -0.03);
+    this.centerGooglyPupil.add(centerShinePipSmall);
+
+    // 4. Dual Twitching Satellite Stalk Eyes with Googly Pupils
     const createStalkEye = (zSign: number) => {
       const stalkGroup = new THREE.Group();
       stalkGroup.position.set(-0.05, 0.75, zSign * 0.26);
@@ -176,32 +203,47 @@ export class EnemyBlob {
       stem.rotation.z = -0.2;
       stalkGroup.add(stem);
 
-      // Little eyeball
+      // Eyeball Sclera
       const miniEye = new THREE.Mesh(
-        new THREE.SphereGeometry(0.08, 10, 10),
-        new THREE.MeshBasicMaterial({ color: 0xffffff })
+        new THREE.SphereGeometry(0.08, 12, 12),
+        new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          roughness: 0.1,
+        })
       );
       miniEye.position.set(-0.04, 0.22, 0);
       stalkGroup.add(miniEye);
 
+      // Stalk Googly Pupil Group
+      const stalkPupilGroup = new THREE.Group();
+      stalkPupilGroup.position.set(0.04, 0, 0);
+      miniEye.add(stalkPupilGroup);
+
       const miniPupil = new THREE.Mesh(
-        new THREE.SphereGeometry(0.04, 6, 6),
-        pupilMat
+        new THREE.SphereGeometry(0.04, 8, 8),
+        mainPupilMat
       );
-      miniPupil.position.set(0.05, 0, 0);
-      miniEye.add(miniPupil);
+      miniPupil.scale.set(0.5, 1.0, 1.0);
+      stalkPupilGroup.add(miniPupil);
+
+      const miniPip = new THREE.Mesh(
+        new THREE.SphereGeometry(0.012, 6, 6),
+        shineMat
+      );
+      miniPip.position.set(0.02, 0.015, 0.015);
+      stalkPupilGroup.add(miniPip);
 
       this.group.add(stalkGroup);
-      return { stalkGroup, miniPupil };
+      return { stalkGroup, stalkPupilGroup };
     };
 
     const eyeL = createStalkEye(1);
     this.stalkEyeLeft = eyeL.stalkGroup;
-    this.stalkPupilL = eyeL.miniPupil;
+    this.stalkGooglyPupilL = eyeL.stalkPupilGroup;
 
     const eyeR = createStalkEye(-1);
     this.stalkEyeRight = eyeR.stalkGroup;
-    this.stalkPupilR = eyeR.miniPupil;
+    this.stalkGooglyPupilR = eyeR.stalkPupilGroup;
 
     scene.add(this.group);
 
@@ -219,57 +261,94 @@ export class EnemyBlob {
       });
     }
 
-    // 6. Juicy Slime Explosion Droplets Pool (24 particles)
-    for (let i = 0; i < 24; i++) {
-      const mat = i % 3 === 0 ? EnemyBlob.dropletMatPink : EnemyBlob.dropletMat;
-      const p = new THREE.Mesh(EnemyBlob.dropletGeo, mat);
-      p.visible = false;
-      scene.add(p);
-      this.dropletPool.push({
-        mesh: p,
+    // 6. 2D STYLIZED AAA COMIC BUBBLE SPLAT FX (Zero remains left behind!)
+    const colors = [0x39ff14, 0x00f5ff, 0xff00aa, 0xffff00];
+    for (let i = 0; i < 22; i++) {
+      const bubbleGroup = new THREE.Group();
+
+      // Cartoon Dark Rim
+      const rim = new THREE.Mesh(
+        new THREE.SphereGeometry(0.12, 10, 10),
+        new THREE.MeshBasicMaterial({ color: 0x050505 })
+      );
+      bubbleGroup.add(rim);
+
+      // Bright Candy Core
+      const coreColor = colors[i % colors.length];
+      const coreMat = new THREE.MeshBasicMaterial({ color: coreColor });
+      const core = new THREE.Mesh(
+        new THREE.SphereGeometry(0.10, 10, 10),
+        coreMat
+      );
+      bubbleGroup.add(core);
+
+      // Specular Shine Pip
+      const pip = new THREE.Mesh(
+        new THREE.SphereGeometry(0.03, 6, 6),
+        shineMat
+      );
+      pip.position.set(0.04, 0.04, 0.05);
+      bubbleGroup.add(pip);
+
+      bubbleGroup.visible = false;
+      scene.add(bubbleGroup);
+
+      this.bubbleSplatPool.push({
+        mesh: bubbleGroup,
+        coreMesh: core,
         velocity: new THREE.Vector3(),
         age: 0,
-        maxLife: 0.65,
-        baseScale: 0.8 + Math.random() * 0.5,
+        maxLife: 0.32 + Math.random() * 0.12,
+        baseScale: 0.85 + Math.random() * 0.45,
         active: false,
       });
     }
 
-    // 7. Chitin Shrapnel Shards Pool (12 pieces)
-    for (let i = 0; i < 12; i++) {
-      const s = new THREE.Mesh(EnemyBlob.shrapnelGeo, EnemyBlob.shrapnelMat);
-      s.visible = false;
-      scene.add(s);
-      this.shrapnelPool.push({
-        mesh: s,
-        velocity: new THREE.Vector3(),
-        rotSpeed: new THREE.Vector3(),
-        age: 0,
-        maxLife: 0.75,
-        active: false,
-      });
+    // 7. Stylized Comic Pop Starburst Splat Ring
+    const splatShape = new THREE.Shape();
+    const points = 10;
+    for (let p = 0; p < points * 2; p++) {
+      const r = p % 2 === 0 ? 0.65 : 0.28;
+      const a = (p / (points * 2)) * Math.PI * 2;
+      const px = Math.cos(a) * r;
+      const py = Math.sin(a) * r;
+      if (p === 0) splatShape.moveTo(px, py);
+      else splatShape.lineTo(px, py);
     }
+    splatShape.closePath();
 
-    // 8. Expanding Slime Shockwave Ring
-    const ringGeo = new THREE.RingGeometry(0.1, 0.45, 16);
-    ringGeo.rotateX(Math.PI / 2);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0x39ff14,
+    const starburstGeo = new THREE.ShapeGeometry(splatShape);
+    const starburstMat = new THREE.MeshBasicMaterial({
+      color: 0xff00aa,
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0,
     });
-    this.shockwaveRing = new THREE.Mesh(ringGeo, ringMat);
-    this.shockwaveRing.visible = false;
-    scene.add(this.shockwaveRing);
+    this.comicSplatBurstMesh = new THREE.Mesh(starburstGeo, starburstMat);
+    this.comicSplatBurstMesh.visible = false;
+    scene.add(this.comicSplatBurstMesh);
   }
 
   public takeDamage(amount: number = 1): boolean {
     this.health -= amount;
-    this.explodeBlobbyDeath(false); // Small splatter
+
+    // Googly eyes spin violently on hit!
+    this.eyeDizzySpin += 6.0;
+    this.centerPupilVel.x += (Math.random() - 0.5) * 3.5;
+    this.centerPupilVel.y += (Math.random() - 0.5) * 3.5;
+
+    // Hit squash impulse
+    this.bodyMesh.scale.set(1.4, 0.65, 1.4);
 
     if (this.health <= 0) {
-      this.explodeBlobbyDeath(true); // Epic massive splatter & shrapnel!
+      // Clean up ALL slime trail puddles immediately: NO REMAINS LEFT BEHIND!
+      for (const p of this.slimePuddles) {
+        p.active = false;
+        p.mesh.visible = false;
+      }
+
+      // Awesome 2D Stylized Bubble Splat Burst
+      this.triggerStylizedBubbleSplat();
       this.active = false;
       this.group.visible = false;
       return true;
@@ -286,62 +365,39 @@ export class EnemyBlob {
     return false;
   }
 
-  private explodeBlobbyDeath(isFatal: boolean) {
-    const count = isFatal ? 24 : 8;
+  /**
+   * 2D Stylized Bubble Splat Burst FX (Snappy, juicy AAA comic pop with ZERO remains!)
+   */
+  private triggerStylizedBubbleSplat() {
+    const origin = this.position.clone();
+    origin.y += 0.45;
 
-    // A. Juicy Slime Droplets
+    // 1. Comic Pop Starburst Splat Flash
+    this.comicSplatBurstMesh.position.copy(origin);
+    this.comicSplatBurstMesh.position.z += 0.08;
+    this.comicSplatBurstMesh.scale.set(0.3, 0.3, 0.3);
+    (this.comicSplatBurstMesh.material as THREE.MeshBasicMaterial).opacity = 1.0;
+    this.comicSplatBurstMesh.visible = true;
+    this.comicSplatBurstTimer = 0.28;
+
+    // 2. Stylized Bubble Splat Droplets
+    const count = this.bubbleSplatPool.length;
     for (let i = 0; i < count; i++) {
-      const dp = this.dropletPool.find(p => !p.active);
-      if (!dp) continue;
-
-      dp.active = true;
-      dp.age = 0;
-      dp.maxLife = 0.45 + Math.random() * 0.35;
-      dp.mesh.position.copy(this.position);
-      dp.mesh.position.y += 0.4;
+      const b = this.bubbleSplatPool[i];
+      b.active = true;
+      b.age = 0;
+      b.maxLife = 0.28 + Math.random() * 0.12; // Snappy AAA pop
+      b.mesh.position.copy(origin);
 
       const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
-      const speed = isFatal ? (6.5 + Math.random() * 8.0) : (4.0 + Math.random() * 4.0);
-      dp.velocity.set(
+      const speed = 7.0 + Math.random() * 8.5;
+      b.velocity.set(
         Math.cos(angle) * speed,
-        Math.abs(Math.sin(angle)) * speed * 0.8 + 2.5,
-        (Math.random() - 0.5) * 4.0
+        Math.sin(angle) * speed * 0.9 + 2.0,
+        (Math.random() - 0.5) * 3.0
       );
-      dp.mesh.scale.set(dp.baseScale, dp.baseScale, dp.baseScale);
-      dp.mesh.visible = true;
-    }
-
-    // B. Hard Chitin Shrapnel Shards (only on fatal kill)
-    if (isFatal) {
-      for (let i = 0; i < 12; i++) {
-        const sp = this.shrapnelPool.find(p => !p.active);
-        if (!sp) continue;
-
-        sp.active = true;
-        sp.age = 0;
-        sp.maxLife = 0.55 + Math.random() * 0.35;
-        sp.mesh.position.copy(this.position);
-        sp.mesh.position.y += 0.4;
-
-        sp.velocity.set(
-          (Math.random() - 0.5) * 12.0,
-          Math.random() * 9.0 + 3.0,
-          (Math.random() - 0.5) * 4.0
-        );
-        sp.rotSpeed.set(
-          (Math.random() - 0.5) * 18.0,
-          (Math.random() - 0.5) * 18.0,
-          (Math.random() - 0.5) * 18.0
-        );
-        sp.mesh.visible = true;
-      }
-
-      // C. Shockwave Ring
-      this.shockwaveRing.position.copy(this.position);
-      this.shockwaveRing.position.y += 0.05;
-      this.shockwaveRing.scale.set(0.5, 0.5, 0.5);
-      (this.shockwaveRing.material as THREE.MeshBasicMaterial).opacity = 0.9;
-      this.shockwaveRing.visible = true;
+      b.mesh.scale.set(b.baseScale, b.baseScale, b.baseScale);
+      b.mesh.visible = true;
     }
   }
 
@@ -360,21 +416,68 @@ export class EnemyBlob {
     this.hopTimer += dt;
     this.puddleTimer += dt;
 
-    // 1. Reactive Eye Tracking
-    const angleToPlayer = Math.atan2(playerY - (this.position.y + 0.4), playerX - this.position.x);
-    this.centerPupilMesh.position.set(
-      Math.cos(angleToPlayer) * 0.12,
-      Math.sin(angleToPlayer) * 0.09,
-      0.08
-    );
+    // ----------------------------------------------------
+    // 1. GOOGLY EYES WITH PUPIL PHYSICS & INERTIA
+    // ----------------------------------------------------
+    const dx = playerX - this.position.x;
+    const dy = playerY - (this.position.y + 0.5);
+    const lookAngle = Math.atan2(dy, dx);
+    const lookDist = Math.min(1.0, Math.hypot(dx, dy) / 6.0);
 
-    // Stalk eyes twitch and peer inquisitively
-    const twitchL = Math.sin(time * 8.0) * 0.15;
-    const twitchR = Math.cos(time * 7.0) * 0.15;
+    // Target pupil look position (soft pull towards player)
+    let targetPx = Math.cos(lookAngle) * 0.065 * lookDist;
+    let targetPy = Math.sin(lookAngle) * 0.065 * lookDist - 0.02; // Soft gravity sag
+
+    // Inertial displacement from blob acceleration (hops, landings)
+    const accelX = -this.velocity.x * 0.035;
+    const accelY = -this.velocity.y * 0.025;
+
+    // Crazy dizzy spin oscillation if hit
+    if (this.eyeDizzySpin > 0.01) {
+      this.eyeDizzySpin = THREE.MathUtils.damp(this.eyeDizzySpin, 0, 5.0, dt);
+      const spinAngle = time * 26.0;
+      targetPx += Math.cos(spinAngle) * 0.065 * (this.eyeDizzySpin / 6.0);
+      targetPy += Math.sin(spinAngle) * 0.065 * (this.eyeDizzySpin / 6.0);
+    }
+
+    // Spring-Damper simulation for loose googly pupil
+    const kSpring = 90.0;
+    const kDamp = 10.0;
+    const fx = -kSpring * (this.centerPupilPos.x - targetPx) + accelX * 35.0;
+    const fy = -kSpring * (this.centerPupilPos.y - targetPy) + accelY * 35.0;
+
+    this.centerPupilVel.x = (this.centerPupilVel.x + fx * dt) / (1.0 + kDamp * dt);
+    this.centerPupilVel.y = (this.centerPupilVel.y + fy * dt) / (1.0 + kDamp * dt);
+
+    this.centerPupilPos.x += this.centerPupilVel.x * dt;
+    this.centerPupilPos.y += this.centerPupilVel.y * dt;
+
+    // Clamp inside spherical googly eye casing and bounce
+    const rMax = 0.085;
+    const curDist = Math.hypot(this.centerPupilPos.x, this.centerPupilPos.y);
+    if (curDist > rMax) {
+      this.centerPupilPos.x = (this.centerPupilPos.x / curDist) * rMax;
+      this.centerPupilPos.y = (this.centerPupilPos.y / curDist) * rMax;
+      this.centerPupilVel.x *= -0.55;
+      this.centerPupilVel.y *= -0.55;
+    }
+
+    // Apply googly pupil transform
+    this.centerGooglyPupil.position.set(0.12, this.centerPupilPos.y, this.centerPupilPos.x);
+
+    // Stalk Eyes loose spring wobble
+    const twitchL = Math.sin(time * 7.5) * 0.18 + Math.cos(time * 13.0) * 0.08;
+    const twitchR = Math.cos(time * 6.5) * 0.18 + Math.sin(time * 11.0) * 0.08;
     this.stalkEyeLeft.rotation.z = twitchL;
     this.stalkEyeRight.rotation.z = twitchR;
-    this.stalkPupilL.position.set(Math.cos(angleToPlayer) * 0.04, Math.sin(angleToPlayer) * 0.03, 0);
-    this.stalkPupilR.position.set(Math.cos(angleToPlayer) * 0.04, Math.sin(angleToPlayer) * 0.03, 0);
+
+    this.stalkPupilPosL.x = THREE.MathUtils.lerp(this.stalkPupilPosL.x, targetPx * 0.45, dt * 14);
+    this.stalkPupilPosL.y = THREE.MathUtils.lerp(this.stalkPupilPosL.y, targetPy * 0.45, dt * 14);
+    this.stalkGooglyPupilL.position.set(0.04, this.stalkPupilPosL.y, this.stalkPupilPosL.x);
+
+    this.stalkPupilPosR.x = THREE.MathUtils.lerp(this.stalkPupilPosR.x, targetPx * 0.45, dt * 14);
+    this.stalkPupilPosR.y = THREE.MathUtils.lerp(this.stalkPupilPosR.y, targetPy * 0.45, dt * 14);
+    this.stalkGooglyPupilR.position.set(0.04, this.stalkPupilPosR.y, this.stalkPupilPosR.x);
 
     // 2. Identify Current Supporting Surface
     let surfaceY = GROUND_Y;
@@ -509,7 +612,7 @@ export class EnemyBlob {
   }
 
   private updateParticles(dt: number) {
-    // 1. Slime Trail Puddles
+    // 1. Slime Trail Puddles (only active while alive)
     for (const p of this.slimePuddles) {
       if (!p.active) continue;
       p.age += dt;
@@ -520,61 +623,50 @@ export class EnemyBlob {
       }
 
       const prog = p.age / p.maxLife;
-      // Bubbling fade out
       const s = p.baseScale * (1.0 - prog * 0.35);
       p.mesh.scale.set(s, 1.0, s);
       (p.mesh.material as THREE.MeshBasicMaterial).opacity = (1.0 - prog) * 0.75;
     }
 
-    // 2. Juicy Slime Droplets
-    for (const dp of this.dropletPool) {
-      if (!dp.active) continue;
-      dp.age += dt;
-      if (dp.age >= dp.maxLife) {
-        dp.active = false;
-        dp.mesh.visible = false;
+    // 2. 2D Stylized Comic Bubble Splats (Zero remains left behind!)
+    for (const b of this.bubbleSplatPool) {
+      if (!b.active) continue;
+      b.age += dt;
+      if (b.age >= b.maxLife) {
+        b.active = false;
+        b.mesh.visible = false;
         continue;
       }
 
-      dp.velocity.y -= 18.0 * dt;
-      dp.mesh.position.addScaledVector(dp.velocity, dt);
+      b.velocity.y -= 14.0 * dt;
+      b.mesh.position.addScaledVector(b.velocity, dt);
 
-      // Droplets stretch along flight velocity vector
-      const speed = dp.velocity.length();
-      const prog = dp.age / dp.maxLife;
-      const s = dp.baseScale * (1.0 - prog * 0.7);
-      dp.mesh.scale.set(s * 0.7, s * (1.0 + speed * 0.08), s * 0.7);
+      // AAA Snappy Pop: bubble stretches along motion then pops to zero scale!
+      const prog = b.age / b.maxLife;
+      const popProg = Math.max(0, (prog - 0.65) / 0.35); // Rapid collapse in final 35% of life
+      const scaleMultiplier = (1.0 - popProg * popProg);
+      const speed = b.velocity.length();
+      const s = b.baseScale * scaleMultiplier;
+
+      // Stretch along velocity vector
+      b.mesh.scale.set(s * 0.8, s * (1.0 + Math.min(1.2, speed * 0.07)), s * 0.8);
+      b.mesh.rotation.z = Math.atan2(b.velocity.y, b.velocity.x) - Math.PI / 2;
     }
 
-    // 3. Chitin Shrapnel Pieces
-    for (const sp of this.shrapnelPool) {
-      if (!sp.active) continue;
-      sp.age += dt;
-      if (sp.age >= sp.maxLife) {
-        sp.active = false;
-        sp.mesh.visible = false;
-        continue;
-      }
+    // 3. Comic Starburst Splat Ring
+    if (this.comicSplatBurstMesh.visible && this.comicSplatBurstTimer > 0) {
+      this.comicSplatBurstTimer -= dt;
+      const prog = 1.0 - (this.comicSplatBurstTimer / 0.28);
+      const curScale = 0.3 + Math.sin(prog * Math.PI * 0.5) * 2.2;
+      this.comicSplatBurstMesh.scale.set(curScale, curScale, curScale);
+      this.comicSplatBurstMesh.rotation.z += dt * 4.0;
+      (this.comicSplatBurstMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(
+        0,
+        1.0 - prog * prog
+      );
 
-      sp.velocity.y -= 22.0 * dt;
-      sp.mesh.position.addScaledVector(sp.velocity, dt);
-      sp.mesh.rotation.x += sp.rotSpeed.x * dt;
-      sp.mesh.rotation.y += sp.rotSpeed.y * dt;
-      sp.mesh.rotation.z += sp.rotSpeed.z * dt;
-    }
-
-    // 4. Slime Shockwave Ring
-    if (this.shockwaveRing.visible) {
-      const curScale = this.shockwaveRing.scale.x;
-      if (curScale < 4.2) {
-        const nextScale = curScale + dt * 14.0;
-        this.shockwaveRing.scale.set(nextScale, nextScale, nextScale);
-        (this.shockwaveRing.material as THREE.MeshBasicMaterial).opacity = Math.max(
-          0,
-          0.9 * (1.0 - curScale / 4.2)
-        );
-      } else {
-        this.shockwaveRing.visible = false;
+      if (this.comicSplatBurstTimer <= 0) {
+        this.comicSplatBurstMesh.visible = false;
       }
     }
   }
@@ -582,9 +674,8 @@ export class EnemyBlob {
   public destroy(scene: THREE.Scene) {
     this.active = false;
     scene.remove(this.group);
-    scene.remove(this.shockwaveRing);
+    scene.remove(this.comicSplatBurstMesh);
     for (const p of this.slimePuddles) scene.remove(p.mesh);
-    for (const dp of this.dropletPool) scene.remove(dp.mesh);
-    for (const sp of this.shrapnelPool) scene.remove(sp.mesh);
+    for (const b of this.bubbleSplatPool) scene.remove(b.mesh);
   }
 }

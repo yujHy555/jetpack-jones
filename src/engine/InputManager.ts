@@ -9,6 +9,7 @@ export class InputManager {
   public jumpJustPressed: boolean = false;
   public jetpack: boolean = false;
   public shootJustPressed: boolean = false;
+  public ragdollJustPressed: boolean = false;
 
   // Mouse & 360° Aiming
   public mouseScreenX: number = window.innerWidth / 2;
@@ -52,6 +53,10 @@ export class InputManager {
       if ((e.code === 'KeyJ' || e.code === 'KeyZ' || e.code === 'Enter') && !wasPressed) {
         this.shootJustPressed = true;
         this.triggerReticlePulse();
+      }
+
+      if ((e.code === 'KeyR') && !wasPressed) {
+        this.ragdollJustPressed = true;
       }
     });
 
@@ -197,6 +202,14 @@ export class InputManager {
   public consumeShootTrigger(): boolean {
     if (this.shootJustPressed) {
       this.shootJustPressed = false;
+      return true;
+    }
+    return false;
+  }
+
+  public consumeRagdollTrigger(): boolean {
+    if (this.ragdollJustPressed) {
+      this.ragdollJustPressed = false;
       return true;
     }
     return false;

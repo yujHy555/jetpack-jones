@@ -56,6 +56,17 @@ class Game {
         audioBtn.textContent = enabled ? '🔊 SFX ON' : '🔇 SFX OFF';
       });
     }
+
+    const stuntBtn = document.getElementById('btn-stunt');
+    if (stuntBtn) {
+      stuntBtn.addEventListener('click', () => {
+        if (this.state === GameState.PLAYING) {
+          this.player.triggerStuntRagdoll();
+          this.sceneManager.triggerShake(0.12, 0.12);
+          this.audioManager.playHitImpact();
+        }
+      });
+    }
   }
 
   private startGame() {
@@ -93,6 +104,13 @@ class Game {
           this.audioManager.playLaser();
           this.sceneManager.triggerShake(0.08, 0.08); // Satisfying gun recoil shake
         }
+      }
+
+      // Ragdoll Stunt Trigger ([R] key)
+      if (this.inputManager.consumeRagdollTrigger()) {
+        this.player.triggerStuntRagdoll();
+        this.sceneManager.triggerShake(0.12, 0.12);
+        this.audioManager.playHitImpact();
       }
 
       // 2. Audio Jetpack Thruster Sound
@@ -247,6 +265,7 @@ class Game {
         if (distSq < (enemy.radius + 0.2) ** 2) {
           laser.active = false;
           laser.mesh.visible = false;
+          this.audioManager.playEnemyImpact();
           const died = enemy.takeDamage(1);
           this.sceneManager.triggerShake(0.20, 0.14);
 

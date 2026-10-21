@@ -233,6 +233,47 @@ export class AudioManager {
   }
 
   /**
+   * Energetic Sci-Fi Laser & Rubbery Splat Impact on Enemy Hit
+   */
+  public playEnemyImpact() {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+
+    // 1. High-frequency plasma sizzle/zap transient
+    const zapOsc = this.ctx.createOscillator();
+    const zapGain = this.ctx.createGain();
+    zapOsc.type = 'sawtooth';
+    zapOsc.frequency.setValueAtTime(1400 + Math.random() * 200, t);
+    zapOsc.frequency.exponentialRampToValueAtTime(320, t + 0.045);
+
+    zapGain.gain.setValueAtTime(0.24, t);
+    zapGain.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+
+    zapOsc.connect(zapGain);
+    zapGain.connect(this.ctx.destination);
+    zapOsc.start(t);
+    zapOsc.stop(t + 0.05);
+
+    // 2. Juicy rubbery membrane slap
+    const slapOsc = this.ctx.createOscillator();
+    const slapGain = this.ctx.createGain();
+    slapOsc.type = 'sine';
+    slapOsc.frequency.setValueAtTime(280 + Math.random() * 40, t);
+    slapOsc.frequency.exponentialRampToValueAtTime(65, t + 0.07);
+
+    slapGain.gain.setValueAtTime(0.28, t);
+    slapGain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+
+    slapOsc.connect(slapGain);
+    slapGain.connect(this.ctx.destination);
+    slapOsc.start(t);
+    slapOsc.stop(t + 0.075);
+  }
+
+  /**
    * Heavy blunt impact sound for ragdoll knockback
    */
   public playHitImpact() {
