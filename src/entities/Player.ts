@@ -963,13 +963,24 @@ export class Player {
     this.shootTimer = 0.28;
     this.bubbleBurstTimer = 0.24;
 
-    // Calculate aim angle from shoulder / chest height
+    // Calculate aim angle from shoulder / chest height within 180° forward arc
     let aimAngle = this.facingRight ? 0 : Math.PI;
     const originY = this.position.y + 1.55; // Shoulder height!
     const originX = this.position.x + (this.facingRight ? 0.04 : -0.04);
 
     if (aimTargetWorld) {
-      aimAngle = Math.atan2(aimTargetWorld.y - originY, aimTargetWorld.x - originX);
+      const rawAngle = Math.atan2(aimTargetWorld.y - originY, aimTargetWorld.x - originX);
+      let relAngle = rawAngle;
+      if (!this.facingRight) {
+        relAngle = Math.PI - relAngle;
+      }
+      relAngle = THREE.MathUtils.euclideanModulo(relAngle + Math.PI, Math.PI * 2) - Math.PI;
+
+      // 180° forward arc limit [-86°, +86°]
+      const forwardArcLimit = Math.PI * 0.48;
+      const clampedRel = THREE.MathUtils.clamp(relAngle, -forwardArcLimit, forwardArcLimit);
+
+      aimAngle = this.facingRight ? clampedRel : (Math.PI - clampedRel);
     }
     this.currentAimAngle = aimAngle;
 
@@ -1045,14 +1056,26 @@ export class Player {
     // ALWAYS visible — NO FLASHING!
     this.mesh.visible = true;
 
-    // 1. Aim Tracking
+    // 1. Aim Tracking with 180° Forward Arc Limit
     if (hasMouseTarget && mouseWorldTarget) {
       const originY = this.position.y + 1.55; // Shoulder height
       const originX = this.position.x;
-      this.currentAimAngle = Math.atan2(
+      const rawAngle = Math.atan2(
         mouseWorldTarget.y - originY,
         mouseWorldTarget.x - originX
       );
+
+      let relAngle = rawAngle;
+      if (!this.facingRight) {
+        relAngle = Math.PI - relAngle;
+      }
+      relAngle = THREE.MathUtils.euclideanModulo(relAngle + Math.PI, Math.PI * 2) - Math.PI;
+
+      // 180° forward arc limit: strictly within [-86°, +86°] in facing direction
+      const forwardArcLimit = Math.PI * 0.48;
+      const clampedRel = THREE.MathUtils.clamp(relAngle, -forwardArcLimit, forwardArcLimit);
+
+      this.currentAimAngle = this.facingRight ? clampedRel : (Math.PI - clampedRel);
     }
 
     // 2. Movement-Priority Facing Direction
@@ -1202,12 +1225,14 @@ export class Player {
         this.backShinBone.rotation.z = -0.05;
         this.backFootBone.rotation.z = 0.0;
 
+        // Left arm has full natural idle breathing animation
+        this.backArmBone.rotation.z = -0.55 + Math.sin(t * 3.2) * 0.04;
+        this.backForearmBone.rotation.z = 0.45;
+
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          // Relaxed pistol ready hold at side/waist
-          this.frontArmBone.rotation.z = -0.65;
-          this.frontForearmBone.rotation.z = 0.45;
-          this.backArmBone.rotation.z = -0.65;
-          this.backForearmBone.rotation.z = 0.45;
+          // Right shooting arm rests in ready pistol carry position at waist
+          this.frontArmBone.rotation.z = -0.55;
+          this.frontForearmBone.rotation.z = 0.40;
         }
         break;
       }
@@ -1219,7 +1244,7 @@ export class Player {
         const walkFreq = 8.5;
         const phase = t * walkFreq;
 
-        // Trigger footstep sound on foot contact (phase crossing PI)
+        // Trigger footstep sound on foot contact
         if (this.isGrounded) {
           if (Math.sin(phase) * Math.sin(this.prevStridePhase) <= 0 && phase !== this.prevStridePhase) {
             this.onFootstep?.();
@@ -1246,11 +1271,13 @@ export class Player {
         this.backShinBone.rotation.z = backStride < 0 ? -Math.abs(backStride) * 0.85 : -0.1;
         this.backFootBone.rotation.z = backStride * 0.2;
 
+        // Left arm has full natural walking animation (counter-swing to stride)
+        this.backArmBone.rotation.z = -0.45 + frontStride * 0.65;
+        this.backForearmBone.rotation.z = 0.45 + Math.abs(frontStride) * 0.25;
+
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = -0.55 + backStride * 0.25;
-          this.frontForearmBone.rotation.z = 0.4;
-          this.backArmBone.rotation.z = -0.55 + frontStride * 0.25;
-          this.backForearmBone.rotation.z = 0.4;
+          this.frontArmBone.rotation.z = -0.50 + backStride * 0.20;
+          this.frontForearmBone.rotation.z = 0.35;
         }
         break;
       }
@@ -1289,11 +1316,13 @@ export class Player {
         this.backShinBone.rotation.z = backRun < 0 ? -Math.abs(backRun) * 1.25 : -0.1;
         this.backFootBone.rotation.z = backRun * 0.35;
 
+        // Left arm has full natural running animation (energetic pumping motion)
+        this.backArmBone.rotation.z = -0.30 + frontRun * 0.95;
+        this.backForearmBone.rotation.z = 0.65 + Math.abs(frontRun) * 0.35;
+
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = -0.45 + backRun * 0.35;
-          this.frontForearmBone.rotation.z = 0.55;
-          this.backArmBone.rotation.z = -0.45 + frontRun * 0.35;
-          this.backForearmBone.rotation.z = 0.55;
+          this.frontArmBone.rotation.z = -0.40 + backRun * 0.25;
+          this.frontForearmBone.rotation.z = 0.45;
         }
 
         if (Math.abs(frontRun) > 0.9) {
@@ -1318,11 +1347,13 @@ export class Player {
         this.backShinBone.rotation.z = -0.75;
         this.backFootBone.rotation.z = 0.25;
 
+        // Left arm has full natural jumping animation (dynamic aerial balance)
+        this.backArmBone.rotation.z = -0.65;
+        this.backForearmBone.rotation.z = 0.55;
+
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = -0.35;
+          this.frontArmBone.rotation.z = -0.30;
           this.frontForearmBone.rotation.z = 0.35;
-          this.backArmBone.rotation.z = -0.45;
-          this.backForearmBone.rotation.z = 0.45;
         }
         break;
       }
@@ -1340,11 +1371,13 @@ export class Player {
         this.backShinBone.rotation.z = -0.2;
         this.backFootBone.rotation.z = -0.25;
 
+        // Left arm dynamic fall balance
+        this.backArmBone.rotation.z = -0.45;
+        this.backForearmBone.rotation.z = 0.35;
+
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = -0.45;
-          this.frontForearmBone.rotation.z = 0.25;
-          this.backArmBone.rotation.z = -0.35;
-          this.backForearmBone.rotation.z = 0.30;
+          this.frontArmBone.rotation.z = -0.40;
+          this.frontForearmBone.rotation.z = 0.30;
         }
         break;
       }
@@ -1361,13 +1394,8 @@ export class Player {
         );
         this.torsoBone.position.set(0, 0.1, 0);
 
-        // Pelvis stays centered
         this.hipBone.position.set(0, 1.05, 0);
-
-        // Head proudly tilts forward and up looking through visor
         this.headBone.rotation.z = 0.24;
-
-        // Jetpack tilts back slightly so exhaust plume fires cleanly away behind
         this.jetpackBone.rotation.z = 0.14;
 
         const windFlutter = Math.sin(t * 14.0) * 0.05;
@@ -1379,18 +1407,20 @@ export class Player {
         this.backShinBone.rotation.z = -0.78;
         this.backFootBone.rotation.z = 0.22;
 
+        // Left arm flight stabilization
+        this.backArmBone.rotation.z = -0.45;
+        this.backForearmBone.rotation.z = 0.65;
+
         if (!hasMouseTarget && this.shootTimer <= 0) {
           this.frontArmBone.rotation.z = -0.25;
           this.frontForearmBone.rotation.z = 0.35;
-          this.backArmBone.rotation.z = -0.45;
-          this.backForearmBone.rotation.z = 0.40;
         }
         break;
       }
     }
 
     // ------------------------------------------------------
-    // F. CONFIDENT PISTOL HOLDING STANCE & STRAIGHTENED AIMING
+    // F. RIGHT SHOOTING ARM 180° FORWARD ARC & NATURAL ELBOW FLEXION
     // ------------------------------------------------------
     if (hasMouseTarget || this.shootTimer > 0) {
       let localAngle = this.currentAimAngle;
@@ -1399,34 +1429,27 @@ export class Player {
       }
       localAngle = THREE.MathUtils.euclideanModulo(localAngle + Math.PI, Math.PI * 2) - Math.PI;
 
-      // Adjust for torso lean
-      const aimRotation = localAngle - this.torsoBone.rotation.z;
+      // 180° forward arc limit [-86°, +86°]: strictly prevents flipping 360° backwards!
+      const forwardArcLimit = Math.PI * 0.48;
+      const clampedLocal = THREE.MathUtils.clamp(localAngle, -forwardArcLimit, forwardArcLimit);
 
-      // Straighten the front shooting arm directly towards the aim direction!
-      // The upper arm and forearm align with the cursor line of sight from shoulder/chest level.
+      // Adjust for torso lean
+      const aimRotation = clampedLocal - this.torsoBone.rotation.z;
+
+      // Natural, correct human elbow flexion in all directions:
+      // Forearm flexes comfortably inward/underneath by 0.14 rad
+      const elbowFlex = 0.14;
       this.frontArmBone.rotation.z = THREE.MathUtils.lerp(
         this.frontArmBone.rotation.z,
-        aimRotation,
+        aimRotation - elbowFlex,
         dt * 28
       );
       this.frontForearmBone.rotation.z = THREE.MathUtils.lerp(
         this.frontForearmBone.rotation.z,
-        0.02, // Confident straight arm extension
+        elbowFlex,
         dt * 28
       );
-
-      // Back Arm: Classic Weaver/Isosceles Two-Handed Pistol Grip!
-      // Reaches forward and bends inward to cup/brace the shooting hand from beneath
-      this.backArmBone.rotation.z = THREE.MathUtils.lerp(
-        this.backArmBone.rotation.z,
-        aimRotation + 0.12,
-        dt * 24
-      );
-      this.backForearmBone.rotation.z = THREE.MathUtils.lerp(
-        this.backForearmBone.rotation.z,
-        -0.28, // Elbow bends inward to support the pistol grip!
-        dt * 24
-      );
+      // NOTE: Left arm (backArmBone) is completely free and retains its walking/running/jumping animations!
     }
 
     // Recoil Kickback Shock on firing
@@ -1438,7 +1461,6 @@ export class Player {
         const kick = Math.sin((progress / 0.25) * Math.PI);
         this.blasterMesh.position.x = -kick * 0.08;
         this.frontArmBone.rotation.z += 0.06 * kick;
-        this.backArmBone.rotation.z += 0.06 * kick;
       } else {
         const returnProg = (progress - 0.25) / 0.75;
         this.blasterMesh.position.x = THREE.MathUtils.lerp(-0.04, 0.0, returnProg);

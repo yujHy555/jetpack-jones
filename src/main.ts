@@ -42,6 +42,7 @@ class Game {
     this.levelGenerator = new LevelGenerator(this.obstacleManager);
 
     this.setupUIEvents();
+    (window as any).__JETPACK_GAME__ = this;
     this.hud.showStartScreen(() => this.startGame());
 
     requestAnimationFrame((t) => this.loop(t));
