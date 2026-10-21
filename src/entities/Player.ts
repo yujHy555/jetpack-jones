@@ -161,6 +161,7 @@ export class Player {
   // Enhanced Procedural Landing Suspension & Knee Flexion Physics
   private landingSuspension: number = 0;
   private prevVelocityY: number = 0;
+  private crushSquashTimer: number = 0;
 
   // VFX Pools
   private vfxGroup: THREE.Group;
@@ -1198,6 +1199,26 @@ export class Player {
   }
 
   /**
+   * Heavy mechanical press crushing reaction
+   * Squashes player down with intense ragdoll reaction, dust blast, and grounded impact
+   */
+  public crushHit(amount: number = 30, knockbackDirX: number = 0) {
+    if (this.invulnerableTime > 0) return;
+    this.life = Math.max(0, this.life - amount);
+    this.invulnerableTime = 0.65;
+
+    this.ragdollTimer = 0.55;
+    this.ragdollImpulseX = knockbackDirX;
+    this.velocity.x = knockbackDirX * 5.0;
+    this.velocity.y = -10.0; // Slammed downward
+    this.landingSuspension = 1.0; // Heavy crouch & flex
+    this.crushSquashTimer = 0.35; // Visual squash
+
+    this.emitDust(this.position.x, this.position.y, 14);
+    this.emitSparks(this.position.x, this.position.y + 0.8, 0, 10);
+  }
+
+  /**
    * High-Energy Acrobatic Stunt Ragdoll Tumble
    * Showcases player's joint flailing, 360° stunt tumble roll, and recovery roll!
    */
@@ -1430,10 +1451,7 @@ export class Player {
             this.frontThighBone.rotation.z = 0.05 + tapLift * 0.04;
             this.hipBone.position.x = -0.02; // Weight shift onto back foot
 
-            // Audible boot tap on down-stroke
-            if (tapSin < 0 && this.prevTapPhase >= 0) {
-              this.onFootstep?.();
-            }
+            // Visual boot tap on down-stroke (silent during idle)
             this.prevTapPhase = tapSin;
           } else {
             this.prevTapPhase = 1;
@@ -1731,6 +1749,17 @@ export class Player {
     // G. PHYSICAL RAGDOLL HIT REACTION (Joint Flailing on Damage)
     // ------------------------------------------------------
     this.rigRoot.rotation.z = 0; // Rig root stays firmly upright — NO ROTATION AROUND FEET!
+
+    // Crushing mechanical press squash & stretch
+    if (this.crushSquashTimer > 0) {
+      this.crushSquashTimer -= dt;
+      const crushT = this.crushSquashTimer / 0.35;
+      const squashY = 1.0 - Math.sin(crushT * Math.PI) * 0.32;
+      const stretchX = 1.0 + Math.sin(crushT * Math.PI) * 0.22;
+      this.rigRoot.scale.set(stretchX, squashY, stretchX);
+    } else {
+      this.rigRoot.scale.set(1, 1, 1);
+    }
 
     if (this.ragdollTimer > 0) {
       this.ragdollTimer -= dt;

@@ -54,6 +54,14 @@ class Game {
   }
 
   private setupUIEvents() {
+    const camBtn = document.getElementById('btn-handheld');
+    if (camBtn) {
+      camBtn.addEventListener('click', () => {
+        const enabled = this.sceneManager.toggleHandheld();
+        camBtn.textContent = enabled ? '🎥 CAM: ON [H]' : '🎥 CAM: OFF [H]';
+      });
+    }
+
     const audioBtn = document.getElementById('btn-audio');
     if (audioBtn) {
       audioBtn.addEventListener('click', () => {
@@ -111,6 +119,13 @@ class Game {
           this.audioManager.playLaser();
           this.sceneManager.triggerShake(0.08, 0.08); // Satisfying gun recoil shake
         }
+      }
+
+      // Handheld Camera Toggle ([H] key)
+      if (this.inputManager.consumeHandheldToggleTrigger()) {
+        const enabled = this.sceneManager.toggleHandheld();
+        const camBtn = document.getElementById('btn-handheld');
+        if (camBtn) camBtn.textContent = enabled ? '🎥 CAM: ON [H]' : '🎥 CAM: OFF [H]';
       }
 
       // Ragdoll Stunt Trigger ([R] key)
@@ -212,7 +227,35 @@ class Game {
       let hit = false;
       const obsPos = obs.group.position;
 
-      if (obs.collider.type === 'circle') {
+      if (obs.type === ObstacleType.PISTON) {
+        // ACCURATE PISTON / MECHANICAL PRESS COLLISION TAKING PLAYER'S FULL SIZE INTO ACCOUNT:
+        // Player Bounding Box: Width [pPos.x - 0.35, pPos.x + 0.35], Height [pPos.y, pPos.y + 1.85] (boots to helmet)
+        const half = obs.collider.halfSize || new THREE.Vector2(0.9, 0.45);
+        const center = obs.collider.center || new THREE.Vector2(obsPos.x, obsPos.y);
+
+        const hammerMinX = center.x - half.x;
+        const hammerMaxX = center.x + half.x;
+        const hammerMinY = center.y - half.y;
+        const hammerMaxY = center.y + half.y;
+
+        const playerMinX = pPos.x - 0.35;
+        const playerMaxX = pPos.x + 0.35;
+        const playerMinY = pPos.y;
+        const playerMaxY = pPos.y + 1.85;
+
+        const overlapX = playerMinX <= hammerMaxX && playerMaxX >= hammerMinX;
+        const overlapY = playerMinY <= hammerMaxY && playerMaxY >= hammerMinY;
+
+        if (overlapX && overlapY) {
+          if (this.player.invulnerableTime <= 0) {
+            const knockX = pPos.x < center.x ? -1 : 1;
+            this.player.crushHit(35, knockX);
+            this.audioManager.playCrushHit();
+            this.sceneManager.triggerShake(0.50, 0.32);
+          }
+          continue;
+        }
+      } else if (obs.collider.type === 'circle') {
         const distSq = (pPos.x - obsPos.x) ** 2 + (pCenterY - obsPos.y) ** 2;
         const totalRadius = pRadius + (obs.collider.radius || 1.0);
         if (distSq < totalRadius * totalRadius) {
@@ -220,10 +263,11 @@ class Game {
         }
       } else if (obs.collider.type === 'box') {
         const half = obs.collider.halfSize || new THREE.Vector2(1, 1);
-        const minX = obsPos.x - half.x;
-        const maxX = obsPos.x + half.x;
-        const minY = obsPos.y - half.y;
-        const maxY = obsPos.y + half.y;
+        const center = obs.collider.center || new THREE.Vector2(obsPos.x, obsPos.y);
+        const minX = center.x - half.x;
+        const maxX = center.x + half.x;
+        const minY = center.y - half.y;
+        const maxY = center.y + half.y;
 
         const closestX = Math.max(minX, Math.min(pPos.x, maxX));
         const closestY = Math.max(minY, Math.min(pCenterY, maxY));

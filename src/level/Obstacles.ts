@@ -22,11 +22,13 @@ export interface ActiveObstacle {
     type: 'circle' | 'box';
     radius?: number;
     halfSize?: THREE.Vector2;
+    center?: THREE.Vector2; // Dynamic world position of collider
   };
   update: (dt: number, time: number) => void;
   destructible: boolean;
   health: number;
   active: boolean;
+  isCrushing?: boolean;
 }
 
 export interface ActivePickup {
@@ -51,6 +53,7 @@ export class ObstacleManager {
   private darkIronMat: THREE.MeshStandardMaterial;
   private bronzeMat: THREE.MeshStandardMaterial;
   private hazardMat: THREE.MeshStandardMaterial;
+  private outpostPlatformMat: THREE.MeshStandardMaterial;
   private plasmaGlassMat: THREE.MeshPhysicalMaterial;
   private plasmaCoreMat: THREE.MeshBasicMaterial;
 
@@ -101,6 +104,38 @@ export class ObstacleManager {
       map: hazardTex,
       roughness: 0.4,
       metalness: 0.2,
+    });
+
+    // Retro Outpost Platform Deck Texture (Matching reference image: Bone-Cream with Amber Center Stripe)
+    const platCanvas = document.createElement('canvas');
+    platCanvas.width = 256;
+    platCanvas.height = 128;
+    const pCtx = platCanvas.getContext('2d')!;
+    pCtx.fillStyle = '#f5eee3';
+    pCtx.fillRect(0, 0, 256, 128);
+    pCtx.fillStyle = '#e27f2c';
+    pCtx.fillRect(0, 28, 256, 72);
+    pCtx.strokeStyle = '#353a42';
+    pCtx.lineWidth = 3;
+    pCtx.beginPath();
+    pCtx.moveTo(0, 28); pCtx.lineTo(256, 28);
+    pCtx.moveTo(0, 100); pCtx.lineTo(256, 100);
+    pCtx.stroke();
+    pCtx.lineWidth = 2;
+    for (let px = 0; px <= 256; px += 32) {
+      pCtx.beginPath();
+      pCtx.moveTo(px, 0); pCtx.lineTo(px, 128);
+      pCtx.stroke();
+    }
+    const platTex = new THREE.CanvasTexture(platCanvas);
+    platTex.wrapS = THREE.RepeatWrapping;
+    platTex.wrapT = THREE.ClampToEdgeWrapping;
+    platTex.repeat.set(2, 1);
+
+    this.outpostPlatformMat = new THREE.MeshStandardMaterial({
+      map: platTex,
+      roughness: 0.35,
+      metalness: 0.25,
     });
 
     this.plasmaGlassMat = new THREE.MeshPhysicalMaterial({
@@ -202,32 +237,52 @@ export class ObstacleManager {
   }
 
   /**
-   * Spawns a Hydraulic Crushing Piston
+   * Spawns a Hydraulic Crushing Piston / Mechanical Press
    */
   public spawnPiston(x: number, topY: number = 4.5, strokeLength: number = 4.5): ActiveObstacle {
     const group = new THREE.Group();
     group.position.set(x, topY, 0);
 
-    // Fixed Top Housing
-    const housingGeo = new THREE.BoxGeometry(1.4, 1.8, 1.2);
+    // Fixed Top Housing with heavy industrial brackets
+    const housingGeo = new THREE.BoxGeometry(1.7, 1.8, 1.3);
     const housing = new THREE.Mesh(housingGeo, this.darkIronMat);
     group.add(housing);
+
+    // Flashing warning beacon on housing
+    const beaconGeo = new THREE.CylinderGeometry(0.18, 0.22, 0.35, 12);
+    const beaconMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+    const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+    beacon.position.set(0, 1.05, 0);
+    group.add(beacon);
 
     // Moving Piston Rod & Heavy Hammer Foot
     const rodGroup = new THREE.Group();
     group.add(rodGroup);
 
-    const rodGeo = new THREE.CylinderGeometry(0.25, 0.25, strokeLength, 16);
+    const rodGeo = new THREE.CylinderGeometry(0.28, 0.28, strokeLength, 16);
     const rod = new THREE.Mesh(rodGeo, this.steelMat);
     rod.position.y = -strokeLength / 2;
     rodGroup.add(rod);
 
-    const hammerGeo = new THREE.BoxGeometry(1.6, 0.7, 1.0);
+    // Heavy Industrial Stomper Hammer
+    const hammerGeo = new THREE.BoxGeometry(1.8, 0.8, 1.2);
     const hammer = new THREE.Mesh(hammerGeo, this.hazardMat);
     hammer.position.y = -strokeLength;
     rodGroup.add(hammer);
 
+    // Dual auxiliary hydraulic guide tubes
+    const guideGeo = new THREE.CylinderGeometry(0.09, 0.09, strokeLength * 0.7, 8);
+    const guideL = new THREE.Mesh(guideGeo, this.steelMat);
+    guideL.position.set(-0.6, -strokeLength * 0.35, 0);
+    rodGroup.add(guideL);
+
+    const guideR = new THREE.Mesh(guideGeo, this.steelMat);
+    guideR.position.set(0.6, -strokeLength * 0.35, 0);
+    rodGroup.add(guideR);
+
     this.scene.add(group);
+
+    const colliderCenter = new THREE.Vector2(x, topY - strokeLength);
 
     const obs: ActiveObstacle = {
       id: this.nextId++,
@@ -235,16 +290,31 @@ export class ObstacleManager {
       group,
       collider: {
         type: 'box',
-        halfSize: new THREE.Vector2(0.8, 0.35),
+        halfSize: new THREE.Vector2(0.9, 0.45),
+        center: colliderCenter,
       },
       destructible: false,
       health: 9999,
       active: true,
+      isCrushing: false,
       update: (dt: number, time: number) => {
-        // Slam down fast, retract slowly
+        // Slam down fast, pause briefly, retract smoothly
         const cycle = (time * 1.8) % Math.PI;
         const extension = Math.pow(Math.sin(cycle), 4.0);
-        rodGroup.position.y = -extension * (strokeLength - 1.2);
+        const currentExtensionY = -extension * (strokeLength - 1.2);
+        rodGroup.position.y = currentExtensionY;
+
+        // Dynamic world Y position of the crushing hammer
+        const hammerWorldY = topY + currentExtensionY - strokeLength;
+        colliderCenter.set(x, hammerWorldY);
+
+        // Crushing state: moving downwards with speed
+        obs.isCrushing = extension > 0.25 && Math.cos(cycle) > 0;
+
+        // Warning beacon flashes faster as press readies to slam
+        const flashRate = 8.0 + extension * 16.0;
+        const beaconOn = Math.sin(time * flashRate) > 0;
+        beaconMat.color.setHex(beaconOn ? 0xff2200 : 0x441100);
       },
     };
 
@@ -309,18 +379,25 @@ export class ObstacleManager {
   }
 
   /**
-   * Spawns a Hazard Catwalk Platform with Yellow/Black stripes
+   * Spawns a Retro Sci-Fi Catwalk Platform (Cream deck with Amber runner stripe)
    */
   public spawnPlatform(x: number, y: number, width: number = 3.5, height: number = 0.5): ActiveObstacle {
     const group = new THREE.Group();
     group.position.set(x, y, 0);
 
-    const geo = new THREE.BoxGeometry(width, height, 1.2);
-    const mesh = new THREE.Mesh(geo, this.hazardMat);
+    // Main walking deck (Bone cream with amber center stripe)
+    const geo = new THREE.BoxGeometry(width, height, 1.3);
+    const mesh = new THREE.Mesh(geo, this.outpostPlatformMat);
     group.add(mesh);
 
+    // Dark steel bumper rim along the front and rear edge
+    const rimGeo = new THREE.BoxGeometry(width + 0.05, 0.08, 1.36);
+    const rim = new THREE.Mesh(rimGeo, this.darkIronMat);
+    rim.position.y = height / 2 - 0.04;
+    group.add(rim);
+
     // Support strut beams underneath
-    const strutGeo = new THREE.BoxGeometry(0.2, 1.2, 0.8);
+    const strutGeo = new THREE.BoxGeometry(0.22, 1.2, 0.9);
     const strut1 = new THREE.Mesh(strutGeo, this.darkIronMat);
     strut1.position.set(-width * 0.35, -0.7, 0);
     group.add(strut1);
@@ -328,6 +405,13 @@ export class ObstacleManager {
     const strut2 = new THREE.Mesh(strutGeo, this.darkIronMat);
     strut2.position.set(width * 0.35, -0.7, 0);
     group.add(strut2);
+
+    // Under-chassis conduit cable bundle
+    const cableGeo = new THREE.CylinderGeometry(0.04, 0.04, width * 0.8, 8);
+    cableGeo.rotateZ(Math.PI / 2);
+    const cable = new THREE.Mesh(cableGeo, this.steelMat);
+    cable.position.set(0, -height / 2 - 0.12, 0.3);
+    group.add(cable);
 
     this.scene.add(group);
 

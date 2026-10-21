@@ -15,6 +15,10 @@ export class SceneManager {
   private shakeIntensity: number = 0;
   private shakeDuration: number = 0;
 
+  // Handheld Camera Mode
+  public handheldEnabled: boolean = true;
+  private handheldTime: number = 0;
+
   constructor() {
     this.canvas = document.getElementById('canvas3d') as HTMLCanvasElement;
     this.scene = new THREE.Scene();
@@ -65,6 +69,11 @@ export class SceneManager {
     this.renderer.setSize(width, height);
   }
 
+  public toggleHandheld(): boolean {
+    this.handheldEnabled = !this.handheldEnabled;
+    return this.handheldEnabled;
+  }
+
   public triggerShake(intensity: number = 0.2, duration: number = 0.18) {
     this.shakeIntensity = Math.max(this.shakeIntensity, intensity);
     this.shakeDuration = duration;
@@ -73,6 +82,7 @@ export class SceneManager {
   /**
    * Unrestricted 360° Camera Tracking
    * Tracks Jones everywhere: on the ground and high in the air!
+   * Includes subtle organic handheld camera breathing and sway effect.
    */
   public updateCamera(targetX: number, targetY: number, dt: number) {
     // Camera leads slightly ahead and tracks full height in the air
@@ -81,6 +91,23 @@ export class SceneManager {
 
     this.camera.position.x = THREE.MathUtils.lerp(this.camera.position.x, targetCamX, dt * 6.5);
     this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, targetCamY, dt * 6.5);
+
+    // Subtle Organic Handheld Camera Breathing & Sway
+    if (this.handheldEnabled) {
+      this.handheldTime += dt;
+      const hx = Math.sin(this.handheldTime * 1.1) * 0.045 + Math.sin(this.handheldTime * 2.3 + 1.2) * 0.022;
+      const hy = Math.cos(this.handheldTime * 0.9) * 0.055 + Math.sin(this.handheldTime * 1.7 + 0.8) * 0.022;
+      const rotZ = Math.sin(this.handheldTime * 0.75) * 0.005; // ~0.28 deg
+      const rotX = Math.cos(this.handheldTime * 0.85) * 0.004;
+
+      this.camera.position.x += hx;
+      this.camera.position.y += hy;
+      this.camera.rotation.z = THREE.MathUtils.lerp(this.camera.rotation.z, rotZ, dt * 5.0);
+      this.camera.rotation.x = THREE.MathUtils.lerp(this.camera.rotation.x, rotX, dt * 5.0);
+    } else {
+      this.camera.rotation.z = THREE.MathUtils.lerp(this.camera.rotation.z, 0, dt * 5.0);
+      this.camera.rotation.x = THREE.MathUtils.lerp(this.camera.rotation.x, 0, dt * 5.0);
+    }
 
     // Apply Screen Shake if active
     if (this.shakeDuration > 0) {

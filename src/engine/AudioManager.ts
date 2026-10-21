@@ -230,6 +230,21 @@ export class AudioManager {
     subGain.connect(this.ctx.destination);
     subOsc.start(t);
     subOsc.stop(t + 0.19);
+
+    // 4. Energetic Sci-Fi Disintegration Zap & Sizzle
+    const zapOsc = this.ctx.createOscillator();
+    const zapGain = this.ctx.createGain();
+    zapOsc.type = 'sawtooth';
+    zapOsc.frequency.setValueAtTime(1200, t);
+    zapOsc.frequency.exponentialRampToValueAtTime(150, t + 0.25);
+
+    zapGain.gain.setValueAtTime(0.22, t);
+    zapGain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+
+    zapOsc.connect(zapGain);
+    zapGain.connect(this.ctx.destination);
+    zapOsc.start(t);
+    zapOsc.stop(t + 0.26);
   }
 
   /**
@@ -296,6 +311,46 @@ export class AudioManager {
     gain.connect(this.ctx.destination);
     osc.start(t);
     osc.stop(t + 0.23);
+  }
+
+  /**
+   * Heavy Hydraulic Press Crushing Slam & Metal Crunch
+   */
+  public playCrushHit() {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    // 1. Heavy metal slam
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(160, t);
+    osc.frequency.exponentialRampToValueAtTime(30, t + 0.35);
+
+    gain.gain.setValueAtTime(0.5, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.36);
+
+    // 2. High-frequency metal crunch / clang
+    const clang = this.ctx.createOscillator();
+    const clangGain = this.ctx.createGain();
+    clang.type = 'sawtooth';
+    clang.frequency.setValueAtTime(820, t);
+    clang.frequency.exponentialRampToValueAtTime(110, t + 0.15);
+
+    clangGain.gain.setValueAtTime(0.3, t);
+    clangGain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+
+    clang.connect(clangGain);
+    clangGain.connect(this.ctx.destination);
+    clang.start(t);
+    clang.stop(t + 0.16);
   }
 
   public playExplosion() {

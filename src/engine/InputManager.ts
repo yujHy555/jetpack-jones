@@ -10,6 +10,7 @@ export class InputManager {
   public jetpack: boolean = false;
   public shootJustPressed: boolean = false;
   public ragdollJustPressed: boolean = false;
+  public handheldToggleJustPressed: boolean = false;
 
   // Mouse & 360° Aiming
   public mouseScreenX: number = window.innerWidth / 2;
@@ -57,6 +58,10 @@ export class InputManager {
 
       if ((e.code === 'KeyR') && !wasPressed) {
         this.ragdollJustPressed = true;
+      }
+
+      if ((e.code === 'KeyH') && !wasPressed) {
+        this.handheldToggleJustPressed = true;
       }
     });
 
@@ -210,6 +215,14 @@ export class InputManager {
   public consumeRagdollTrigger(): boolean {
     if (this.ragdollJustPressed) {
       this.ragdollJustPressed = false;
+      return true;
+    }
+    return false;
+  }
+
+  public consumeHandheldToggleTrigger(): boolean {
+    if (this.handheldToggleJustPressed) {
+      this.handheldToggleJustPressed = false;
       return true;
     }
     return false;
