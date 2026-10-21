@@ -134,9 +134,108 @@ export class AudioManager {
   }
 
   /**
-   * Juicy Alien Blob Squish Pop
+   * Procedural player footstep sound effect
+   * Generates a crisp sci-fi boot impact thud on alien terrain
+   */
+  public playFootstep() {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+
+    // 1. High-frequency heel click / gravel crunch
+    const clickOsc = this.ctx.createOscillator();
+    const clickGain = this.ctx.createGain();
+    clickOsc.type = 'triangle';
+    clickOsc.frequency.setValueAtTime(340 + Math.random() * 80, t);
+    clickOsc.frequency.exponentialRampToValueAtTime(70, t + 0.045);
+
+    clickGain.gain.setValueAtTime(0.12, t);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+
+    clickOsc.connect(clickGain);
+    clickGain.connect(this.ctx.destination);
+    clickOsc.start(t);
+    clickOsc.stop(t + 0.05);
+
+    // 2. Low ground thud
+    const thudOsc = this.ctx.createOscillator();
+    const thudGain = this.ctx.createGain();
+    thudOsc.type = 'sine';
+    thudOsc.frequency.setValueAtTime(110 + Math.random() * 20, t);
+    thudOsc.frequency.exponentialRampToValueAtTime(35, t + 0.07);
+
+    thudGain.gain.setValueAtTime(0.18, t);
+    thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+
+    thudOsc.connect(thudGain);
+    thudGain.connect(this.ctx.destination);
+    thudOsc.start(t);
+    thudOsc.stop(t + 0.08);
+  }
+
+  /**
+   * Satisfying Juicy Alien Blob Squish Explosion Pop & Splatter
    */
   public playAlienSquish() {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+
+    // 1. Wet Pop Transient
+    const popOsc = this.ctx.createOscillator();
+    const popGain = this.ctx.createGain();
+    popOsc.type = 'sine';
+    popOsc.frequency.setValueAtTime(950, t);
+    popOsc.frequency.exponentialRampToValueAtTime(160, t + 0.12);
+
+    popGain.gain.setValueAtTime(0.35, t);
+    popGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+
+    popOsc.connect(popGain);
+    popGain.connect(this.ctx.destination);
+    popOsc.start(t);
+    popOsc.stop(t + 0.13);
+
+    // 2. Bubbly Squelch & Gurgle
+    const squelchOsc = this.ctx.createOscillator();
+    const squelchGain = this.ctx.createGain();
+    squelchOsc.type = 'triangle';
+    squelchOsc.frequency.setValueAtTime(320, t);
+    squelchOsc.frequency.linearRampToValueAtTime(680, t + 0.06);
+    squelchOsc.frequency.exponentialRampToValueAtTime(80, t + 0.22);
+
+    squelchGain.gain.setValueAtTime(0.28, t);
+    squelchGain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+
+    squelchOsc.connect(squelchGain);
+    squelchGain.connect(this.ctx.destination);
+    squelchOsc.start(t);
+    squelchOsc.stop(t + 0.23);
+
+    // 3. Sub-Bass Splatter Thump
+    const subOsc = this.ctx.createOscillator();
+    const subGain = this.ctx.createGain();
+    subOsc.type = 'sine';
+    subOsc.frequency.setValueAtTime(140, t);
+    subOsc.frequency.exponentialRampToValueAtTime(30, t + 0.18);
+
+    subGain.gain.setValueAtTime(0.3, t);
+    subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+
+    subOsc.connect(subGain);
+    subGain.connect(this.ctx.destination);
+    subOsc.start(t);
+    subOsc.stop(t + 0.19);
+  }
+
+  /**
+   * Heavy blunt impact sound for ragdoll knockback
+   */
+  public playHitImpact() {
     if (!this.enabled) return;
     this.initCtx();
     if (!this.ctx) return;
@@ -145,19 +244,17 @@ export class AudioManager {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(800, t);
-    osc.frequency.linearRampToValueAtTime(250, t + 0.08);
-    osc.frequency.linearRampToValueAtTime(550, t + 0.16);
-    osc.frequency.exponentialRampToValueAtTime(90, t + 0.28);
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(180, t);
+    osc.frequency.exponentialRampToValueAtTime(35, t + 0.22);
 
-    gain.gain.setValueAtTime(0.3, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    gain.gain.setValueAtTime(0.35, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
     osc.start(t);
-    osc.stop(t + 0.29);
+    osc.stop(t + 0.23);
   }
 
   public playExplosion() {

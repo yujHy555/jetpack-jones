@@ -56,13 +56,13 @@ export enum PlayerState {
 /**
  * Triple-AAA Articulated 2D Skeletal Character - Jetpack Jones
  * Features:
- * - Hand holds blaster correctly from below on the handle/grip
- * - Cool chunky astronaut space boots with corrugated tread soles & status LEDs
- * - Movement-priority facing direction (no snapping back to right when releasing keys)
- * - Clean rocketman flight pose with proper pelvis alignment (no flames through legs)
- * - Brand-new retro space helmet with flashing LED command pods and dual beacons
- * - 2-joint arm IK with natural elbow flexion & 360° mouse aiming
- * - Authentic 1970s toy jetpack with blinking LEDs, analog dial, and epic multi-tier flames
+ * - Proper pistol-holding stance: arm straightens along aim vector, barrel collinear with line of sight
+ * - Hand holds pistol grip from below, chassis and barrel sit firmly on top
+ * - Solid pure black space combat boots with strong, definable angular silhouettes
+ * - No flashing on hit: reacts with physical ragdoll recoil and joint flailing
+ * - Footstep sound triggers synchronized with walk and run gait cycles
+ * - Redesigned space helmet with flashing command pod buttons and twin beacon tips
+ * - 1970s toy-style chrome jetpack with blinking LEDs, analog dial, and diamond shockwave flames
  * - Satisfying plasma bubble-burst muzzle flash
  */
 export class Player {
@@ -84,13 +84,21 @@ export class Player {
   public maxFuel: number = 100;
   public invulnerableTime: number = 0;
 
+  // Ragdoll Physics Hit Reaction
+  public ragdollTimer: number = 0;
+  public ragdollImpulseX: number = -1;
+
+  // Footstep Sound Callback
+  public onFootstep?: () => void;
+  private prevStridePhase: number = 0;
+
   // Skeletal Bones Hierarchy
   private rigRoot: THREE.Group;
   private hipBone: THREE.Group;
   private torsoBone: THREE.Group;
   private headBone: THREE.Group;
 
-  // Legs & Cool Space Boots
+  // Legs & Solid Black Space Combat Boots
   private frontThighBone: THREE.Group;
   private frontShinBone: THREE.Group;
   private frontFootBone: THREE.Group;
@@ -99,7 +107,7 @@ export class Player {
   private backShinBone: THREE.Group;
   private backFootBone: THREE.Group;
 
-  // Arms (2-Joint Inverse Kinematics / Natural Elbow Flexion)
+  // Arms (Pistol Holding Stance & Line-of-Sight Aiming)
   private frontArmBone: THREE.Group;
   private frontForearmBone: THREE.Group;
   private frontHandBone: THREE.Group;
@@ -190,7 +198,7 @@ export class Player {
       metalness: 0.05,
     });
     const darkHarness = new THREE.MeshStandardMaterial({
-      color: 0x242830,
+      color: 0x22262e,
       roughness: 0.45,
       metalness: 0.25,
     });
@@ -225,21 +233,27 @@ export class Player {
       roughness: 0.5,
       metalness: 0.3,
     });
-    const treadMat = new THREE.MeshStandardMaterial({
-      color: 0x16181e,
-      roughness: 0.85,
-      metalness: 0.1,
+
+    // SOLID PURE BLACK SPACE COMBAT BOOTS MATERIAL (Bold, strong definable silhouette)
+    const solidBlackBootMat = new THREE.MeshStandardMaterial({
+      color: 0x0a0a0c,
+      roughness: 0.55,
+      metalness: 0.25,
+    });
+    const darkSoleTreadMat = new THREE.MeshStandardMaterial({
+      color: 0x050507,
+      roughness: 0.90,
+      metalness: 0.10,
     });
 
     // --------------------------------------------------------
     // 1. SKELETAL RIG HIERARCHY
     // --------------------------------------------------------
-    // Hip Bone (Height calibrated so soles touch GROUND_Y = -3.70 with 0.000 error)
     this.hipBone = new THREE.Group();
     this.hipBone.position.set(0, 1.05, 0);
     this.rigRoot.add(this.hipBone);
 
-    // Utility belt and chrome buckle
+    // Utility belt and buckle
     const belt = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.14, 0.32), darkHarness);
     this.hipBone.add(belt);
 
@@ -275,14 +289,12 @@ export class Player {
     this.headBone.position.set(0.02, 0.72, 0);
     this.torsoBone.add(this.headBone);
 
-    // Stylized Face inside helmet
+    // Face
     const face = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 0.22), fleshTone);
     face.position.set(0.02, 0.14, 0);
     this.headBone.add(face);
 
-    // --------------------------------------------------------
-    // REVISED SPACE HELMET WITH FLASHING COMMAND BUTTONS
-    // --------------------------------------------------------
+    // SPACE HELMET WITH FLASHING COMMAND POD BUTTONS
     const helmetGroup = new THREE.Group();
     helmetGroup.position.set(0.02, 0.16, 0);
     this.headBone.add(helmetGroup);
@@ -291,7 +303,7 @@ export class Player {
     const helmetMesh = new THREE.Mesh(new THREE.SphereGeometry(0.33, 24, 24), spaceWhiteMat);
     helmetGroup.add(helmetMesh);
 
-    // Top Aerodynamic Crest / Fin in dark graphite
+    // Top Crest Fin
     const crest = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.05, 0.04), darkHarness);
     crest.position.set(-0.02, 0.33, 0);
     helmetGroup.add(crest);
@@ -309,13 +321,12 @@ export class Player {
     visor.position.set(0.08, 0, 0);
     helmetGroup.add(visor);
 
-    // Dual Side Command Pods with FLASHING LED BUTTONS
+    // Dual Side Command Pods with 3 FLASHING LED BUTTONS on each side
     for (const zSide of [0.33, -0.33]) {
       const pod = new THREE.Group();
       pod.position.set(0, 0, zSide);
       helmetGroup.add(pod);
 
-      // Pod chassis
       const podHousing = new THREE.Mesh(
         new THREE.CylinderGeometry(0.09, 0.09, 0.06, 12),
         darkHarness
@@ -323,7 +334,6 @@ export class Player {
       podHousing.rotation.x = Math.PI / 2;
       pod.add(podHousing);
 
-      // Chrome bezel ring
       const bezel = new THREE.Mesh(
         new THREE.TorusGeometry(0.09, 0.015, 8, 16),
         chromeMetal
@@ -331,8 +341,7 @@ export class Player {
       bezel.position.z = zSide > 0 ? 0.03 : -0.03;
       pod.add(bezel);
 
-      // 3 Chunky Interactive Flashing LED Buttons on the Pod
-      // 0: Red, 1: Cyan, 2: Amber
+      // Buttons: 0=Red, 1=Cyan, 2=Amber
       const buttonColors = [0xff1133, 0x00f5ff, 0xffaa00];
       for (let b = 0; b < 3; b++) {
         const bMat = new THREE.MeshBasicMaterial({ color: buttonColors[b] });
@@ -386,7 +395,7 @@ export class Player {
     }
 
     // --------------------------------------------------------
-    // 2. LEGS & COOL ASTRONAUT SPACE BOOTS
+    // 2. LEGS & SOLID BLACK SPACE COMBAT BOOTS
     // --------------------------------------------------------
     const legGeoThigh = new THREE.BoxGeometry(0.15, 0.44, 0.14);
     const legGeoShin = new THREE.BoxGeometry(0.13, 0.42, 0.13);
@@ -433,197 +442,154 @@ export class Player {
     this.frontFootBone.position.set(0, -0.42, 0);
     this.frontShinBone.add(this.frontFootBone);
 
-    // BUILD DETAILED LUNAR SPACE BOOTS ON BOTH FEET
-    // Zero-Clip Mathematical Alignment: Bottom of boot sole touches exactly y = 0.000 in player space!
-    const createSpaceBoot = (parentFoot: THREE.Group, isFront: boolean) => {
+    // BUILD SOLID BLACK DEFINABLE SPACE BOOTS
+    // Mathematical zero-clip: bottom of tread sole touches exactly y = 0.000 in player local space!
+    const createSolidBlackBoot = (parentFoot: THREE.Group) => {
       const bootGroup = new THREE.Group();
       parentFoot.add(bootGroup);
 
-      // Ankle Ribbed Seal Collar
-      const ankleCuff = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.06, 0.16), darkHarness);
+      // Deep Black Ribbed Ankle Cuff
+      const ankleCuff = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.06, 0.17), solidBlackBootMat);
       ankleCuff.position.set(0, 0.01, 0);
       bootGroup.add(ankleCuff);
 
-      // Main Reinforced White Space Boot Upper
-      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.09, 0.14), spaceWhiteMat);
+      // Chunky Solid Black Armored Boot Upper
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.10, 0.15), solidBlackBootMat);
       upper.position.set(0.05, -0.065, 0);
       bootGroup.add(upper);
 
-      // Dark Armored Front Toe Bumper Cap
-      const toeBumper = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.15), darkHarness);
-      toeBumper.position.set(0.18, -0.07, 0);
-      bootGroup.add(toeBumper);
+      // Strong Pronounced Toe Cap Box
+      const toeBox = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.155), solidBlackBootMat);
+      toeBox.position.set(0.18, -0.07, 0);
+      bootGroup.add(toeBox);
 
-      // Dual Chrome Mechanical Instep Straps
-      const strap1 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.035, 0.15), chromeMetal);
-      strap1.position.set(0.03, -0.02, 0);
-      bootGroup.add(strap1);
+      // Angular Heel Counter
+      const heelCounter = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.155), solidBlackBootMat);
+      heelCounter.position.set(-0.08, -0.07, 0);
+      bootGroup.add(heelCounter);
 
-      const strap2 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.035, 0.15), chromeMetal);
-      strap2.position.set(0.10, -0.03, 0);
-      bootGroup.add(strap2);
+      // Dual Mechanical Black Clasps
+      for (const sx of [0.03, 0.10]) {
+        const clasp = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.165), solidBlackBootMat);
+        clasp.position.set(sx, -0.025, 0);
+        bootGroup.add(clasp);
+      }
 
-      // Heavy Corrugated Vulcanized Tread Sole Plate
-      // Height = 0.035, Center at -0.1225 -> Bottom at -0.140 (which equals local y = 0.000!)
-      const sole = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.035, 0.16), treadMat);
+      // Heavy Corrugated Solid Black Tread Sole Plate
+      // Height = 0.035, Center at -0.1225 -> Bottom is at -0.140, matching y = 0.000 in player space!
+      const sole = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.035, 0.17), darkSoleTreadMat);
       sole.position.set(0.06, -0.1225, 0);
       bootGroup.add(sole);
 
-      // Individual Deep Sole Cleats
+      // Thick Rugged Sole Cleats
       for (const cx of [-0.07, 0.0, 0.07, 0.14]) {
-        const cleat = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.015, 0.15), treadMat);
+        const cleat = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.015, 0.165), darkSoleTreadMat);
         cleat.position.set(cx, -0.135, 0);
         bootGroup.add(cleat);
       }
-
-      // Outer Heel Status LED Indicator (Cyan)
-      const heelLedZ = isFront ? 0.085 : -0.085;
-      const heelLed = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.03, 0.02), cyanStripe);
-      heelLed.position.set(-0.08, -0.065, heelLedZ);
-      bootGroup.add(heelLed);
     };
 
-    createSpaceBoot(this.backFootBone, false);
-    createSpaceBoot(this.frontFootBone, true);
+    createSolidBlackBoot(this.backFootBone);
+    createSolidBlackBoot(this.frontFootBone);
 
     // --------------------------------------------------------
-    // 3. ARMS WITH RETRO ASTRONAUT GAUNTLET SPACE GLOVES
+    // 3. ARMS & PISTOL HOLDING STANCE (Straightened Line-of-Sight Aiming)
     // --------------------------------------------------------
-    const armGeoUpper = new THREE.BoxGeometry(0.12, 0.35, 0.12);
-    const armGeoFore = new THREE.BoxGeometry(0.11, 0.32, 0.11);
-
-    // Back Arm
-    this.backArmBone = new THREE.Group();
-    this.backArmBone.position.set(-0.02, 0.5, -0.22);
-    this.torsoBone.add(this.backArmBone);
-
-    const backUpperMesh = new THREE.Mesh(armGeoUpper, suitOrangeDark);
-    backUpperMesh.position.set(0, -0.16, 0);
-    this.backArmBone.add(backUpperMesh);
-
-    this.backForearmBone = new THREE.Group();
-    this.backForearmBone.position.set(0, -0.32, 0);
-    this.backArmBone.add(this.backForearmBone);
-
-    const backForeMesh = new THREE.Mesh(armGeoFore, suitOrangeDark);
-    backForeMesh.position.set(0, -0.14, 0);
-    this.backForearmBone.add(backForeMesh);
-
-    // Back Space Glove
-    const backGloveCuff = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.08, 12), darkHarness);
-    backGloveCuff.position.set(0, -0.26, 0);
-    this.backForearmBone.add(backGloveCuff);
-
-    this.backHandBone = new THREE.Group();
-    this.backHandBone.position.set(0, -0.32, 0);
-    this.backForearmBone.add(this.backHandBone);
-
-    const backGloveMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.12), spaceWhiteMat);
-    this.backHandBone.add(backGloveMesh);
-
-    // Front Arm (2-Joint Inverse Kinematics)
+    // Front Arm: Root at shoulder (0.04, 0.48, 0.20) on torsoBone
     this.frontArmBone = new THREE.Group();
-    this.frontArmBone.position.set(0.02, 0.5, 0.22);
+    this.frontArmBone.position.set(0.04, 0.48, 0.20);
     this.torsoBone.add(this.frontArmBone);
 
-    const frontUpperMesh = new THREE.Mesh(armGeoUpper, suitOrange);
-    frontUpperMesh.position.set(0, -0.16, 0);
+    // Upper Arm extends forward along +X
+    const frontUpperMesh = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.11, 0.11), suitOrange);
+    frontUpperMesh.position.set(0.15, 0, 0);
     this.frontArmBone.add(frontUpperMesh);
 
+    // Elbow joint at (0.30, 0, 0) in frontArmBone
     this.frontForearmBone = new THREE.Group();
-    this.frontForearmBone.position.set(0, -0.32, 0);
+    this.frontForearmBone.position.set(0.30, 0, 0);
     this.frontArmBone.add(this.frontForearmBone);
 
-    const frontForeMesh = new THREE.Mesh(armGeoFore, suitOrange);
-    frontForeMesh.position.set(0, -0.14, 0);
+    // Forearm extends forward along +X
+    const frontForeMesh = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.10, 0.10), suitOrange);
+    frontForeMesh.position.set(0.13, 0, 0);
     this.frontForearmBone.add(frontForeMesh);
 
-    const frontGloveCuff = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.08, 12), darkHarness);
-    frontGloveCuff.position.set(0, -0.26, 0);
+    // Glove Gauntlet Cuff
+    const frontGloveCuff = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.085, 0.08, 12), darkHarness);
+    frontGloveCuff.rotation.z = Math.PI / 2;
+    frontGloveCuff.position.set(0.22, 0, 0);
     this.frontForearmBone.add(frontGloveCuff);
 
-    const gloveStatusLed = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.03, 0.08), cyanStripe);
-    gloveStatusLed.position.set(0.07, -0.26, 0);
-    this.frontForearmBone.add(gloveStatusLed);
-
-    // Front Hand Bone: represents the center of the hand gripping the handle
+    // Hand Bone at (0.26, 0, 0)
     this.frontHandBone = new THREE.Group();
-    this.frontHandBone.position.set(0, -0.32, 0);
+    this.frontHandBone.position.set(0.26, 0, 0);
     this.frontForearmBone.add(this.frontHandBone);
 
-    // --------------------------------------------------------
-    // 4. RETRO LASER BLASTER (Hand grips handle from below!)
-    // --------------------------------------------------------
+    // BLASTER MESH (Held firmly by the handle, barrel pointing along +X line of sight)
     this.blasterMesh = new THREE.Group();
     this.blasterMesh.position.set(0, 0, 0);
     this.frontHandBone.add(this.blasterMesh);
 
-    // A. Tactical Pistol Grip Handle (Centered right where the hand holds it!)
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.16, 0.07), darkHarness);
+    // 1. Pistol Grip Handle hangs down from hand
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.15, 0.07), darkHarness);
     grip.rotation.z = -0.16;
-    grip.position.set(0, 0, 0);
+    grip.position.set(0, -0.06, 0);
     this.blasterMesh.add(grip);
 
-    // B. Astronaut Space Glove Fingers securely wrapped around the handle
-    const glovePalm = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, 0.11), spaceWhiteMat);
-    glovePalm.position.set(-0.01, 0, 0);
+    // 2. Astronaut Space Glove Fingers wrapped around the handle
+    const glovePalm = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.11, 0.11), spaceWhiteMat);
+    glovePalm.position.set(-0.01, -0.05, 0);
     this.blasterMesh.add(glovePalm);
 
-    // Fingers curled around the front of the grip
-    const curledFingers = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.11, 0.09), spaceWhiteMat);
-    curledFingers.position.set(0.04, 0, 0);
+    const curledFingers = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.10, 0.085), spaceWhiteMat);
+    curledFingers.position.set(0.04, -0.06, 0);
     this.blasterMesh.add(curledFingers);
 
-    // Thumb resting on the upper frame
-    const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.04), spaceWhiteMat);
-    thumb.position.set(-0.02, 0.05, 0.05);
-    this.blasterMesh.add(thumb);
-
-    // C. Gun Receiver & Barrel — PLACED ON TOP OF THE HANDLE!
-    const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.11, 0.09), chromeMetal);
-    receiver.position.set(0.10, 0.12, 0);
+    // 3. Receiver Chassis sits firmly ON TOP of the handle
+    const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.10, 0.085), chromeMetal);
+    receiver.position.set(0.10, 0.04, 0);
     this.blasterMesh.add(receiver);
 
-    // Trigger Guard connecting receiver bottom to front of grip
-    const guard = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.012, 6, 12, Math.PI), darkHarness);
-    guard.position.set(0.04, 0.05, 0);
+    // Trigger Guard
+    const guard = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.01, 6, 12, Math.PI), darkHarness);
+    guard.position.set(0.04, -0.015, 0);
     guard.rotation.z = -Math.PI / 2;
     this.blasterMesh.add(guard);
 
-    // Glowing Cyan Energy Plasma Core in the receiver
-    const coreMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.11), cyanStripe);
-    coreMesh.position.set(0.08, 0.12, 0);
+    // Glowing Cyan Energy Plasma Core
+    const coreMesh = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.06, 0.09), cyanStripe);
+    coreMesh.position.set(0.08, 0.04, 0);
     this.blasterMesh.add(coreMesh);
 
-    // Precision Forward Barrel extending out from receiver
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.28, 12), chromeMetal);
+    // Precision Forward Barrel strictly collinear with arm line of sight!
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.28, 12), chromeMetal);
     barrel.rotateZ(Math.PI / 2);
-    barrel.position.set(0.34, 0.12, 0);
+    barrel.position.set(0.34, 0.04, 0);
     this.blasterMesh.add(barrel);
 
-    // Ribbed Cooling Coils around the barrel
+    // Cooling Coils
     for (let cx = 0.24; cx <= 0.40; cx += 0.055) {
-      const coil = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 8, 12), cyanStripe);
+      const coil = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.01, 8, 12), cyanStripe);
       coil.rotateY(Math.PI / 2);
-      coil.position.set(cx, 0.12, 0);
+      coil.position.set(cx, 0.04, 0);
       this.blasterMesh.add(coil);
     }
 
-    // Dual Muzzle Prongs at the tip
-    const prongTop = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.02, 0.03), chromeMetal);
-    prongTop.position.set(0.50, 0.14, 0);
+    // Muzzle Prongs
+    const prongTop = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.018, 0.025), chromeMetal);
+    prongTop.position.set(0.48, 0.06, 0);
     this.blasterMesh.add(prongTop);
 
-    const prongBot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.02, 0.03), chromeMetal);
-    prongBot.position.set(0.50, 0.10, 0);
+    const prongBot = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.018, 0.025), chromeMetal);
+    prongBot.position.set(0.48, 0.02, 0);
     this.blasterMesh.add(prongBot);
 
-    // SATISFYING PLASMA BUBBLE BURST MUZZLE FLASH
+    // PLASMA BUBBLE BURST MUZZLE FLASH
     this.bubbleBurstGroup = new THREE.Group();
-    this.bubbleBurstGroup.position.set(0.58, 0.12, 0);
+    this.bubbleBurstGroup.position.set(0.54, 0.04, 0);
     this.blasterMesh.add(this.bubbleBurstGroup);
 
-    // Expanding glowing energy bubble
     const bubbleGeo = new THREE.SphereGeometry(0.26, 16, 16);
     const bubbleMat = new THREE.MeshBasicMaterial({
       color: 0x00f5ff,
@@ -634,7 +600,6 @@ export class Player {
     this.bubbleSphereMesh = new THREE.Mesh(bubbleGeo, bubbleMat);
     this.bubbleBurstGroup.add(this.bubbleSphereMesh);
 
-    // Concentric shockwave ripple ring
     const ringGeo = new THREE.RingGeometry(0.1, 0.35, 20);
     const ringMat = new THREE.MeshBasicMaterial({
       color: 0xff00bb,
@@ -647,7 +612,6 @@ export class Player {
     this.bubbleRingMesh.rotation.y = Math.PI / 2;
     this.bubbleBurstGroup.add(this.bubbleRingMesh);
 
-    // Burst droplet particles
     const dropletGeo = new THREE.SphereGeometry(0.035, 6, 6);
     const dropletMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
     for (let i = 0; i < 8; i++) {
@@ -663,14 +627,37 @@ export class Player {
       });
     }
 
+    // BACK ARM (Supports in Two-Handed Tactical Pistol Stance)
+    this.backArmBone = new THREE.Group();
+    this.backArmBone.position.set(-0.04, 0.48, -0.20);
+    this.torsoBone.add(this.backArmBone);
+
+    const backUpperMesh = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.11, 0.11), suitOrangeDark);
+    backUpperMesh.position.set(0.15, 0, 0);
+    this.backArmBone.add(backUpperMesh);
+
+    this.backForearmBone = new THREE.Group();
+    this.backForearmBone.position.set(0.30, 0, 0);
+    this.backArmBone.add(this.backForearmBone);
+
+    const backForeMesh = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.10, 0.10), suitOrangeDark);
+    backForeMesh.position.set(0.13, 0, 0);
+    this.backForearmBone.add(backForeMesh);
+
+    this.backHandBone = new THREE.Group();
+    this.backHandBone.position.set(0.26, 0, 0);
+    this.backForearmBone.add(this.backHandBone);
+
+    const backGloveMesh = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, 0.11), spaceWhiteMat);
+    this.backHandBone.add(backGloveMesh);
+
     // --------------------------------------------------------
-    // 5. 1970s TOY JETPACK WITH FLASHING BUTTONS & EPIC FLAMES
+    // 4. 1970s TOY JETPACK WITH DIAMOND SHOCKWAVE FLAMES
     // --------------------------------------------------------
     this.jetpackBone = new THREE.Group();
     this.jetpackBone.position.set(-0.25, 0.34, 0);
     this.torsoBone.add(this.jetpackBone);
 
-    // Vacuum-Metallized Chrome Twin Rocket Cylinders
     const tankGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.58, 16);
     const leftTank = new THREE.Mesh(tankGeo, chromeMetal);
     leftTank.position.z = -0.13;
@@ -680,7 +667,6 @@ export class Player {
     rightTank.position.z = 0.13;
     this.jetpackBone.add(rightTank);
 
-    // Conical Rocket Nose Cones
     const noseGeo = new THREE.ConeGeometry(0.09, 0.14, 16);
     const noseL = new THREE.Mesh(noseGeo, chromeMetal);
     noseL.position.set(0, 0.36, -0.13);
@@ -703,12 +689,12 @@ export class Player {
       this.jetpackBone.add(bandR);
     }
 
-    // 1970s Retro Command Console Box between tanks
+    // 1970s Command Console Box
     const consoleBox = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.32, 0.2), vintageConsoleMat);
     consoleBox.position.set(-0.02, 0.02, 0);
     this.jetpackBone.add(consoleBox);
 
-    // 4 Chunky Vintage Flashing LED Buttons (Red, Green, Amber, Cyan)
+    // 4 Chunky Flashing LED Buttons
     const ledColors = [0xff2222, 0x22ff44, 0xffaa00, 0x00f5ff];
     for (let b = 0; b < 4; b++) {
       const ledMat = new THREE.MeshBasicMaterial({ color: ledColors[b] });
@@ -719,7 +705,7 @@ export class Player {
       this.jetpackBone.add(button);
     }
 
-    // Analog Pressure Gauge Dial with Needle
+    // Analog Gauge Needle
     const dialRim = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.02, 12), chromeMetal);
     dialRim.rotateZ(Math.PI / 2);
     dialRim.position.set(-0.09, -0.08, -0.04);
@@ -739,7 +725,7 @@ export class Player {
     this.fuelGaugeNeedle.position.set(-0.104, -0.08, -0.04);
     this.jetpackBone.add(this.fuelGaugeNeedle);
 
-    // Flared Conical Exhaust Bells (Tilted slightly back so flames never touch legs!)
+    // Flared Conical Exhaust Bells
     const nozzleGeo = new THREE.ConeGeometry(0.11, 0.2, 16, 1, true);
     nozzleGeo.rotateX(Math.PI);
 
@@ -751,7 +737,7 @@ export class Player {
     nozR.position.set(0, -0.37, 0.13);
     this.jetpackBone.add(nozR);
 
-    // EPIC MULTI-TIERED THRUSTER FLAME PLUMES
+    // EPIC DIAMOND SHOCKWAVE FLAME PLUMES
     this.flameConeLeft = new THREE.Group();
     this.flameConeLeft.position.set(0, -0.42, -0.13);
     this.jetpackBone.add(this.flameConeLeft);
@@ -760,14 +746,14 @@ export class Player {
     this.flameConeRight.position.set(0, -0.42, 0.13);
     this.jetpackBone.add(this.flameConeRight);
 
-    // Outer Roaring Amber Flame Plume
-    const outerGeo = new THREE.ConeGeometry(0.16, 0.82, 12);
+    // Outer Roaring Fiery Plume
+    const outerGeo = new THREE.ConeGeometry(0.18, 0.95, 14);
     outerGeo.rotateX(Math.PI);
-    outerGeo.translate(0, -0.41, 0);
+    outerGeo.translate(0, -0.47, 0);
     const outerMat = new THREE.MeshBasicMaterial({
-      color: 0xff4400,
+      color: 0xff3300,
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.88,
       blending: THREE.AdditiveBlending,
     });
     this.flameOuterLeft = new THREE.Mesh(outerGeo, outerMat);
@@ -775,23 +761,23 @@ export class Player {
     this.flameConeLeft.add(this.flameOuterLeft);
     this.flameConeRight.add(this.flameOuterRight);
 
-    // Middle Bright Yellow Plasma Flame
-    const midGeo = new THREE.ConeGeometry(0.10, 0.58, 12);
+    // Middle Bright Golden Shock Diamond Flame
+    const midGeo = new THREE.ConeGeometry(0.11, 0.65, 14);
     midGeo.rotateX(Math.PI);
-    midGeo.translate(0, -0.29, 0);
+    midGeo.translate(0, -0.32, 0);
     const midMat = new THREE.MeshBasicMaterial({
-      color: 0xffbb00,
+      color: 0xffaa00,
       blending: THREE.AdditiveBlending,
     });
     this.flameConeLeft.add(new THREE.Mesh(midGeo, midMat));
     this.flameConeRight.add(new THREE.Mesh(midGeo, midMat));
 
-    // Inner White-Hot Plasma Core
-    const coreGeo = new THREE.ConeGeometry(0.05, 0.36, 12);
+    // Inner White-Cyan Plasma Shock Spike
+    const coreGeo = new THREE.ConeGeometry(0.06, 0.42, 14);
     coreGeo.rotateX(Math.PI);
-    coreGeo.translate(0, -0.18, 0);
+    coreGeo.translate(0, -0.21, 0);
     const coreFlameMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
+      color: 0xddffff,
       blending: THREE.AdditiveBlending,
     });
     this.flameCoreLeft = new THREE.Mesh(coreGeo, coreFlameMat);
@@ -803,14 +789,14 @@ export class Player {
     this.flameConeRight.visible = false;
 
     // --------------------------------------------------------
-    // 6. VFX SYSTEMS (Volumetric Smoke, Sparks, Dust)
+    // 5. VFX SYSTEMS
     // --------------------------------------------------------
     this.initSmokeSystem();
     this.initSparkSystem();
     this.initDustSystem();
 
     // --------------------------------------------------------
-    // 7. LASER BOLTS
+    // 6. LASER BOLTS
     // --------------------------------------------------------
     this.laserGeo = new THREE.CylinderGeometry(0.045, 0.045, 0.8, 8);
     this.laserGeo.rotateZ(Math.PI / 2);
@@ -841,6 +827,7 @@ export class Player {
     this.life = 100;
     this.fuel = 100;
     this.invulnerableTime = 0;
+    this.ragdollTimer = 0;
     this.animTimer = 0;
     this.shootTimer = 0;
     this.bubbleBurstTimer = 0;
@@ -967,7 +954,7 @@ export class Player {
   }
 
   /**
-   * Fires a blaster laser bolt in 360° toward target with bubble-burst flash
+   * Fires a blaster laser bolt straight along the arm's line of sight
    */
   public shoot(aimTargetWorld?: THREE.Vector3): boolean {
     const laser = this.lasers.find(l => !l.active);
@@ -976,23 +963,23 @@ export class Player {
     this.shootTimer = 0.28;
     this.bubbleBurstTimer = 0.24;
 
-    // Calculate aim angle
+    // Calculate aim angle from shoulder / chest height
     let aimAngle = this.facingRight ? 0 : Math.PI;
-    const originY = this.position.y + 1.25;
-    const originX = this.position.x + (this.facingRight ? 0.38 : -0.38);
+    const originY = this.position.y + 1.55; // Shoulder height!
+    const originX = this.position.x + (this.facingRight ? 0.04 : -0.04);
 
     if (aimTargetWorld) {
       aimAngle = Math.atan2(aimTargetWorld.y - originY, aimTargetWorld.x - originX);
     }
     this.currentAimAngle = aimAngle;
 
-    // Spawning location along barrel axis
-    const muzzleDist = 0.62;
+    // Spawning location at barrel tip along line of sight
+    const muzzleDist = 1.05; // Full arm length (0.30 + 0.26 + 0.48)
     const spawnX = originX + Math.cos(aimAngle) * muzzleDist;
     const spawnY = originY + Math.sin(aimAngle) * muzzleDist;
 
     laser.position.set(spawnX, spawnY, this.position.z);
-    laser.velocity.set(Math.cos(aimAngle) * 32, Math.sin(aimAngle) * 32, 0);
+    laser.velocity.set(Math.cos(aimAngle) * 34, Math.sin(aimAngle) * 34, 0);
     laser.active = true;
     laser.life = 1.3;
     laser.mesh.position.copy(laser.position);
@@ -1011,17 +998,26 @@ export class Player {
       bp.velocity.set(Math.cos(angle) * speed, Math.sin(angle) * speed, 0);
     }
 
-    // Dynamic Muzzle Flash light
     this.muzzleLight.position.set(spawnX, spawnY, this.position.z + 0.2);
     this.muzzleLight.intensity = 22;
 
     return true;
   }
 
-  public takeDamage(amount: number = 25) {
+  /**
+   * Ragdoll hit reaction with physical knockback (NO FLASHING!)
+   */
+  public takeDamage(amount: number = 25, knockbackDirX: number = -1) {
     if (this.invulnerableTime > 0) return;
     this.life = Math.max(0, this.life - amount);
-    this.invulnerableTime = 1.0;
+    this.invulnerableTime = 0.55;
+
+    // Trigger physical ragdoll flail & knockback impulse
+    this.ragdollTimer = 0.45;
+    this.ragdollImpulseX = knockbackDirX;
+    this.velocity.x = knockbackDirX * 7.5;
+    this.velocity.y = 7.0;
+    this.isGrounded = false;
   }
 
   public addFuel(amount: number = 35) {
@@ -1045,14 +1041,13 @@ export class Player {
     this.animTimer += dt;
     if (this.invulnerableTime > 0) {
       this.invulnerableTime -= dt;
-      this.mesh.visible = Math.floor(this.animTimer * 18) % 2 === 0;
-    } else {
-      this.mesh.visible = true;
     }
+    // ALWAYS visible — NO FLASHING!
+    this.mesh.visible = true;
 
     // 1. Aim Tracking
     if (hasMouseTarget && mouseWorldTarget) {
-      const originY = this.position.y + 1.25;
+      const originY = this.position.y + 1.55; // Shoulder height
       const originX = this.position.x;
       this.currentAimAngle = Math.atan2(
         mouseWorldTarget.y - originY,
@@ -1061,8 +1056,6 @@ export class Player {
     }
 
     // 2. Movement-Priority Facing Direction
-    // FIXED: Only movement keys change facing direction! When key is released,
-    // the player keeps his current facing direction and will NEVER automatically snap back!
     if (moveX > 0.05) {
       this.facingRight = true;
     } else if (moveX < -0.05) {
@@ -1146,7 +1139,7 @@ export class Player {
     }
     this.wasGroundedLastFrame = this.isGrounded;
 
-    // 6. Determine State Machine
+    // 6. State Machine
     if (isActuallyJetpacking) {
       this.state = PlayerState.JETPACK;
     } else if (!this.isGrounded) {
@@ -1169,7 +1162,10 @@ export class Player {
 
   /**
    * Triple-AAA Skeletal Animation System
-   * Features 2-joint arm IK with natural elbow flexion and backward-bending knees
+   * Features:
+   * - Straightened pistol-holding arm aimed at cursor
+   * - Ragdoll recoil physics on damage
+   * - Footstep sound sync
    */
   private animateSkeletalRig(dt: number, hasMouseTarget: boolean) {
     const t = this.animTimer;
@@ -1206,12 +1202,12 @@ export class Player {
         this.backShinBone.rotation.z = -0.05;
         this.backFootBone.rotation.z = 0.0;
 
-        this.backArmBone.rotation.z = breathe * 0.04 - 0.1;
-        this.backForearmBone.rotation.z = 0.35;
-
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = -breathe * 0.04 + 0.15;
-          this.frontForearmBone.rotation.z = 0.4;
+          // Relaxed pistol ready hold at side/waist
+          this.frontArmBone.rotation.z = -0.65;
+          this.frontForearmBone.rotation.z = 0.45;
+          this.backArmBone.rotation.z = -0.65;
+          this.backForearmBone.rotation.z = 0.45;
         }
         break;
       }
@@ -1222,6 +1218,14 @@ export class Player {
       case PlayerState.WALK: {
         const walkFreq = 8.5;
         const phase = t * walkFreq;
+
+        // Trigger footstep sound on foot contact (phase crossing PI)
+        if (this.isGrounded) {
+          if (Math.sin(phase) * Math.sin(this.prevStridePhase) <= 0 && phase !== this.prevStridePhase) {
+            this.onFootstep?.();
+          }
+        }
+        this.prevStridePhase = phase;
 
         this.torsoBone.rotation.z = -0.08;
         this.torsoBone.position.y = 0.1;
@@ -1242,12 +1246,11 @@ export class Player {
         this.backShinBone.rotation.z = backStride < 0 ? -Math.abs(backStride) * 0.85 : -0.1;
         this.backFootBone.rotation.z = backStride * 0.2;
 
-        this.backArmBone.rotation.z = frontStride * 0.6;
-        this.backForearmBone.rotation.z = 0.5;
-
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = backStride * 0.5 + 0.1;
-          this.frontForearmBone.rotation.z = 0.45;
+          this.frontArmBone.rotation.z = -0.55 + backStride * 0.25;
+          this.frontForearmBone.rotation.z = 0.4;
+          this.backArmBone.rotation.z = -0.55 + frontStride * 0.25;
+          this.backForearmBone.rotation.z = 0.4;
         }
         break;
       }
@@ -1258,6 +1261,14 @@ export class Player {
       case PlayerState.RUN: {
         const runFreq = 14.0;
         const phase = t * runFreq;
+
+        // Trigger footstep sound on foot contact
+        if (this.isGrounded) {
+          if (Math.sin(phase) * Math.sin(this.prevStridePhase) <= 0 && phase !== this.prevStridePhase) {
+            this.onFootstep?.();
+          }
+        }
+        this.prevStridePhase = phase;
 
         this.torsoBone.rotation.z = -0.22;
         this.torsoBone.position.y = 0.1;
@@ -1278,12 +1289,11 @@ export class Player {
         this.backShinBone.rotation.z = backRun < 0 ? -Math.abs(backRun) * 1.25 : -0.1;
         this.backFootBone.rotation.z = backRun * 0.35;
 
-        this.backArmBone.rotation.z = frontRun * 0.85;
-        this.backForearmBone.rotation.z = 0.85;
-
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = backRun * 0.75 + 0.15;
-          this.frontForearmBone.rotation.z = 0.6;
+          this.frontArmBone.rotation.z = -0.45 + backRun * 0.35;
+          this.frontForearmBone.rotation.z = 0.55;
+          this.backArmBone.rotation.z = -0.45 + frontRun * 0.35;
+          this.backForearmBone.rotation.z = 0.55;
         }
 
         if (Math.abs(frontRun) > 0.9) {
@@ -1308,12 +1318,11 @@ export class Player {
         this.backShinBone.rotation.z = -0.75;
         this.backFootBone.rotation.z = 0.25;
 
-        this.backArmBone.rotation.z = -0.4;
-        this.backForearmBone.rotation.z = 0.5;
-
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = 0.25;
-          this.frontForearmBone.rotation.z = 0.45;
+          this.frontArmBone.rotation.z = -0.35;
+          this.frontForearmBone.rotation.z = 0.35;
+          this.backArmBone.rotation.z = -0.45;
+          this.backForearmBone.rotation.z = 0.45;
         }
         break;
       }
@@ -1331,16 +1340,19 @@ export class Player {
         this.backShinBone.rotation.z = -0.2;
         this.backFootBone.rotation.z = -0.25;
 
-        this.backArmBone.rotation.z = -0.25;
-        this.backForearmBone.rotation.z = 0.35;
+        if (!hasMouseTarget && this.shootTimer <= 0) {
+          this.frontArmBone.rotation.z = -0.45;
+          this.frontForearmBone.rotation.z = 0.25;
+          this.backArmBone.rotation.z = -0.35;
+          this.backForearmBone.rotation.z = 0.30;
+        }
         break;
       }
 
       // ----------------------------------------------------
-      // E. CORRECT JETPACK FLIGHT POSE (Flames clear of legs!)
+      // E. JETPACK FLIGHT POSE (Flames shoot safely clear of legs)
       // ----------------------------------------------------
       case PlayerState.JETPACK: {
-        // Forward flight lean into direction of travel
         const forwardLean = -0.16 - (this.velocity.x / 11.0) * 0.18;
         this.torsoBone.rotation.z = THREE.MathUtils.lerp(
           this.torsoBone.rotation.z,
@@ -1349,7 +1361,7 @@ export class Player {
         );
         this.torsoBone.position.set(0, 0.1, 0);
 
-        // Pelvis stays centered (does NOT jut forward!)
+        // Pelvis stays centered
         this.hipBone.position.set(0, 1.05, 0);
 
         // Head proudly tilts forward and up looking through visor
@@ -1358,9 +1370,6 @@ export class Player {
         // Jetpack tilts back slightly so exhaust plume fires cleanly away behind
         this.jetpackBone.rotation.z = 0.14;
 
-        // Legs tuck in a natural athletic rocketman posture:
-        // Thighs angle forward (+X), shins bend back under the pelvis.
-        // This keeps the legs at X >= -0.05, while the jetpack exhaust is at X <= -0.26!
         const windFlutter = Math.sin(t * 14.0) * 0.05;
         this.frontThighBone.rotation.z = 0.34 + windFlutter;
         this.frontShinBone.rotation.z = -0.68;
@@ -1370,58 +1379,53 @@ export class Player {
         this.backShinBone.rotation.z = -0.78;
         this.backFootBone.rotation.z = 0.22;
 
-        this.backArmBone.rotation.z = -0.45;
-        this.backForearmBone.rotation.z = 0.4;
-
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = 0.28;
-          this.frontForearmBone.rotation.z = 0.42;
+          this.frontArmBone.rotation.z = -0.25;
+          this.frontForearmBone.rotation.z = 0.35;
+          this.backArmBone.rotation.z = -0.45;
+          this.backForearmBone.rotation.z = 0.40;
         }
         break;
       }
     }
 
     // ------------------------------------------------------
-    // F. ADVANCED 2-JOINT ARM IK & RETICLE AIMING
+    // F. CONFIDENT PISTOL HOLDING STANCE & STRAIGHTENED AIMING
     // ------------------------------------------------------
-    if (hasMouseTarget) {
+    if (hasMouseTarget || this.shootTimer > 0) {
       let localAngle = this.currentAimAngle;
       if (!this.facingRight) {
         localAngle = Math.PI - localAngle;
       }
       localAngle = THREE.MathUtils.euclideanModulo(localAngle + Math.PI, Math.PI * 2) - Math.PI;
 
-      // Adjust for torso tilt
+      // Adjust for torso lean
       const aimRotation = localAngle - this.torsoBone.rotation.z;
 
-      // Natural Ergonomic Elbow Flexion (~25 degrees bend)
-      // Shoulder + Elbow = Exact Aim Target Angle!
-      const elbowBend = 0.44;
-      const targetShoulderAngle = aimRotation - elbowBend;
-
+      // Straighten the front shooting arm directly towards the aim direction!
+      // The upper arm and forearm align with the cursor line of sight from shoulder/chest level.
       this.frontArmBone.rotation.z = THREE.MathUtils.lerp(
         this.frontArmBone.rotation.z,
-        targetShoulderAngle,
-        dt * 26
+        aimRotation,
+        dt * 28
       );
       this.frontForearmBone.rotation.z = THREE.MathUtils.lerp(
         this.frontForearmBone.rotation.z,
-        elbowBend,
-        dt * 26
+        0.02, // Confident straight arm extension
+        dt * 28
       );
-      this.frontHandBone.rotation.z = 0.0;
 
-      // Back arm supports weapon in tactical two-handed combat stance
-      const backArmAim = aimRotation * 0.75 + 0.25;
+      // Back Arm: Classic Weaver/Isosceles Two-Handed Pistol Grip!
+      // Reaches forward and bends inward to cup/brace the shooting hand from beneath
       this.backArmBone.rotation.z = THREE.MathUtils.lerp(
         this.backArmBone.rotation.z,
-        backArmAim,
-        dt * 20
+        aimRotation + 0.12,
+        dt * 24
       );
       this.backForearmBone.rotation.z = THREE.MathUtils.lerp(
         this.backForearmBone.rotation.z,
-        0.82,
-        dt * 20
+        -0.28, // Elbow bends inward to support the pistol grip!
+        dt * 24
       );
     }
 
@@ -1432,39 +1436,57 @@ export class Player {
 
       if (progress < 0.25) {
         const kick = Math.sin((progress / 0.25) * Math.PI);
-        this.blasterMesh.position.x = -kick * 0.10;
-        this.frontArmBone.rotation.z += 0.07 * kick;
-        this.torsoBone.rotation.z -= kick * 0.03;
+        this.blasterMesh.position.x = -kick * 0.08;
+        this.frontArmBone.rotation.z += 0.06 * kick;
+        this.backArmBone.rotation.z += 0.06 * kick;
       } else {
         const returnProg = (progress - 0.25) / 0.75;
-        this.blasterMesh.position.x = THREE.MathUtils.lerp(-0.05, 0.0, returnProg);
+        this.blasterMesh.position.x = THREE.MathUtils.lerp(-0.04, 0.0, returnProg);
       }
     } else {
       this.blasterMesh.position.x = 0;
+    }
+
+    // ------------------------------------------------------
+    // G. PHYSICAL RAGDOLL HIT REACTION (Joint Flailing on Damage)
+    // ------------------------------------------------------
+    if (this.ragdollTimer > 0) {
+      this.ragdollTimer -= dt;
+      const prog = this.ragdollTimer / 0.45;
+
+      // Head snaps back with neck-whip
+      this.headBone.rotation.z = -0.55 * prog;
+
+      // Torso recoils and twists
+      this.torsoBone.rotation.z += (this.ragdollImpulseX > 0 ? -0.45 : 0.45) * prog;
+
+      // Arms fling outwards erratically
+      this.frontArmBone.rotation.z += -0.75 * prog;
+      this.frontForearmBone.rotation.z += 0.5 * prog;
+      this.backArmBone.rotation.z += 0.85 * prog;
+
+      // Legs kick and buckle
+      this.frontThighBone.rotation.z += 0.65 * prog;
+      this.frontShinBone.rotation.z += -0.55 * prog;
+      this.backThighBone.rotation.z += -0.45 * prog;
     }
   }
 
   private updateHelmetLEDs(dt: number) {
     const time = this.animTimer;
 
-    // Animate Side Pod LED Buttons:
-    // Pod Buttons: [Left Red, Left Cyan, Left Amber, Right Red, Right Cyan, Right Amber]
     for (let p = 0; p < 2; p++) {
       const offset = p * 3;
-      // Red: rapid technical pulse
       const redOn = (Math.sin(time * 16.0 + p) + Math.sin(time * 24.0)) > 0.3;
       this.helmetLedMaterials[offset + 0].color.setHex(redOn ? 0xff1133 : 0x440008);
 
-      // Cyan: smooth communications beacon pulse
       const cyanGlow = Math.sin(time * 8.0 + p * 0.5) > -0.1;
       this.helmetLedMaterials[offset + 1].color.setHex(cyanGlow ? 0x00f5ff : 0x002233);
 
-      // Amber: rhythmic chirp flash
       const amberOn = Math.sin(time * 11.0 + p * 1.5) > 0.2;
       this.helmetLedMaterials[offset + 2].color.setHex(amberOn ? 0xffaa00 : 0x331800);
     }
 
-    // Dual Antenna Beacon pulse
     const beaconPulse = Math.sin(time * 10.0) > 0;
     this.antennaBeaconMat.color.setHex(beaconPulse ? 0x00ffff : 0x004455);
   }
@@ -1488,29 +1510,28 @@ export class Player {
     this.jetpackLedMaterials[2].color.setHex(led2State ? 0xffaa00 : 0x442200);
     this.jetpackLedMaterials[3].color.setHex(led3State ? 0x00f5ff : 0x002233);
 
-    // Analog needle tracks fuel gauge ratio
     const fuelRatio = this.fuel / this.maxFuel;
     this.fuelGaugeNeedle.rotation.x = (fuelRatio - 0.5) * 2.2;
 
-    // 2. Multi-Tier Thruster Flames
+    // 2. DIAMOND SHOCKWAVE FLAMES (Epic scale, brightness, and turbulent flutter)
     if (isJetpacking) {
       this.flameConeLeft.visible = true;
       this.flameConeRight.visible = true;
 
-      const flick = 1.0 + Math.sin(time * 35.0) * 0.2 + Math.random() * 0.25;
-      const coreFlick = 1.0 + Math.random() * 0.3;
+      const flick = 1.0 + Math.sin(time * 45.0) * 0.25 + Math.random() * 0.25;
+      const coreFlick = 1.0 + Math.random() * 0.35;
 
-      this.flameOuterLeft.scale.set(1.0 + Math.random() * 0.2, flick, 1.0);
+      this.flameOuterLeft.scale.set(1.0 + Math.random() * 0.2, flick * 1.15, 1.0);
       this.flameOuterRight.scale.copy(this.flameOuterLeft.scale);
 
-      this.flameCoreLeft.scale.set(1.0, coreFlick, 1.0);
+      this.flameCoreLeft.scale.set(1.0, coreFlick * 1.1, 1.0);
       this.flameCoreRight.scale.copy(this.flameCoreLeft.scale);
 
-      this.thrusterLight.intensity = 22 + Math.random() * 10;
-      this.thrusterLight.distance = 18;
+      this.thrusterLight.intensity = 26 + Math.random() * 12;
+      this.thrusterLight.distance = 20;
 
       this.emitSmoke(nozzleX, nozzleY, nozzleZ, 2);
-      this.emitSparks(nozzleX, nozzleY, nozzleZ, 3);
+      this.emitSparks(nozzleX, nozzleY, nozzleZ, 4);
     } else {
       this.flameConeLeft.visible = false;
       this.flameConeRight.visible = false;
@@ -1524,7 +1545,6 @@ export class Player {
       const prog = 1.0 - this.bubbleBurstTimer / 0.24;
 
       if (prog < 0.45) {
-        // Phase 1: Rapid swelling energy bubble
         const bubbleProg = prog / 0.45;
         const scale = 0.2 + bubbleProg * 1.5;
         this.bubbleSphereMesh.scale.set(scale, scale, scale);
@@ -1536,11 +1556,9 @@ export class Player {
         this.bubbleRingMesh.scale.set(scale * 1.2, scale * 1.2, scale * 1.2);
         (this.bubbleRingMesh.material as THREE.MeshBasicMaterial).opacity = 0.8;
       } else {
-        // Phase 2: Bubble POP!
         const popProg = (prog - 0.45) / 0.55;
         (this.bubbleSphereMesh.material as THREE.MeshBasicMaterial).opacity = 0;
 
-        // Shockwave ring violently expands and fades
         const ringScale = 1.8 + popProg * 2.5;
         this.bubbleRingMesh.scale.set(ringScale, ringScale, ringScale);
         (this.bubbleRingMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(
@@ -1555,7 +1573,6 @@ export class Player {
       this.muzzleLight.intensity = 0;
     }
 
-    // Update bursting droplets
     for (const bp of this.bubbleParticles) {
       if (!bp.active) continue;
       bp.age += dt;

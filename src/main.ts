@@ -36,6 +36,7 @@ class Game {
     this.clock = new THREE.Clock();
 
     this.player = new Player(this.sceneManager.scene);
+    this.player.onFootstep = () => this.audioManager.playFootstep();
     this.obstacleManager = new ObstacleManager(this.sceneManager.scene);
     this.parallaxLayers = new ParallaxLayers(this.sceneManager.scene);
     this.levelGenerator = new LevelGenerator(this.obstacleManager);
@@ -208,9 +209,10 @@ class Game {
       }
 
       if (hit && this.player.invulnerableTime <= 0) {
-        this.player.takeDamage(25);
-        this.audioManager.playExplosion();
-        this.sceneManager.triggerShake(0.35, 0.25);
+        const knockX = obsPos.x > pPos.x ? -1 : 1;
+        this.player.takeDamage(25, knockX);
+        this.audioManager.playHitImpact();
+        this.sceneManager.triggerShake(0.38, 0.28);
       }
     }
 
@@ -223,9 +225,10 @@ class Game {
 
       if (distSq < combinedRadius * combinedRadius) {
         if (this.player.invulnerableTime <= 0) {
-          this.player.takeDamage(20);
-          this.audioManager.playExplosion();
-          this.sceneManager.triggerShake(0.3, 0.2);
+          const knockX = enemy.position.x > pPos.x ? -1 : 1;
+          this.player.takeDamage(20, knockX);
+          this.audioManager.playHitImpact();
+          this.sceneManager.triggerShake(0.32, 0.22);
           enemy.velocity.x = (enemy.position.x > pPos.x ? 1 : -1) * 4.0;
         }
       }
@@ -244,11 +247,11 @@ class Game {
           laser.active = false;
           laser.mesh.visible = false;
           const died = enemy.takeDamage(1);
-          this.sceneManager.triggerShake(0.18, 0.12);
+          this.sceneManager.triggerShake(0.20, 0.14);
 
           if (died) {
-            this.audioManager.playExplosion();
-            this.sceneManager.triggerShake(0.28, 0.2);
+            this.audioManager.playAlienSquish();
+            this.sceneManager.triggerShake(0.35, 0.22);
             this.score += 300;
           }
           break;

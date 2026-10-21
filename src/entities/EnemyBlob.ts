@@ -5,6 +5,24 @@ interface SlimeParticle {
   velocity: THREE.Vector3;
   age: number;
   maxLife: number;
+  baseScale: number;
+  active: boolean;
+}
+
+interface ShrapnelPiece {
+  mesh: THREE.Mesh;
+  velocity: THREE.Vector3;
+  rotSpeed: THREE.Vector3;
+  age: number;
+  maxLife: number;
+  active: boolean;
+}
+
+interface SlimePuddle {
+  mesh: THREE.Mesh;
+  age: number;
+  maxLife: number;
+  baseScale: number;
   active: boolean;
 }
 
@@ -18,36 +36,68 @@ export interface PlatformBound {
 }
 
 /**
- * Alien Blob Enemy
- * A gelatinous, hopping alien creature with:
- * - Natural squash-and-stretch physics
- * - Real floor & platform boundary awareness (no walking on invisible layers!)
- * - Reactive eye tracking
- * - Slime burst splash particles on defeat
+ * Redesigned Alien Slime Blob
+ * Features:
+ * - Detailed multi-layered amoebic body with cellular spots and glowing nucleus
+ * - 1 Giant tracking center eye + 2 twitching satellite stalk eyes
+ * - Dynamic lingering slime puddles / trail left on terrain
+ * - Exaggerated cartoon squash & stretch physics
+ * - Ultra-satisfying death explosion: 24 juicy slime droplets + 12 hard shell shrapnel shards + expanding slime shockwave ring
  */
 export class EnemyBlob {
   public group: THREE.Group;
   public position: THREE.Vector3;
   public velocity: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
-  public radius: number = 0.55;
+  public radius: number = 0.58;
   public health: number = 2;
   public active: boolean = true;
   public isGrounded: boolean = true;
 
+  // Body & Stalks
   private bodyMesh: THREE.Mesh;
-  private eyeGroup: THREE.Group;
-  private pupilMesh: THREE.Mesh;
+  private coreMesh: THREE.Mesh;
+  private eyeCenterGroup: THREE.Group;
+  private centerPupilMesh: THREE.Mesh;
+  private stalkEyeLeft: THREE.Group;
+  private stalkEyeRight: THREE.Group;
+  private stalkPupilL: THREE.Mesh;
+  private stalkPupilR: THREE.Mesh;
+
+  // AI & Physics
   private hopTimer: number = 0;
-  private hopCooldown: number = 1.4;
+  private hopCooldown: number = 1.35;
   private patrolDir: number = 1;
   private minX: number;
   private maxX: number;
   public baseY: number;
+  private landingSquashTimer: number = 0;
 
-  // Slime Burst VFX
-  private static slimeGeo = new THREE.SphereGeometry(0.08, 6, 6);
-  private static slimeMat = new THREE.MeshBasicMaterial({ color: 0x39ff14 });
-  private slimePool: SlimeParticle[] = [];
+  // Slime Trail System
+  private static puddleGeo = new THREE.CylinderGeometry(0.24, 0.28, 0.02, 10);
+  private static puddleMat = new THREE.MeshBasicMaterial({
+    color: 0x39ff14,
+    transparent: true,
+    opacity: 0.75,
+  });
+  private slimePuddles: SlimePuddle[] = [];
+  private puddleTimer: number = 0;
+
+  // Juicy Blobby Explosion & Shrapnel Pool
+  private static dropletGeo = new THREE.SphereGeometry(0.12, 8, 8);
+  private static dropletMat = new THREE.MeshBasicMaterial({ color: 0x39ff14 });
+  private static dropletMatPink = new THREE.MeshBasicMaterial({ color: 0xcc00ff });
+  private dropletPool: SlimeParticle[] = [];
+
+  private static shrapnelGeo = new THREE.TetrahedronGeometry(0.14, 0);
+  private static shrapnelMat = new THREE.MeshStandardMaterial({
+    color: 0x1f0b2b,
+    roughness: 0.3,
+    metalness: 0.8,
+  });
+  private shrapnelPool: ShrapnelPiece[] = [];
+
+  // Shockwave Ring
+  private shockwaveRing: THREE.Mesh;
 
   constructor(scene: THREE.Scene, startX: number, startY: number, patrolRange: number = 3.0) {
     this.group = new THREE.Group();
@@ -59,100 +109,239 @@ export class EnemyBlob {
     this.patrolDir = Math.random() < 0.5 ? 1 : -1;
     this.hopTimer = Math.random() * this.hopCooldown;
 
-    // Gelatinous Alien Slime Body
-    const bodyGeo = new THREE.SphereGeometry(0.48, 16, 12);
-    bodyGeo.scale(1.1, 0.9, 1.0);
-    bodyGeo.translate(0, 0.42, 0); // Pivot firmly at base (y=0 touches ground)
+    // 1. Detailed Multi-Layered Gelatinous Slime Body
+    const bodyGeo = new THREE.SphereGeometry(0.52, 20, 16);
+    bodyGeo.scale(1.15, 0.95, 1.0);
+    bodyGeo.translate(0, 0.44, 0); // Pivot firmly at base (y=0 touches surface)
 
     const slimeMat = new THREE.MeshStandardMaterial({
-      color: 0x30e620,
-      roughness: 0.25,
-      metalness: 0.1,
+      color: 0x22ee15,
+      roughness: 0.18,
+      metalness: 0.12,
       transparent: true,
-      opacity: 0.92,
+      opacity: 0.90,
     });
     this.bodyMesh = new THREE.Mesh(bodyGeo, slimeMat);
     this.group.add(this.bodyMesh);
 
-    // Inner Glowing Nucleus
-    const coreGeo = new THREE.SphereGeometry(0.24, 10, 8);
-    const coreMat = new THREE.MeshBasicMaterial({ color: 0xbb11ee });
-    const core = new THREE.Mesh(coreGeo, coreMat);
-    core.position.set(0, 0.4, 0);
-    this.group.add(core);
+    // Decorative cellular spots / vacuoles on the membrane
+    const spotGeo = new THREE.SphereGeometry(0.06, 6, 6);
+    const spotMat = new THREE.MeshBasicMaterial({ color: 0x76ff03 });
+    const spotOffsets = [
+      [-0.28, 0.35, 0.3],
+      [0.25, 0.28, 0.32],
+      [-0.15, 0.65, 0.28],
+      [0.18, 0.62, 0.26],
+      [0.0, 0.22, 0.42],
+    ];
+    for (const [sx, sy, sz] of spotOffsets) {
+      const spot = new THREE.Mesh(spotGeo, spotMat);
+      spot.position.set(sx, sy, sz);
+      this.bodyMesh.add(spot);
+    }
 
-    // Giant Expressive Alien Eye
-    this.eyeGroup = new THREE.Group();
-    this.eyeGroup.position.set(0.24, 0.48, 0.15);
-    this.group.add(this.eyeGroup);
+    // 2. Inner Glowing Amoebic Nucleus
+    const coreGeo = new THREE.SphereGeometry(0.26, 12, 10);
+    const coreMat = new THREE.MeshBasicMaterial({ color: 0xd500f9 });
+    this.coreMesh = new THREE.Mesh(coreGeo, coreMat);
+    this.coreMesh.position.set(0, 0.42, 0);
+    this.group.add(this.coreMesh);
+
+    // 3. Giant Expressive Center Eye
+    this.eyeCenterGroup = new THREE.Group();
+    this.eyeCenterGroup.position.set(0.24, 0.50, 0.18);
+    this.group.add(this.eyeCenterGroup);
 
     const eyeWhite = new THREE.Mesh(
-      new THREE.SphereGeometry(0.18, 12, 12),
+      new THREE.SphereGeometry(0.20, 14, 14),
       new THREE.MeshBasicMaterial({ color: 0xffffff })
     );
-    this.eyeGroup.add(eyeWhite);
+    this.eyeCenterGroup.add(eyeWhite);
 
-    const pupilGeo = new THREE.SphereGeometry(0.09, 8, 8);
-    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
-    this.pupilMesh = new THREE.Mesh(pupilGeo, pupilMat);
-    this.pupilMesh.position.set(0.1, 0, 0);
-    this.eyeGroup.add(this.pupilMesh);
+    const pupilGeo = new THREE.SphereGeometry(0.10, 8, 8);
+    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x0a0a0a });
+    this.centerPupilMesh = new THREE.Mesh(pupilGeo, pupilMat);
+    this.centerPupilMesh.position.set(0.12, 0, 0);
+    this.eyeCenterGroup.add(this.centerPupilMesh);
+
+    // 4. Dual Twitching Satellite Stalk Eyes
+    const createStalkEye = (zSign: number) => {
+      const stalkGroup = new THREE.Group();
+      stalkGroup.position.set(-0.05, 0.75, zSign * 0.26);
+
+      // Organic stem
+      const stemGeo = new THREE.CylinderGeometry(0.025, 0.04, 0.22, 8);
+      stemGeo.translate(0, 0.11, 0);
+      const stem = new THREE.Mesh(stemGeo, slimeMat);
+      stem.rotation.z = -0.2;
+      stalkGroup.add(stem);
+
+      // Little eyeball
+      const miniEye = new THREE.Mesh(
+        new THREE.SphereGeometry(0.08, 10, 10),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      );
+      miniEye.position.set(-0.04, 0.22, 0);
+      stalkGroup.add(miniEye);
+
+      const miniPupil = new THREE.Mesh(
+        new THREE.SphereGeometry(0.04, 6, 6),
+        pupilMat
+      );
+      miniPupil.position.set(0.05, 0, 0);
+      miniEye.add(miniPupil);
+
+      this.group.add(stalkGroup);
+      return { stalkGroup, miniPupil };
+    };
+
+    const eyeL = createStalkEye(1);
+    this.stalkEyeLeft = eyeL.stalkGroup;
+    this.stalkPupilL = eyeL.miniPupil;
+
+    const eyeR = createStalkEye(-1);
+    this.stalkEyeRight = eyeR.stalkGroup;
+    this.stalkPupilR = eyeR.miniPupil;
 
     scene.add(this.group);
 
-    // Particle pool for slime bursts
-    for (let i = 0; i < 16; i++) {
-      const p = new THREE.Mesh(EnemyBlob.slimeGeo, EnemyBlob.slimeMat);
-      p.visible = false;
-      scene.add(p);
-      this.slimePool.push({
-        mesh: p,
-        velocity: new THREE.Vector3(),
+    // 5. Slime Trail Puddles Pool
+    for (let i = 0; i < 12; i++) {
+      const pMesh = new THREE.Mesh(EnemyBlob.puddleGeo, EnemyBlob.puddleMat);
+      pMesh.visible = false;
+      scene.add(pMesh);
+      this.slimePuddles.push({
+        mesh: pMesh,
         age: 0,
-        maxLife: 0.5,
+        maxLife: 2.2,
+        baseScale: 1.0,
         active: false,
       });
     }
+
+    // 6. Juicy Slime Explosion Droplets Pool (24 particles)
+    for (let i = 0; i < 24; i++) {
+      const mat = i % 3 === 0 ? EnemyBlob.dropletMatPink : EnemyBlob.dropletMat;
+      const p = new THREE.Mesh(EnemyBlob.dropletGeo, mat);
+      p.visible = false;
+      scene.add(p);
+      this.dropletPool.push({
+        mesh: p,
+        velocity: new THREE.Vector3(),
+        age: 0,
+        maxLife: 0.65,
+        baseScale: 0.8 + Math.random() * 0.5,
+        active: false,
+      });
+    }
+
+    // 7. Chitin Shrapnel Shards Pool (12 pieces)
+    for (let i = 0; i < 12; i++) {
+      const s = new THREE.Mesh(EnemyBlob.shrapnelGeo, EnemyBlob.shrapnelMat);
+      s.visible = false;
+      scene.add(s);
+      this.shrapnelPool.push({
+        mesh: s,
+        velocity: new THREE.Vector3(),
+        rotSpeed: new THREE.Vector3(),
+        age: 0,
+        maxLife: 0.75,
+        active: false,
+      });
+    }
+
+    // 8. Expanding Slime Shockwave Ring
+    const ringGeo = new THREE.RingGeometry(0.1, 0.45, 16);
+    ringGeo.rotateX(Math.PI / 2);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0x39ff14,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0,
+    });
+    this.shockwaveRing = new THREE.Mesh(ringGeo, ringMat);
+    this.shockwaveRing.visible = false;
+    scene.add(this.shockwaveRing);
   }
 
   public takeDamage(amount: number = 1): boolean {
     this.health -= amount;
-    this.explodeSlime(6);
+    this.explodeBlobbyDeath(false); // Small splatter
 
     if (this.health <= 0) {
-      this.explodeSlime(14);
+      this.explodeBlobbyDeath(true); // Epic massive splatter & shrapnel!
       this.active = false;
       this.group.visible = false;
-      return true; // Defeated!
+      return true;
     }
 
-    // Flash white on hit
+    // Hit flash
     (this.bodyMesh.material as THREE.MeshStandardMaterial).color.setHex(0xffffff);
     setTimeout(() => {
       if (this.active) {
-        (this.bodyMesh.material as THREE.MeshStandardMaterial).color.setHex(0x30e620);
+        (this.bodyMesh.material as THREE.MeshStandardMaterial).color.setHex(0x22ee15);
       }
     }, 90);
 
     return false;
   }
 
-  private explodeSlime(count: number) {
-    for (let i = 0; i < count; i++) {
-      const sp = this.slimePool.find(p => !p.active);
-      if (!sp) continue;
+  private explodeBlobbyDeath(isFatal: boolean) {
+    const count = isFatal ? 24 : 8;
 
-      sp.active = true;
-      sp.age = 0;
-      sp.maxLife = 0.35 + Math.random() * 0.3;
-      sp.mesh.position.copy(this.position);
-      sp.mesh.position.y += 0.4;
-      sp.velocity.set(
-        (Math.random() - 0.5) * 8.0,
-        Math.random() * 6.0 + 1.0,
-        (Math.random() - 0.5) * 2.0
+    // A. Juicy Slime Droplets
+    for (let i = 0; i < count; i++) {
+      const dp = this.dropletPool.find(p => !p.active);
+      if (!dp) continue;
+
+      dp.active = true;
+      dp.age = 0;
+      dp.maxLife = 0.45 + Math.random() * 0.35;
+      dp.mesh.position.copy(this.position);
+      dp.mesh.position.y += 0.4;
+
+      const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+      const speed = isFatal ? (6.5 + Math.random() * 8.0) : (4.0 + Math.random() * 4.0);
+      dp.velocity.set(
+        Math.cos(angle) * speed,
+        Math.abs(Math.sin(angle)) * speed * 0.8 + 2.5,
+        (Math.random() - 0.5) * 4.0
       );
-      sp.mesh.visible = true;
+      dp.mesh.scale.set(dp.baseScale, dp.baseScale, dp.baseScale);
+      dp.mesh.visible = true;
+    }
+
+    // B. Hard Chitin Shrapnel Shards (only on fatal kill)
+    if (isFatal) {
+      for (let i = 0; i < 12; i++) {
+        const sp = this.shrapnelPool.find(p => !p.active);
+        if (!sp) continue;
+
+        sp.active = true;
+        sp.age = 0;
+        sp.maxLife = 0.55 + Math.random() * 0.35;
+        sp.mesh.position.copy(this.position);
+        sp.mesh.position.y += 0.4;
+
+        sp.velocity.set(
+          (Math.random() - 0.5) * 12.0,
+          Math.random() * 9.0 + 3.0,
+          (Math.random() - 0.5) * 4.0
+        );
+        sp.rotSpeed.set(
+          (Math.random() - 0.5) * 18.0,
+          (Math.random() - 0.5) * 18.0,
+          (Math.random() - 0.5) * 18.0
+        );
+        sp.mesh.visible = true;
+      }
+
+      // C. Shockwave Ring
+      this.shockwaveRing.position.copy(this.position);
+      this.shockwaveRing.position.y += 0.05;
+      this.shockwaveRing.scale.set(0.5, 0.5, 0.5);
+      (this.shockwaveRing.material as THREE.MeshBasicMaterial).opacity = 0.9;
+      this.shockwaveRing.visible = true;
     }
   }
 
@@ -169,17 +358,25 @@ export class EnemyBlob {
     }
 
     this.hopTimer += dt;
+    this.puddleTimer += dt;
 
-    // 1. Eye tracks player location
+    // 1. Reactive Eye Tracking
     const angleToPlayer = Math.atan2(playerY - (this.position.y + 0.4), playerX - this.position.x);
-    this.pupilMesh.position.set(
-      Math.cos(angleToPlayer) * 0.1,
-      Math.sin(angleToPlayer) * 0.08,
+    this.centerPupilMesh.position.set(
+      Math.cos(angleToPlayer) * 0.12,
+      Math.sin(angleToPlayer) * 0.09,
       0.08
     );
 
+    // Stalk eyes twitch and peer inquisitively
+    const twitchL = Math.sin(time * 8.0) * 0.15;
+    const twitchR = Math.cos(time * 7.0) * 0.15;
+    this.stalkEyeLeft.rotation.z = twitchL;
+    this.stalkEyeRight.rotation.z = twitchR;
+    this.stalkPupilL.position.set(Math.cos(angleToPlayer) * 0.04, Math.sin(angleToPlayer) * 0.03, 0);
+    this.stalkPupilR.position.set(Math.cos(angleToPlayer) * 0.04, Math.sin(angleToPlayer) * 0.03, 0);
+
     // 2. Identify Current Supporting Surface
-    // Check if directly over any platform
     let surfaceY = GROUND_Y;
     let currentPlatform: PlatformBound | null = null;
 
@@ -189,7 +386,6 @@ export class EnemyBlob {
       const pRight = plat.x + plat.width / 2;
 
       if (this.position.x >= pLeft - 0.2 && this.position.x <= pRight + 0.2) {
-        // Platform is beneath or at blob height
         if (this.position.y >= pTop - 0.4 && pTop > surfaceY) {
           surfaceY = pTop;
           currentPlatform = plat;
@@ -197,29 +393,31 @@ export class EnemyBlob {
       }
     }
 
-    // Restrict patrol boundary so the blob never walks off an elevated platform into thin air
+    // Confine elevated patrol bounds so it never hops off into thin air
     if (currentPlatform) {
       this.minX = Math.max(this.minX, currentPlatform.x - currentPlatform.width / 2 + 0.35);
       this.maxX = Math.min(this.maxX, currentPlatform.x + currentPlatform.width / 2 - 0.35);
     }
 
-    // 3. Hopping AI Behavior
+    // 3. EXAGGERATED CARTOON SQUASH & STRETCH
     const distToPlayer = Math.abs(playerX - this.position.x);
 
-    // Squash anticipation before hop
-    if (this.hopTimer >= this.hopCooldown - 0.2 && this.isGrounded) {
-      const squashFactor = 1.0 - ((this.hopCooldown - this.hopTimer) / 0.2) * 0.4;
-      this.bodyMesh.scale.set(1.0 + (1.0 - squashFactor) * 0.5, squashFactor, 1.0 + (1.0 - squashFactor) * 0.5);
+    // A. Deep Anticipation Squash before jump (squashes wide and flat!)
+    if (this.hopTimer >= this.hopCooldown - 0.25 && this.isGrounded) {
+      const squashProg = (this.hopTimer - (this.hopCooldown - 0.25)) / 0.25;
+      const sy = 1.0 - squashProg * 0.55; // Compresses down to 0.45
+      const sx = 1.0 + squashProg * 0.55; // Bulges out to 1.55
+      this.bodyMesh.scale.set(sx, sy, sx);
     }
 
-    // Hop impulse
+    // B. Hop Impulse (Stretches tall and thin!)
     if (this.hopTimer >= this.hopCooldown && this.isGrounded) {
       this.hopTimer = 0;
       this.isGrounded = false;
 
-      // Hop towards player if in range and within boundary, else patrol
+      // Hop towards player if close and within bounds, else patrol
       let hopDir = this.patrolDir;
-      if (distToPlayer < 8.0) {
+      if (distToPlayer < 8.5) {
         const toPlayer = playerX > this.position.x ? 1 : -1;
         if (
           (toPlayer > 0 && this.position.x < this.maxX) ||
@@ -229,11 +427,14 @@ export class EnemyBlob {
         }
       }
 
-      this.velocity.x = hopDir * (2.4 + Math.random() * 1.2);
-      this.velocity.y = 6.2 + Math.random() * 1.4;
+      this.velocity.x = hopDir * (2.6 + Math.random() * 1.4);
+      this.velocity.y = 6.8 + Math.random() * 1.5;
 
-      // Stretch on jump
-      this.bodyMesh.scale.set(0.78, 1.35, 0.78);
+      // High elastic stretch on jump!
+      this.bodyMesh.scale.set(0.65, 1.6, 0.65);
+
+      // Deposit a lingering slime trail puddle upon takeoff
+      this.spawnSlimePuddle(this.position.x, surfaceY);
     }
 
     // 4. Air & Ground Physics
@@ -242,45 +443,74 @@ export class EnemyBlob {
       this.position.x += this.velocity.x * dt;
       this.position.y += this.velocity.y * dt;
 
-      // Land on supporting surface (platform top or ground floor)
+      // In mid-air, stretch dynamically aligns with vertical velocity
+      const airStretchY = 1.0 + (this.velocity.y / 14.0) * 0.4;
+      const airSquashX = 1.0 - (this.velocity.y / 14.0) * 0.2;
+      this.bodyMesh.scale.lerp(new THREE.Vector3(airSquashX, airStretchY, airSquashX), dt * 10);
+
+      // Land on surface
       if (this.position.y <= surfaceY) {
         this.position.y = surfaceY;
         this.velocity.set(0, 0, 0);
         this.isGrounded = true;
+        this.landingSquashTimer = 0.35;
 
-        // Landing squash
-        this.bodyMesh.scale.set(1.3, 0.65, 1.3);
+        // Massive Landing Impact Squash
+        this.bodyMesh.scale.set(1.5, 0.5, 1.5);
 
-        // Turn around if at or beyond patrol boundary
+        // Deposit sticky slime puddle on landing!
+        this.spawnSlimePuddle(this.position.x, surfaceY);
+
         if (this.position.x >= this.maxX) this.patrolDir = -1;
         if (this.position.x <= this.minX) this.patrolDir = 1;
       }
     } else {
-      // If already grounded, ensure position tracks surface exactly
       if (Math.abs(this.position.y - surfaceY) < 0.2) {
         this.position.y = surfaceY;
       } else if (this.position.y > surfaceY) {
-        // Walked off an edge, fall naturally!
         this.isGrounded = false;
       }
 
-      // Elastic recovery to normal shape
-      this.bodyMesh.scale.lerp(new THREE.Vector3(1, 1, 1), dt * 10);
+      // Landing wobble dampening
+      if (this.landingSquashTimer > 0) {
+        this.landingSquashTimer -= dt;
+        const wobble = Math.sin((0.35 - this.landingSquashTimer) * 22.0) * (this.landingSquashTimer / 0.35) * 0.3;
+        this.bodyMesh.scale.set(1.0 - wobble, 1.0 + wobble, 1.0 - wobble);
+      } else {
+        // Subtle gelatinous breathing wobble
+        const breathe = Math.sin(time * 5.0) * 0.05;
+        this.bodyMesh.scale.set(1.0 - breathe, 1.0 + breathe, 1.0 - breathe);
+      }
     }
 
-    // Turn around if walked past patrol bounds
+    // Turn around at patrol boundary
     if (this.position.x >= this.maxX) this.patrolDir = -1;
     if (this.position.x <= this.minX) this.patrolDir = 1;
 
-    // Gentle gelatinous breathing wobble
-    const wobble = Math.sin(time * 6.0) * 0.04;
-    this.bodyMesh.scale.y += wobble;
+    // Nucleus gentle pulse
+    const corePulse = 1.0 + Math.sin(time * 8.0) * 0.12;
+    this.coreMesh.scale.set(corePulse, corePulse, corePulse);
 
     this.updateParticles(dt);
   }
 
+  private spawnSlimePuddle(x: number, y: number) {
+    const puddle = this.slimePuddles.find(p => !p.active);
+    if (!puddle) return;
+
+    puddle.active = true;
+    puddle.age = 0;
+    puddle.maxLife = 2.0 + Math.random() * 0.8;
+    puddle.baseScale = 0.85 + Math.random() * 0.35;
+    puddle.mesh.position.set(x + (Math.random() - 0.5) * 0.2, y + 0.015, 0);
+    puddle.mesh.scale.set(puddle.baseScale, 1.0, puddle.baseScale);
+    (puddle.mesh.material as THREE.MeshBasicMaterial).opacity = 0.75;
+    puddle.mesh.visible = true;
+  }
+
   private updateParticles(dt: number) {
-    for (const p of this.slimePool) {
+    // 1. Slime Trail Puddles
+    for (const p of this.slimePuddles) {
       if (!p.active) continue;
       p.age += dt;
       if (p.age >= p.maxLife) {
@@ -288,19 +518,73 @@ export class EnemyBlob {
         p.mesh.visible = false;
         continue;
       }
-      p.velocity.y -= 16.0 * dt;
-      p.mesh.position.addScaledVector(p.velocity, dt);
+
       const prog = p.age / p.maxLife;
-      const s = 1.0 - prog;
-      p.mesh.scale.set(s, s, s);
+      // Bubbling fade out
+      const s = p.baseScale * (1.0 - prog * 0.35);
+      p.mesh.scale.set(s, 1.0, s);
+      (p.mesh.material as THREE.MeshBasicMaterial).opacity = (1.0 - prog) * 0.75;
+    }
+
+    // 2. Juicy Slime Droplets
+    for (const dp of this.dropletPool) {
+      if (!dp.active) continue;
+      dp.age += dt;
+      if (dp.age >= dp.maxLife) {
+        dp.active = false;
+        dp.mesh.visible = false;
+        continue;
+      }
+
+      dp.velocity.y -= 18.0 * dt;
+      dp.mesh.position.addScaledVector(dp.velocity, dt);
+
+      // Droplets stretch along flight velocity vector
+      const speed = dp.velocity.length();
+      const prog = dp.age / dp.maxLife;
+      const s = dp.baseScale * (1.0 - prog * 0.7);
+      dp.mesh.scale.set(s * 0.7, s * (1.0 + speed * 0.08), s * 0.7);
+    }
+
+    // 3. Chitin Shrapnel Pieces
+    for (const sp of this.shrapnelPool) {
+      if (!sp.active) continue;
+      sp.age += dt;
+      if (sp.age >= sp.maxLife) {
+        sp.active = false;
+        sp.mesh.visible = false;
+        continue;
+      }
+
+      sp.velocity.y -= 22.0 * dt;
+      sp.mesh.position.addScaledVector(sp.velocity, dt);
+      sp.mesh.rotation.x += sp.rotSpeed.x * dt;
+      sp.mesh.rotation.y += sp.rotSpeed.y * dt;
+      sp.mesh.rotation.z += sp.rotSpeed.z * dt;
+    }
+
+    // 4. Slime Shockwave Ring
+    if (this.shockwaveRing.visible) {
+      const curScale = this.shockwaveRing.scale.x;
+      if (curScale < 4.2) {
+        const nextScale = curScale + dt * 14.0;
+        this.shockwaveRing.scale.set(nextScale, nextScale, nextScale);
+        (this.shockwaveRing.material as THREE.MeshBasicMaterial).opacity = Math.max(
+          0,
+          0.9 * (1.0 - curScale / 4.2)
+        );
+      } else {
+        this.shockwaveRing.visible = false;
+      }
     }
   }
 
   public destroy(scene: THREE.Scene) {
     this.active = false;
     scene.remove(this.group);
-    for (const p of this.slimePool) {
-      scene.remove(p.mesh);
-    }
+    scene.remove(this.shockwaveRing);
+    for (const p of this.slimePuddles) scene.remove(p.mesh);
+    for (const dp of this.dropletPool) scene.remove(dp.mesh);
+    for (const sp of this.shrapnelPool) scene.remove(sp.mesh);
   }
 }
