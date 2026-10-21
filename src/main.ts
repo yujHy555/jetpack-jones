@@ -288,11 +288,25 @@ class Game {
         }
       }
 
-      if (hit && this.player.invulnerableTime <= 0) {
-        const knockX = obsPos.x > pPos.x ? -1 : 1;
-        this.player.takeDamage(25, knockX);
-        this.audioManager.playHitImpact();
-        this.sceneManager.triggerShake(0.38, 0.28);
+      if (hit) {
+        // Push player outside solid obstacle so player CANNOT intersect with it
+        if (obs.collider.type === 'box') {
+          const half = obs.collider.halfSize || new THREE.Vector2(1, 1);
+          const center = obs.collider.center || new THREE.Vector2(obsPos.x, obsPos.y);
+          if (pPos.x < center.x) {
+            this.player.position.x = center.x - half.x - 0.35;
+          } else {
+            this.player.position.x = center.x + half.x + 0.35;
+          }
+          this.player.velocity.x = 0;
+        }
+
+        if (this.player.invulnerableTime <= 0) {
+          const knockX = obsPos.x > pPos.x ? -1 : 1;
+          this.player.takeDamage(25, knockX);
+          this.audioManager.playHitImpact();
+          this.sceneManager.triggerShake(0.38, 0.28);
+        }
       }
     }
 

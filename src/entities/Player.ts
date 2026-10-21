@@ -1347,35 +1347,78 @@ export class Player {
     this.velocity.y += gravity * dt;
     this.velocity.y = THREE.MathUtils.clamp(this.velocity.y, -14, 12);
 
-    this.position.x += this.velocity.x * dt;
-    this.position.y += this.velocity.y * dt;
+    const halfWidth = 0.32;
+    const playerHeight = 1.85;
 
-    // 5. Floor & Platform Collisions (Exact alignment to GROUND_Y = -3.70)
-    const floorY = GROUND_Y;
+    // 1. Horizontal Movement & Solid Wall Collisions (Player CANNOT intersect with platforms)
+    const prevX = this.position.x;
+    this.position.x += this.velocity.x * dt;
+
+    for (const plat of platforms) {
+      const platTop = plat.y + plat.height / 2;
+      const platBottom = plat.y - plat.height / 2;
+      const platLeft = plat.x - plat.width / 2;
+      const platRight = plat.x + plat.width / 2;
+
+      const vertOverlap =
+        this.position.y + playerHeight > platBottom + 0.05 &&
+        this.position.y < platTop - 0.05;
+
+      if (vertOverlap) {
+        if (prevX + halfWidth <= platLeft && this.position.x + halfWidth > platLeft) {
+          this.position.x = platLeft - halfWidth;
+          this.velocity.x = 0;
+        } else if (prevX - halfWidth >= platRight && this.position.x - halfWidth < platRight) {
+          this.position.x = platRight + halfWidth;
+          this.velocity.x = 0;
+        }
+      }
+    }
+
+    // 2. Vertical Movement & Solid Top/Bottom Collisions (Player CANNOT intersect with platforms)
     const prevVy = this.velocity.y;
+    const prevY = this.position.y;
+    this.position.y += this.velocity.y * dt;
     this.isGrounded = false;
 
-    if (this.position.y <= floorY) {
-      this.position.y = floorY;
+    // Ground Floor Boundary
+    if (this.position.y <= GROUND_Y) {
+      this.position.y = GROUND_Y;
       this.velocity.y = 0;
       this.isGrounded = true;
     }
 
+    // Solid Platform Collisions (Landing on Top & Bonking Head on Underside)
     for (const plat of platforms) {
       const platTop = plat.y + plat.height / 2;
+      const platBottom = plat.y - plat.height / 2;
       const platLeft = plat.x - plat.width / 2;
       const platRight = plat.x + plat.width / 2;
 
-      if (
-        this.position.x >= platLeft &&
-        this.position.x <= platRight &&
-        this.position.y >= platTop - 0.25 &&
-        this.position.y <= platTop + 0.35 &&
-        this.velocity.y <= 0
-      ) {
-        this.position.y = platTop;
-        this.velocity.y = 0;
-        this.isGrounded = true;
+      const horizOverlap =
+        this.position.x + halfWidth > platLeft + 0.02 &&
+        this.position.x - halfWidth < platRight - 0.02;
+
+      if (horizOverlap) {
+        // A. Landing on Top of platform
+        if (
+          this.velocity.y <= 0 &&
+          prevY >= platTop - 0.28 &&
+          this.position.y <= platTop + 0.20
+        ) {
+          this.position.y = platTop;
+          this.velocity.y = 0;
+          this.isGrounded = true;
+        }
+        // B. Bonking against Bottom / ceiling of platform (Cannot jump through)
+        else if (
+          this.velocity.y > 0 &&
+          prevY + playerHeight <= platBottom + 0.20 &&
+          this.position.y + playerHeight >= platBottom
+        ) {
+          this.position.y = platBottom - playerHeight;
+          this.velocity.y = 0;
+        }
       }
     }
 
