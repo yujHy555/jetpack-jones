@@ -84,6 +84,12 @@ export class Player {
   public maxFuel: number = 100;
   public invulnerableTime: number = 0;
 
+  // Death Animation State
+  public isDying: boolean = false;
+  public isDead: boolean = false;
+  public deathTimer: number = 0;
+  public maxDeathTime: number = 2.2;
+
   // Ragdoll Physics Hit Reaction
   public ragdollTimer: number = 0;
   public ragdollImpulseX: number = -1;
@@ -1016,10 +1022,17 @@ export class Player {
     this.fuel = 100;
     this.invulnerableTime = 0;
     this.ragdollTimer = 0;
+    this.isDying = false;
+    this.isDead = false;
+    this.deathTimer = 0;
     this.animTimer = 0;
     this.shootTimer = 0;
     this.bubbleBurstTimer = 0;
     this.headFollowLag = 0;
+    this.rigRoot.rotation.set(0, 0, 0);
+    this.rigRoot.position.set(0, 0, 0);
+    this.torsoBone.rotation.set(0, 0, 0);
+    this.headBone.rotation.set(0, 0, 0);
     this.mesh.position.copy(this.position);
     this.mesh.visible = true;
 
@@ -1145,6 +1158,7 @@ export class Player {
    * Fires a blaster laser bolt straight along the arm's line of sight
    */
   public shoot(aimTargetWorld?: THREE.Vector3): boolean {
+    if (this.isDying) return false;
     const laser = this.lasers.find(l => !l.active);
     if (!laser) return false;
 
@@ -1205,11 +1219,38 @@ export class Player {
   }
 
   /**
+   * Dramatic Death Animation with Jetpack Meltdown & Ground Collapse
+   */
+  public triggerDeath(knockbackDirX: number = -1) {
+    if (this.isDying) return;
+    this.isDying = true;
+    this.isDead = false;
+    this.deathTimer = 0;
+    this.invulnerableTime = 999;
+    // Dramatic death impulse: Jones reels backward
+    const dir = knockbackDirX !== 0 ? knockbackDirX : (this.facingRight ? -1 : 1);
+    this.velocity.x = dir * 6.5;
+    this.velocity.y = 8.0;
+    this.isGrounded = false;
+
+    // Jetpack blowout sparks & smoke burst
+    this.emitSparks(this.position.x, this.position.y + 0.8, dir * 3.0, 18);
+    this.emitSmoke(this.position.x - 0.25, this.position.y + 0.9, 0, 4);
+    this.emitSmoke(this.position.x + 0.25, this.position.y + 0.9, 0, 4);
+  }
+
+  /**
    * Ragdoll hit reaction with physical knockback (NO FLASHING!)
    */
   public takeDamage(amount: number = 25, knockbackDirX: number = -1) {
-    if (this.invulnerableTime > 0) return;
+    if (this.isDying || this.invulnerableTime > 0) return;
     this.life = Math.max(0, this.life - amount);
+
+    if (this.life <= 0) {
+      this.triggerDeath(knockbackDirX);
+      return;
+    }
+
     this.invulnerableTime = 0.55;
 
     // Trigger physical ragdoll flail & knockback impulse
@@ -1225,8 +1266,14 @@ export class Player {
    * Squashes player down with intense ragdoll reaction, dust blast, and grounded impact
    */
   public crushHit(amount: number = 30, knockbackDirX: number = 0) {
-    if (this.invulnerableTime > 0) return;
+    if (this.isDying || this.invulnerableTime > 0) return;
     this.life = Math.max(0, this.life - amount);
+
+    if (this.life <= 0) {
+      this.triggerDeath(knockbackDirX);
+      return;
+    }
+
     this.invulnerableTime = 0.65;
 
     this.ragdollTimer = 0.55;
@@ -1277,6 +1324,15 @@ export class Player {
     }
     // ALWAYS visible — NO FLASHING!
     this.mesh.visible = true;
+
+    // Freeze inputs during death animation
+    if (this.isDying) {
+      moveX = 0;
+      runPressed = false;
+      jumpPressed = false;
+      jetpackPressed = false;
+      hasMouseTarget = false;
+    }
 
     // 1. Aim Tracking with Arc Limits (clears helmet dome cleanly)
     if (hasMouseTarget && mouseWorldTarget) {
@@ -1831,40 +1887,99 @@ export class Player {
     }
 
     // ------------------------------------------------------
-    // G. PHYSICAL RAGDOLL HIT REACTION (Joint Flailing on Damage)
+    // G. PHYSICAL RAGDOLL HIT REACTION & DRAMATIC DEATH ANIMATION
     // ------------------------------------------------------
-    this.rigRoot.rotation.z = 0; // Rig root stays firmly upright — NO ROTATION AROUND FEET!
+    if (!this.isDying) {
+      this.rigRoot.rotation.z = 0; // Rig root stays firmly upright during normal gameplay
+      this.rigRoot.position.set(0, 0, 0);
 
-    // Crushing mechanical press squash & stretch
-    if (this.crushSquashTimer > 0) {
-      this.crushSquashTimer -= dt;
-      const crushT = this.crushSquashTimer / 0.35;
-      const squashY = 1.0 - Math.sin(crushT * Math.PI) * 0.32;
-      const stretchX = 1.0 + Math.sin(crushT * Math.PI) * 0.22;
-      this.rigRoot.scale.set(stretchX, squashY, stretchX);
+      // Crushing mechanical press squash & stretch
+      if (this.crushSquashTimer > 0) {
+        this.crushSquashTimer -= dt;
+        const crushT = this.crushSquashTimer / 0.35;
+        const squashY = 1.0 - Math.sin(crushT * Math.PI) * 0.32;
+        const stretchX = 1.0 + Math.sin(crushT * Math.PI) * 0.22;
+        this.rigRoot.scale.set(stretchX, squashY, stretchX);
+      } else {
+        this.rigRoot.scale.set(1, 1, 1);
+      }
+
+      if (this.ragdollTimer > 0) {
+        this.ragdollTimer -= dt;
+        const prog = this.ragdollTimer / 0.45;
+
+        // Head snaps back with neck-whip
+        this.headBone.rotation.z = -0.55 * prog;
+
+        // Torso recoils and twists naturally from center
+        this.torsoBone.rotation.z += (this.ragdollImpulseX > 0 ? -0.45 : 0.45) * prog;
+
+        // Arms fling outwards erratically
+        this.frontArmBone.rotation.z += -0.75 * prog;
+        this.frontForearmBone.rotation.z += 0.50 * prog;
+        this.backArmBone.rotation.z += 0.85 * prog;
+
+        // Legs kick and buckle
+        this.frontThighBone.rotation.z += 0.65 * prog;
+        this.frontShinBone.rotation.z -= 0.55 * prog;
+        this.backThighBone.rotation.z += -0.45 * prog;
+      }
     } else {
-      this.rigRoot.scale.set(1, 1, 1);
-    }
+      // ------------------------------------------------------
+      // DRAMATIC DEATH ANIMATION
+      // Jetpack meltdown, slow-motion reel back, and collapse onto catwalk floor
+      // ------------------------------------------------------
+      this.deathTimer += dt;
 
-    if (this.ragdollTimer > 0) {
-      this.ragdollTimer -= dt;
-      const prog = this.ragdollTimer / 0.45;
+      // Jetpack blowouts & electrical short-circuit sparks
+      if (this.deathTimer < 1.4) {
+        if (Math.random() < 0.65) {
+          const sparkDir = (Math.random() - 0.5) * 4.0;
+          this.emitSparks(this.position.x, this.position.y + 0.8, sparkDir, 2);
+        }
+        if (Math.random() < 0.35) {
+          this.emitSmoke(this.position.x - 0.15, this.position.y + 0.85, 0, 1);
+        }
+      }
 
-      // Head snaps back with neck-whip
-      this.headBone.rotation.z = -0.55 * prog;
+      if (this.deathTimer < 0.75) {
+        // Phase 1: Reeling back & flailing arms in slow-motion
+        const t = this.deathTimer / 0.75;
+        this.headBone.rotation.z = -0.55 * t;
+        this.torsoBone.rotation.z = (this.facingRight ? -0.45 : 0.45) * t;
 
-      // Torso recoils and twists naturally from center
-      this.torsoBone.rotation.z += (this.ragdollImpulseX > 0 ? -0.45 : 0.45) * prog;
+        this.frontArmBone.rotation.z = -1.8 * t;
+        this.frontForearmBone.rotation.z = 0.6 * t;
+        this.backArmBone.rotation.z = 1.4 * t;
 
-      // Arms fling outwards erratically
-      this.frontArmBone.rotation.z += -0.75 * prog;
-      this.frontForearmBone.rotation.z += 0.50 * prog;
-      this.backArmBone.rotation.z += 0.85 * prog;
+        this.frontThighBone.rotation.z = 0.5 * t;
+        this.frontShinBone.rotation.z = -0.7 * t;
+        this.backThighBone.rotation.z = -0.4 * t;
 
-      // Legs kick and buckle
-      this.frontThighBone.rotation.z += 0.65 * prog;
-      this.frontShinBone.rotation.z -= 0.55 * prog;
-      this.backThighBone.rotation.z += -0.45 * prog;
+        this.rigRoot.rotation.z = (this.facingRight ? -1 : 1) * (0.8 * t);
+      } else {
+        // Phase 2: Ground impact & collapse onto catwalk floor
+        if (this.deathTimer - dt < 0.75) {
+          this.emitDust(this.position.x, this.position.y, 14);
+        }
+
+        const collapseTarget = this.facingRight ? -Math.PI / 2 + 0.15 : Math.PI / 2 - 0.15;
+        this.rigRoot.rotation.z = THREE.MathUtils.lerp(this.rigRoot.rotation.z, collapseTarget, dt * 8.0);
+        this.rigRoot.position.y = THREE.MathUtils.lerp(this.rigRoot.position.y, -0.45, dt * 6.0);
+
+        this.headBone.rotation.z = THREE.MathUtils.lerp(this.headBone.rotation.z, -0.2, dt * 5.0);
+        this.torsoBone.rotation.z = THREE.MathUtils.lerp(this.torsoBone.rotation.z, 0.1, dt * 5.0);
+        this.frontArmBone.rotation.z = THREE.MathUtils.lerp(this.frontArmBone.rotation.z, -0.3, dt * 5.0);
+        this.frontForearmBone.rotation.z = THREE.MathUtils.lerp(this.frontForearmBone.rotation.z, 0.2, dt * 5.0);
+        this.backArmBone.rotation.z = THREE.MathUtils.lerp(this.backArmBone.rotation.z, 0.3, dt * 5.0);
+        this.frontThighBone.rotation.z = THREE.MathUtils.lerp(this.frontThighBone.rotation.z, 0.2, dt * 5.0);
+        this.frontShinBone.rotation.z = THREE.MathUtils.lerp(this.frontShinBone.rotation.z, -0.1, dt * 5.0);
+        this.backThighBone.rotation.z = THREE.MathUtils.lerp(this.backThighBone.rotation.z, 0.0, dt * 5.0);
+      }
+
+      if (this.deathTimer >= this.maxDeathTime) {
+        this.isDead = true;
+      }
     }
   }
 
@@ -1931,7 +2046,7 @@ export class Player {
     this.fuelGaugeNeedle.rotation.x = (fuelRatio - 0.5) * 2.2;
 
     // 2. DIAMOND SHOCKWAVE FLAMES (Epic scale, brightness, and turbulent flutter)
-    if (isJetpacking) {
+    if (isJetpacking && !this.isDying) {
       this.flameConeLeft.visible = true;
       this.flameConeRight.visible = true;
 

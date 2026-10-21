@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { EnemyBlob } from '../entities/EnemyBlob';
 import { DroneEnemy } from '../entities/DroneEnemy';
+import { PhysicsCrate } from '../entities/PhysicsCrate';
 
 export enum ObstacleType {
   GEAR = 'gear',
@@ -48,6 +49,7 @@ export class ObstacleManager {
   public pickups: ActivePickup[] = [];
   public enemies: EnemyBlob[] = [];
   public drones: DroneEnemy[] = [];
+  public crates: PhysicsCrate[] = [];
   private nextId = 1;
 
   // Cached Materials
@@ -168,10 +170,20 @@ export class ObstacleManager {
     for (const d of this.drones) {
       d.destroy(this.scene);
     }
+    for (const c of this.crates) {
+      c.destroy(this.scene);
+    }
     this.obstacles = [];
     this.pickups = [];
     this.enemies = [];
     this.drones = [];
+    this.crates = [];
+  }
+
+  public spawnCrate(x: number, y: number): PhysicsCrate {
+    const crate = new PhysicsCrate(this.scene, x, y);
+    this.crates.push(crate);
+    return crate;
   }
 
   public spawnBlob(x: number, y: number, patrolRange: number = 3.5): EnemyBlob {
@@ -608,6 +620,20 @@ export class ObstacleManager {
           d.destroy(this.scene);
         }
         this.drones.splice(i, 1);
+      }
+    }
+
+    // Update and recycle physics crates
+    for (let i = this.crates.length - 1; i >= 0; i--) {
+      const c = this.crates[i];
+      c.update(dt, time, platforms);
+
+      if (!c.active && c.isDestroyed && c.position.x < playerX - 30) {
+        c.destroy(this.scene);
+        this.crates.splice(i, 1);
+      } else if (c.position.x < playerX - 35) {
+        c.destroy(this.scene);
+        this.crates.splice(i, 1);
       }
     }
   }

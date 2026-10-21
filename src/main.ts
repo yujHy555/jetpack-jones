@@ -90,6 +90,8 @@ class Game {
         }
       });
     }
+
+    (window as any).__game = this;
   }
 
   private startGame() {
@@ -188,8 +190,11 @@ class Game {
         this.score = Math.floor(this.player.position.x * 10);
       }
 
-      // 7. Check Game Over
-      if (this.player.life <= 0) {
+      // 7. Check Player Death Animation & Game Over Transition
+      if (this.player.isDying) {
+        this.audioManager.setJetpackThrust(false);
+      }
+      if (this.player.isDead) {
         this.onGameOver();
       }
     } else {
@@ -362,6 +367,30 @@ class Game {
       }
     }
 
+    // Interactive Physics Supply Crates vs Player (Push & Step-On Support)
+    for (const crate of this.obstacleManager.crates) {
+      if (!crate.active || crate.isDestroyed) continue;
+      const dx = pPos.x - crate.position.x;
+      const dy = pCenterY - crate.position.y;
+      const overlapX = (pRadius + crate.halfW) - Math.abs(dx);
+      const overlapY = (0.95 + crate.halfH) - Math.abs(dy);
+
+      if (overlapX > 0 && overlapY > 0) {
+        if (overlapX < overlapY && Math.abs(dy) < 0.6) {
+          // Horizontal push: Jones pushes crate across catwalk/floor!
+          const pushDir = Math.sign(dx);
+          pPos.x = crate.position.x + pushDir * (pRadius + crate.halfW);
+          crate.velocity.x -= pushDir * (Math.abs(this.player.velocity.x) * 0.7 + 1.5);
+          this.player.velocity.x *= 0.5;
+        } else if (dy > 0 && this.player.velocity.y <= 0 && pPos.y >= crate.position.y + crate.halfH - 0.25) {
+          // Player lands solidly on top of crate!
+          pPos.y = crate.position.y + crate.halfH;
+          this.player.velocity.y = 0;
+          this.player.isGrounded = true;
+        }
+      }
+    }
+
     // C. Lasers in 360° vs Destructible Obstacles, Alien Blobs & Flying Drones
     for (const laser of this.player.lasers) {
       if (!laser.active) continue;
@@ -417,7 +446,38 @@ class Game {
 
       if (!laser.active) continue;
 
-      // 2. Check against Plasma Tubes
+      // 3. Check against Physics Supply Crates
+      for (const crate of this.obstacleManager.crates) {
+        if (!crate.active || crate.isDestroyed) continue;
+
+        if (
+          Math.abs(laser.position.x - crate.position.x) < crate.halfW + 0.15 &&
+          Math.abs(laser.position.y - crate.position.y) < crate.halfH + 0.15
+        ) {
+          laser.active = false;
+          laser.mesh.visible = false;
+          this.audioManager.playEnemyImpact();
+          const destroyed = crate.takeDamage(1, Math.sign(laser.velocity.x) || 1);
+          this.sceneManager.triggerShake(0.18, 0.12);
+
+          if (destroyed) {
+            this.audioManager.playExplosion();
+            this.sceneManager.triggerShake(0.32, 0.20);
+            this.score += 200;
+            // Pop out a reward pickup from destroyed crate!
+            if (Math.random() > 0.45) {
+              this.obstacleManager.spawnFuelPickup(crate.position.x, crate.position.y + 0.4);
+            } else {
+              this.obstacleManager.spawnCoinPickup(crate.position.x, crate.position.y + 0.4);
+            }
+          }
+          break;
+        }
+      }
+
+      if (!laser.active) continue;
+
+      // 4. Check against Plasma Tubes
       for (const obs of this.obstacleManager.obstacles) {
         if (!obs.active || !obs.destructible) continue;
 
@@ -556,12 +616,22 @@ class Game {
       }
     }
 
+    for (const crate of this.obstacleManager.crates) {
+      if (!crate.active || crate.isDestroyed) continue;
+      const targetPos = new THREE.Vector3(crate.position.x, crate.position.y, 0);
+      const d = mousePos.distanceTo(targetPos);
+      if (d < closestDist) {
+        closestDist = d;
+        closestEnemy = crate;
+      }
+    }
+
     if (closestEnemy) {
       this.lockedEnemy = closestEnemy;
-      const isDrone = !!closestEnemy.lasers;
+      const isBlob = !!closestEnemy.slimeTrail;
       const enemyCenter = new THREE.Vector3(
         closestEnemy.position.x,
-        closestEnemy.position.y + (isDrone ? 0 : 0.45),
+        closestEnemy.position.y + (isBlob ? 0.45 : 0),
         0
       );
 

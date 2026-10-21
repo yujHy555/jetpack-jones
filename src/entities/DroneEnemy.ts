@@ -34,12 +34,12 @@ export class DroneEnemy {
   public health: number = 2;
   public active: boolean = true;
 
-  // Visual Meshes
+  // Visual Meshes - Helmet-styled Attack Drone
   private chassisMesh: THREE.Mesh;
   private eyeMesh: THREE.Mesh;
   private eyeLight: THREE.PointLight;
-  private thrusterL: THREE.Mesh;
-  private thrusterR: THREE.Mesh;
+  private ledMaterials: THREE.MeshBasicMaterial[] = [];
+  private antennaBeaconMat: THREE.MeshBasicMaterial;
   private shadowMesh: THREE.Mesh;
 
   // AI & Flight Physics
@@ -69,75 +69,154 @@ export class DroneEnemy {
     this.flightPhase = Math.random() * Math.PI * 2;
     this.shootTimer = 1.0 + Math.random() * 1.5;
 
-    // 1. Sleek Rounded Chassis
-    const chassisGeo = new THREE.BoxGeometry(0.85, 0.55, 0.65);
-    const chassisMat = new THREE.MeshStandardMaterial({
-      color: 0xf5ede3,
-      roughness: 0.35,
-      metalness: 0.25,
+    // Shared Helmet Materials
+    const spaceWhiteMat = new THREE.MeshStandardMaterial({
+      color: 0xf5f7fa,
+      roughness: 0.32,
+      metalness: 0.15,
     });
-    this.chassisMesh = new THREE.Mesh(chassisGeo, chassisMat);
+    const darkHarnessMat = new THREE.MeshStandardMaterial({
+      color: 0x1e232a,
+      roughness: 0.55,
+      metalness: 0.35,
+    });
+    const chromeMetalMat = new THREE.MeshStandardMaterial({
+      color: 0xd8e0e8,
+      metalness: 0.85,
+      roughness: 0.18,
+    });
+    const rubyVisorMat = new THREE.MeshPhysicalMaterial({
+      color: 0xff1133,
+      emissive: 0x660011,
+      roughness: 0.12,
+      metalness: 0.10,
+      transmission: 0.75,
+      transparent: true,
+      opacity: 0.88,
+    });
+    const cyanThrusterMat = new THREE.MeshBasicMaterial({ color: 0x00f5ff });
+
+    // 1. Aerodynamic Space Helmet Dome Shell
+    const helmetGeo = new THREE.SphereGeometry(0.46, 24, 24);
+    this.chassisMesh = new THREE.Mesh(helmetGeo, spaceWhiteMat);
     this.chassisMesh.castShadow = true;
     this.group.add(this.chassisMesh);
 
-    // Orange side plating
-    const sidePlateGeo = new THREE.BoxGeometry(0.88, 0.28, 0.68);
-    const orangeMat = new THREE.MeshStandardMaterial({
-      color: 0xe58835,
-      roughness: 0.4,
-      metalness: 0.2,
-    });
-    const sidePlates = new THREE.Mesh(sidePlateGeo, orangeMat);
-    this.chassisMesh.add(sidePlates);
+    // 2. Top Centerline Crest Fin
+    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.08, 0.05), darkHarnessMat);
+    crest.position.set(-0.02, 0.44, 0);
+    this.chassisMesh.add(crest);
 
-    // 2. Central Menacing Red Cyclops Optic Visor
-    const eyeGeo = new THREE.SphereGeometry(0.18, 16, 16);
-    eyeGeo.scale(1.2, 0.85, 0.7);
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff002b });
+    // 3. Panoramic Front Visor Seal Rim
+    const visorRim = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.045, 12, 28), darkHarnessMat);
+    visorRim.rotation.y = Math.PI / 2;
+    visorRim.position.set(0.08, 0, 0);
+    this.chassisMesh.add(visorRim);
+
+    // 4. Panoramic Ruby/Amber Menacing Visor Bubble
+    const visorGeo = new THREE.SphereGeometry(0.39, 24, 24, 0, Math.PI * 2, 0, Math.PI * 0.52);
+    visorGeo.rotateZ(-Math.PI / 2);
+    const visor = new THREE.Mesh(visorGeo, rubyVisorMat);
+    visor.position.set(0.10, 0, 0);
+    this.chassisMesh.add(visor);
+
+    // 5. Internal Glowing Targeting Optic Scanner / Eye
+    const eyeGeo = new THREE.SphereGeometry(0.14, 16, 16);
+    eyeGeo.scale(1.2, 0.85, 0.85);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff0033 });
     this.eyeMesh = new THREE.Mesh(eyeGeo, eyeMat);
-    this.eyeMesh.position.set(0, 0, 0.32);
-    this.group.add(this.eyeMesh);
+    this.eyeMesh.position.set(0.18, 0, 0);
+    this.chassisMesh.add(this.eyeMesh);
 
-    this.eyeLight = new THREE.PointLight(0xff0022, 2.5, 4.0);
-    this.eyeLight.position.set(0, 0, 0.45);
-    this.group.add(this.eyeLight);
+    this.eyeLight = new THREE.PointLight(0xff002b, 2.8, 4.0);
+    this.eyeLight.position.set(0.25, 0, 0);
+    this.chassisMesh.add(this.eyeLight);
 
-    // 3. Dual Anti-Grav Repulsor Pods
-    const podGeo = new THREE.CylinderGeometry(0.16, 0.16, 0.45, 12);
-    const podMat = new THREE.MeshStandardMaterial({ color: 0x282e36, metalness: 0.7, roughness: 0.3 });
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0x00f5ff });
+    // 6. Dual Side Command Pods with 3 Flashing LED Buttons (Left & Right)
+    const buttonColors = [0xff1133, 0x00f5ff, 0xffaa00];
+    for (const zSide of [0.46, -0.46]) {
+      const pod = new THREE.Group();
+      pod.position.set(0, 0, zSide);
+      this.chassisMesh.add(pod);
 
-    this.thrusterL = new THREE.Mesh(podGeo, podMat);
-    this.thrusterL.position.set(-0.55, -0.08, 0);
-    this.thrusterL.rotation.z = Math.PI / 8;
-    this.group.add(this.thrusterL);
+      const podHousing = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.12, 0.08, 14),
+        darkHarnessMat
+      );
+      podHousing.rotation.x = Math.PI / 2;
+      pod.add(podHousing);
 
-    const glowRingL = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.03, 8, 16), ringMat);
-    glowRingL.position.y = -0.22;
-    glowRingL.rotation.x = Math.PI / 2;
-    this.thrusterL.add(glowRingL);
+      const bezel = new THREE.Mesh(
+        new THREE.TorusGeometry(0.12, 0.02, 8, 16),
+        chromeMetalMat
+      );
+      bezel.position.z = zSide > 0 ? 0.04 : -0.04;
+      pod.add(bezel);
 
-    this.thrusterR = new THREE.Mesh(podGeo, podMat);
-    this.thrusterR.position.set(0.55, -0.08, 0);
-    this.thrusterR.rotation.z = -Math.PI / 8;
-    this.group.add(this.thrusterR);
+      // 3 LED Buttons: Red, Cyan, Amber
+      for (let b = 0; b < 3; b++) {
+        const bMat = new THREE.MeshBasicMaterial({ color: buttonColors[b] });
+        this.ledMaterials.push(bMat);
 
-    const glowRingR = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.03, 8, 16), ringMat);
-    glowRingR.position.y = -0.22;
-    glowRingR.rotation.x = Math.PI / 2;
-    this.thrusterR.add(glowRingR);
+        const btnMesh = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), bMat);
+        const bx = -0.05 + b * 0.05;
+        const by = 0.01;
+        const bz = zSide > 0 ? 0.045 : -0.045;
+        btnMesh.position.set(bx, by, bz);
+        pod.add(btnMesh);
+      }
+    }
 
-    // Under-chassis twin laser barrels
-    const barrelGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.4, 8);
-    barrelGeo.rotateX(Math.PI / 2);
-    const barrelMat = new THREE.MeshStandardMaterial({ color: 0x1a1e24, metalness: 0.8 });
+    // 7. Dual Top Antenna Masts with Flashing Beacon Tips
+    this.antennaBeaconMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+    for (const zAnt of [0.18, -0.18]) {
+      const stem = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.014, 0.018, 0.32, 8),
+        chromeMetalMat
+      );
+      stem.position.set(-0.16, 0.50, zAnt);
+      stem.rotation.z = -0.22;
+      stem.rotation.x = zAnt > 0 ? 0.15 : -0.15;
+      this.chassisMesh.add(stem);
+
+      const beacon = new THREE.Mesh(
+        new THREE.SphereGeometry(0.04, 8, 8),
+        this.antennaBeaconMat
+      );
+      beacon.position.set(-0.21, 0.65, zAnt * 1.15);
+      this.chassisMesh.add(beacon);
+    }
+
+    // 8. Rear Dual Jet / Oxygen Thruster Vents
+    for (const zVent of [0.16, -0.16]) {
+      const vent = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07, 0.07, 0.18, 12),
+        darkHarnessMat
+      );
+      vent.position.set(-0.35, -0.08, zVent);
+      vent.rotation.z = Math.PI / 2;
+      this.chassisMesh.add(vent);
+
+      const grille = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.06, 0.02, 10),
+        cyanThrusterMat
+      );
+      grille.position.set(-0.44, -0.08, zVent);
+      grille.rotation.z = Math.PI / 2;
+      this.chassisMesh.add(grille);
+    }
+
+    // 9. Under-chin Twin Laser Barrels
+    const barrelGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.38, 8);
+    barrelGeo.rotateZ(Math.PI / 2);
+    const barrelMat = new THREE.MeshStandardMaterial({ color: 0x111418, metalness: 0.9, roughness: 0.2 });
     const barrel1 = new THREE.Mesh(barrelGeo, barrelMat);
-    barrel1.position.set(-0.2, -0.28, 0.15);
-    this.group.add(barrel1);
+    barrel1.position.set(0.24, -0.28, 0.15);
+    this.chassisMesh.add(barrel1);
 
     const barrel2 = new THREE.Mesh(barrelGeo, barrelMat);
-    barrel2.position.set(0.2, -0.28, 0.15);
-    this.group.add(barrel2);
+    barrel2.position.set(0.24, -0.28, -0.15);
+    this.chassisMesh.add(barrel2);
 
     scene.add(this.group);
 
@@ -228,7 +307,7 @@ export class DroneEnemy {
     (this.chassisMesh.material as THREE.MeshStandardMaterial).color.setHex(0xffffff);
     setTimeout(() => {
       if (this.active && !this.isDying) {
-        (this.chassisMesh.material as THREE.MeshStandardMaterial).color.setHex(0xf5ede3);
+        (this.chassisMesh.material as THREE.MeshStandardMaterial).color.setHex(0xf5f7fa);
       }
     }, 85);
 
@@ -338,6 +417,19 @@ export class DroneEnemy {
     // Banking tilt based on horizontal velocity
     const targetTilt = -this.velocity.x * 0.08;
     this.group.rotation.z = THREE.MathUtils.lerp(this.group.rotation.z, targetTilt, dt * 5.0);
+
+    // Flashing Side Command Pod LED Buttons and Top Beacon tips
+    const redOn = Math.sin(time * 7.5) > 0.0;
+    const cyanGlow = Math.sin(time * 5.0 + 1.2) > -0.2;
+    const amberOn = Math.sin(time * 11.0) > 0.2;
+    for (let s = 0; s < 2; s++) {
+      const off = s * 3;
+      if (this.ledMaterials[off + 0]) this.ledMaterials[off + 0].color.setHex(redOn ? 0xff1133 : 0x440008);
+      if (this.ledMaterials[off + 1]) this.ledMaterials[off + 1].color.setHex(cyanGlow ? 0x00f5ff : 0x002233);
+      if (this.ledMaterials[off + 2]) this.ledMaterials[off + 2].color.setHex(amberOn ? 0xffaa00 : 0x331800);
+    }
+    const beaconOn = Math.sin(time * 8.0) > 0.0;
+    this.antennaBeaconMat.color.setHex(beaconOn ? 0xff0044 : 0x220008);
 
     // Eye pulsing
     const eyePulse = 1.8 + Math.sin(time * 8.0) * 0.8;

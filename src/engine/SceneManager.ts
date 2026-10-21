@@ -45,28 +45,30 @@ export class SceneManager {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.35;
 
-    // Lightweight soft shadows
+    // Lightweight ultra-soft simple shadows
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     // Environment Lighting
-    this.ambientLight = new THREE.AmbientLight(0x282630, 2.2);
+    this.ambientLight = new THREE.AmbientLight(0x353240, 2.4);
     this.scene.add(this.ambientLight);
 
-    // Warm key directional light (casting soft real-time shadows)
-    this.keyLight = new THREE.DirectionalLight(0xffeedd, 3.4);
-    this.keyLight.position.set(6, 12, 9);
+    // High-angle key directional light for simple, short, soft shadows
+    this.keyLight = new THREE.DirectionalLight(0xffeedd, 3.0);
+    this.keyLight.position.set(0.5, 22, 6);
     this.keyLight.castShadow = true;
     this.keyLight.shadow.mapSize.width = 1024;
     this.keyLight.shadow.mapSize.height = 1024;
-    this.keyLight.shadow.camera.near = 0.5;
-    this.keyLight.shadow.camera.far = 40;
-    this.keyLight.shadow.camera.left = -16;
-    this.keyLight.shadow.camera.right = 16;
-    this.keyLight.shadow.camera.top = 16;
-    this.keyLight.shadow.camera.bottom = -10;
+    this.keyLight.shadow.camera.near = 1.0;
+    this.keyLight.shadow.camera.far = 35;
+    this.keyLight.shadow.camera.left = -14;
+    this.keyLight.shadow.camera.right = 14;
+    this.keyLight.shadow.camera.top = 14;
+    this.keyLight.shadow.camera.bottom = -8;
     this.keyLight.shadow.bias = -0.001;
+    this.keyLight.shadow.radius = 4.5; // Soft diffused shadow edges
     this.scene.add(this.keyLight);
+    this.scene.add(this.keyLight.target);
 
     // Cyan-blue fill rim light
     this.rimLight = new THREE.DirectionalLight(0x00ccff, 2.2);
@@ -134,9 +136,11 @@ export class SceneManager {
       if (this.shakeDuration <= 0) this.shakeIntensity = 0;
     }
 
-    // Keep key light following the action
-    this.keyLight.position.x = this.camera.position.x + 5;
-    this.keyLight.position.y = this.camera.position.y + 8;
+    // Keep key light directly overhead for simple, short, soft shadows
+    this.keyLight.position.x = this.camera.position.x + 0.5;
+    this.keyLight.position.y = this.camera.position.y + 18;
+    this.keyLight.position.z = 6;
+    this.keyLight.target.position.set(this.camera.position.x, this.camera.position.y - 2, 0);
   }
 
   public render() {

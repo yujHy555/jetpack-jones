@@ -78,6 +78,13 @@ export class ParallaxLayers {
   private steelPipeMat!: THREE.MeshStandardMaterial;
   private deckWalkwayMat!: THREE.MeshStandardMaterial;
 
+  // Dedicated Light Greys and Whites for Background Elements
+  private bgPureWhiteMat!: THREE.MeshStandardMaterial;
+  private bgLightGreyMat!: THREE.MeshStandardMaterial;
+  private bgSoftSlateGreyMat!: THREE.MeshStandardMaterial;
+  private bgCoolSilverMat!: THREE.MeshStandardMaterial;
+  private bgMutedGreyMat!: THREE.MeshStandardMaterial;
+
   constructor(scene: THREE.Scene) {
     this.group = new THREE.Group();
     scene.add(this.group);
@@ -126,6 +133,37 @@ export class ParallaxLayers {
       color: 0xbfcddb,
       roughness: 0.35,
       metalness: 0.70,
+    });
+
+    // Pristine Light Greys and Crisp Whites for all Background Objects
+    this.bgPureWhiteMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.38,
+      metalness: 0.05,
+    });
+
+    this.bgLightGreyMat = new THREE.MeshStandardMaterial({
+      color: 0xf0f2f5,
+      roughness: 0.42,
+      metalness: 0.08,
+    });
+
+    this.bgSoftSlateGreyMat = new THREE.MeshStandardMaterial({
+      color: 0xe2e6eb,
+      roughness: 0.45,
+      metalness: 0.10,
+    });
+
+    this.bgCoolSilverMat = new THREE.MeshStandardMaterial({
+      color: 0xd4d8df,
+      roughness: 0.48,
+      metalness: 0.12,
+    });
+
+    this.bgMutedGreyMat = new THREE.MeshStandardMaterial({
+      color: 0xc8cdd6,
+      roughness: 0.52,
+      metalness: 0.10,
     });
 
     // Main walkway deck (cream with vibrant amber runner stripe)
@@ -206,23 +244,23 @@ export class ParallaxLayers {
     this.ringedPlanetGroup = new THREE.Group();
     this.ringedPlanetGroup.position.set(24, 18, -32);
 
-    // Planet Sphere (Terracotta Peach)
+    // Planet Sphere (Light Grey / Soft Silver)
     const planetGeo = new THREE.SphereGeometry(6.2, 32, 24);
     const planetMat = new THREE.MeshStandardMaterial({
-      color: 0xdf9882,
-      roughness: 0.65,
+      color: 0xedf0f5,
+      roughness: 0.55,
       metalness: 0.05,
     });
     const planetMesh = new THREE.Mesh(planetGeo, planetMat);
     this.ringedPlanetGroup.add(planetMesh);
 
-    // Iconic Elliptical Ring System
+    // Pristine Pearlescent White Ring System
     const ringGeo = new THREE.RingGeometry(8.6, 15.2, 64);
     const ringMat = new THREE.MeshBasicMaterial({
-      color: 0xdda08a,
+      color: 0xffffff,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.95,
+      opacity: 0.90,
     });
     const ringMesh = new THREE.Mesh(ringGeo, ringMat);
     ringMesh.rotation.x = Math.PI / 2.35;
@@ -239,8 +277,8 @@ export class ParallaxLayers {
     this.moonsGroup = new THREE.Group();
 
     const moonMat = new THREE.MeshStandardMaterial({
-      color: 0xf5b89a,
-      roughness: 0.7,
+      color: 0xf5f7fa,
+      roughness: 0.5,
     });
 
     // Large Moon (Upper Left)
@@ -249,12 +287,12 @@ export class ParallaxLayers {
     this.moonsGroup.add(moon1);
 
     // Tiny Moon near large moon
-    const moon2 = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 12), moonMat);
+    const moon2 = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 12), this.bgSoftSlateGreyMat);
     moon2.position.set(-24, 18, -33);
     this.moonsGroup.add(moon2);
 
     // Midground Floating Moon
-    const moon3 = new THREE.Mesh(new THREE.SphereGeometry(1.2, 18, 14), moonMat);
+    const moon3 = new THREE.Mesh(new THREE.SphereGeometry(1.2, 18, 14), this.bgLightGreyMat);
     moon3.position.set(10, 10, -28);
     this.moonsGroup.add(moon3);
 
@@ -263,7 +301,7 @@ export class ParallaxLayers {
 
   /**
    * 4. Background Elements: Simple Cubes with Rounded Corners
-   * Arranged in two stylish depth layers with varied scales and pastel tones
+   * High-key minimalist light greys and whites with zero dark/saturated clutter
    */
   private createRoundedCubeBackground() {
     const moduleSpan = 40;
@@ -275,27 +313,27 @@ export class ParallaxLayers {
       const group = new THREE.Group();
       group.position.set(baseX, -3.7, -22);
 
-      // Distant tall monolith rounded cubes
+      // Distant tall monolith rounded cubes in light greys & whites
       const geoMonolith = createRoundedBoxGeo(6.0, 18.0, 5.0, 0.8);
-      const meshMonolith1 = new THREE.Mesh(geoMonolith, this.tealSlateMat);
+      const meshMonolith1 = new THREE.Mesh(geoMonolith, this.bgCoolSilverMat);
       meshMonolith1.position.set(-14, 9.0, 0);
       meshMonolith1.receiveShadow = true;
       group.add(meshMonolith1);
 
-      const meshMonolith2 = new THREE.Mesh(geoMonolith, this.pastelLavenderMat);
+      const meshMonolith2 = new THREE.Mesh(geoMonolith, this.bgLightGreyMat);
       meshMonolith2.position.set(16, 11.0, -2);
       meshMonolith2.receiveShadow = true;
       group.add(meshMonolith2);
 
       // Stacked background cubes
       const geoBlockLg = createRoundedBoxGeo(7.5, 9.0, 5.0, 0.9);
-      const meshBlockLg = new THREE.Mesh(geoBlockLg, this.tealSlateMat);
+      const meshBlockLg = new THREE.Mesh(geoBlockLg, this.bgSoftSlateGreyMat);
       meshBlockLg.position.set(0, 4.5, -4);
       meshBlockLg.receiveShadow = true;
       group.add(meshBlockLg);
 
       const geoTopCube = createRoundedBoxGeo(4.0, 4.0, 4.0, 0.6);
-      const meshTopCube = new THREE.Mesh(geoTopCube, this.creamMat);
+      const meshTopCube = new THREE.Mesh(geoTopCube, this.bgPureWhiteMat);
       meshTopCube.position.set(0, 11.0, -3.5);
       meshTopCube.receiveShadow = true;
       group.add(meshTopCube);
@@ -310,22 +348,22 @@ export class ParallaxLayers {
       const group = new THREE.Group();
       group.position.set(baseX, -3.7, -13);
 
-      // 1. Left Cluster: Stepped Cream & Orange Rounded Cubes
+      // 1. Left Cluster: Stepped Pure White & Soft Grey Rounded Cubes
       const geoMid1 = createRoundedBoxGeo(4.2, 8.5, 3.8, 0.6);
-      const m1 = new THREE.Mesh(geoMid1, this.creamMat);
+      const m1 = new THREE.Mesh(geoMid1, this.bgLightGreyMat);
       m1.position.set(-11, 4.25, 0);
       m1.receiveShadow = true;
       group.add(m1);
 
       const geoOrangeCube = createRoundedBoxGeo(3.0, 3.0, 3.0, 0.5);
-      const mOrange = new THREE.Mesh(geoOrangeCube, this.orangeMat);
-      mOrange.position.set(-11, 10.0, 0.2);
-      mOrange.receiveShadow = true;
-      group.add(mOrange);
+      const mWhiteCube = new THREE.Mesh(geoOrangeCube, this.bgPureWhiteMat);
+      mWhiteCube.position.set(-11, 10.0, 0.2);
+      mWhiteCube.receiveShadow = true;
+      group.add(mWhiteCube);
 
       // 2. Center Floating Modern Cube
       const geoFloat = createRoundedBoxGeo(3.8, 3.8, 3.8, 0.65);
-      const mFloat = new THREE.Mesh(geoFloat, this.orangeMat);
+      const mFloat = new THREE.Mesh(geoFloat, this.bgPureWhiteMat);
       mFloat.position.set(3.5, 7.5, -1);
       mFloat.rotation.set(0.1, 0.15, 0.05);
       mFloat.receiveShadow = true;
@@ -333,32 +371,32 @@ export class ParallaxLayers {
 
       // Pillar base below floating cube
       const geoPillar = createRoundedBoxGeo(2.6, 5.0, 2.6, 0.4);
-      const mPillar = new THREE.Mesh(geoPillar, this.darkCharcoalMat);
+      const mPillar = new THREE.Mesh(geoPillar, this.bgMutedGreyMat);
       mPillar.position.set(3.5, 2.5, -1);
       mPillar.receiveShadow = true;
       group.add(mPillar);
 
       // 3. Right Cluster: Architectural Rounded Blocks
       const geoTowerBlock = createRoundedBoxGeo(4.5, 11.5, 4.0, 0.7);
-      const mTower = new THREE.Mesh(geoTowerBlock, this.creamMat);
+      const mTower = new THREE.Mesh(geoTowerBlock, this.bgSoftSlateGreyMat);
       mTower.position.set(15, 5.75, 0);
       mTower.receiveShadow = true;
       group.add(mTower);
 
       const geoCapCube = createRoundedBoxGeo(3.2, 2.2, 3.2, 0.45);
-      const mCap = new THREE.Mesh(geoCapCube, this.orangeMat);
+      const mCap = new THREE.Mesh(geoCapCube, this.bgPureWhiteMat);
       mCap.position.set(15, 12.6, 0);
       mCap.receiveShadow = true;
       group.add(mCap);
 
       // Floating Accent Cubes
       const geoAccent1 = createRoundedBoxGeo(1.8, 1.8, 1.8, 0.35);
-      const mAccent1 = new THREE.Mesh(geoAccent1, this.creamMat);
+      const mAccent1 = new THREE.Mesh(geoAccent1, this.bgPureWhiteMat);
       mAccent1.position.set(-4.5, 5.0, 1.0);
       mAccent1.rotation.y = 0.2;
       group.add(mAccent1);
 
-      const mAccent2 = new THREE.Mesh(geoAccent1, this.orangeMat);
+      const mAccent2 = new THREE.Mesh(geoAccent1, this.bgCoolSilverMat);
       mAccent2.position.set(9.5, 4.2, 0.5);
       mAccent2.rotation.y = -0.3;
       group.add(mAccent2);
@@ -445,7 +483,6 @@ export class ParallaxLayers {
       const chassisGeo = new THREE.BoxGeometry(1.6, 1.2, 0.9);
       const chassis = new THREE.Mesh(chassisGeo, this.creamMat);
       chassis.position.set(0, 0.55, 0);
-      chassis.castShadow = true;
       consoleGroup.add(chassis);
 
       // Slanted CRT Monitor Hood
@@ -453,7 +490,6 @@ export class ParallaxLayers {
       const hood = new THREE.Mesh(hoodGeo, this.creamMat);
       hood.position.set(-0.15, 1.25, -0.05);
       hood.rotation.x = -0.15;
-      hood.castShadow = true;
       consoleGroup.add(hood);
 
       // Glowing Amber/Green CRT Phosphor Screen

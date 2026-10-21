@@ -18,11 +18,15 @@ export class LevelGenerator {
     this.spawnCoinLine(6, -0.8, 3);
     this.obstacleManager.spawnFuelPickup(11, -0.6);
 
+    // Interactive Physics Supply Crates
+    this.obstacleManager.spawnCrate(5.0, -3.2);
+    this.obstacleManager.spawnCrate(9.2, -1.3);
+
     // First Alien Blob enemy encounter on ground!
     this.obstacleManager.spawnBlob(14, -3.70, 3.5);
 
-    // First Flying Attack Drone bot in air!
-    this.obstacleManager.spawnDrone(22, 1.2, 5.0);
+    // First Flying Attack Drone bot in air! (Helmet-styled)
+    this.obstacleManager.spawnDrone(11.5, 0.8, 3.5);
   }
 
   public update(playerX: number) {
@@ -41,6 +45,7 @@ export class LevelGenerator {
         this.obstacleManager.spawnPlatform(x, -2.0, 5.0, 0.5);
         this.obstacleManager.spawnBlob(x, -1.75, 2.0);
         this.obstacleManager.spawnPlatform(x + 6.0, 0.5, 4.5, 0.5);
+        this.obstacleManager.spawnCrate(x + 7.0, 1.2);
         this.obstacleManager.spawnFuelPickup(x + 6.0, 1.8);
         this.spawnCoinLine(x, -3.2, 3);
         break;
@@ -49,6 +54,7 @@ export class LevelGenerator {
         // Ground Hazard Gear with Overhead Catwalk Bridge + Alien Blob on ground + Flying Drone
         this.obstacleManager.spawnGear(x + 2, -2.3, 2.0, 1.2);
         this.obstacleManager.spawnPlatform(x + 2, 1.0, 6.5, 0.5);
+        this.obstacleManager.spawnCrate(x - 1.5, -3.2);
         this.spawnCoinLine(x, 2.0, 3);
         this.obstacleManager.spawnBlob(x + 6, -3.70, 2.5);
         this.obstacleManager.spawnDrone(x + 3, 2.5, 4.0);
@@ -57,6 +63,7 @@ export class LevelGenerator {
       case 2:
         // Hydraulic Piston over Low Platform + Alien Blob on ground
         this.obstacleManager.spawnPlatform(x, -1.4, 5.5, 0.5);
+        this.obstacleManager.spawnCrate(x + 1.2, -0.9);
         this.obstacleManager.spawnPiston(x, 5.2, 4.2);
         this.obstacleManager.spawnBlob(x - 2.5, -3.70, 3.0);
         this.obstacleManager.spawnFuelPickup(x + 3.5, 0.0);
@@ -65,6 +72,7 @@ export class LevelGenerator {
       case 3:
         // Destructible Plasma Containment Tube + Alien Blob on Catwalk + Aerial Drone
         this.obstacleManager.spawnPlatform(x, -0.8, 6.0, 0.5);
+        this.obstacleManager.spawnCrate(x - 1.8, -0.3);
         this.obstacleManager.spawnPlasmaTube(x, 1.0);
         this.obstacleManager.spawnBlob(x + 2.0, -0.55, 2.0);
         this.obstacleManager.spawnDrone(x - 2.0, 2.8, 5.0);
