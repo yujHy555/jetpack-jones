@@ -28,11 +28,12 @@ export class PhysicsCrate {
   public halfW: number;
   public halfH: number;
 
-  public health: number = 3;
-  public maxHealth: number = 3;
+  public health: number = 2;
+  public maxHealth: number = 2;
   public active: boolean = true;
   public isDestroyed: boolean = false;
   public onGround: boolean = false;
+  public onDestroy?: (x: number, y: number) => void;
 
   // Visuals
   private crateMesh: THREE.Group;
@@ -176,6 +177,9 @@ export class PhysicsCrate {
     this.destructionTimer = 1.0;
 
     const origin = this.position.clone();
+    if (this.onDestroy) {
+      this.onDestroy(origin.x, origin.y);
+    }
     for (const d of this.debrisPool) {
       d.active = true;
       d.age = 0;

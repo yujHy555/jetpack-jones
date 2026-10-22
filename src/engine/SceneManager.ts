@@ -24,15 +24,15 @@ export class SceneManager {
     this.canvas = document.getElementById('canvas3d') as HTMLCanvasElement;
     this.scene = new THREE.Scene();
 
-    // Scene background and atmospheric haze: High-key celestial light pink
-    this.scene.background = new THREE.Color(0xfcd5df);
-    this.scene.fog = new THREE.FogExp2(0xfcd5df, 0.015);
+    // Scene background and atmospheric haze: Darker dusky twilight palette so bright cyan bullets pop with razor-sharp contrast
+    this.scene.background = new THREE.Color(0xff99cc); // Lighter, brighter radiant retro pink
+    this.scene.fog = new THREE.FogExp2(0x28192b, 0.012);
 
     // Camera setup - locked horizontal perspective for 2.5D platformer
-    // Moved back slightly (Z = 13.5) so everything appears slightly smaller and more spacious
+    // Pulled further back (Z = 16.0) for spacious panoramic view of the levels and flight areas
     const aspect = window.innerWidth / window.innerHeight;
-    this.camera = new THREE.PerspectiveCamera(46, aspect, 0.1, 120);
-    this.camera.position.set(0, 0, 13.5);
+    this.camera = new THREE.PerspectiveCamera(46, aspect, 0.1, 140);
+    this.camera.position.set(0, 0, 16.0);
 
     // WebGL Renderer configuration
     this.renderer = new THREE.WebGLRenderer({

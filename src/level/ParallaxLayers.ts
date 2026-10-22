@@ -63,6 +63,8 @@ export class ParallaxLayers {
 
   // Background layers with parallax
   private skyBackdrop!: THREE.Mesh;
+  private normalSkyTex!: THREE.CanvasTexture;
+  private alienSkyTex!: THREE.CanvasTexture;
   private atmosphereClouds!: THREE.Group;
   private ringedPlanetGroup!: THREE.Group;
   private moonsGroup!: THREE.Group;
@@ -70,6 +72,8 @@ export class ParallaxLayers {
   private midCubeModules: ParallaxObject[] = [];
   private floorTiles: THREE.Group[] = [];
   private foregroundConsoles: THREE.Group[] = [];
+  private droneCitySignTex!: THREE.CanvasTexture;
+  private dofVeilPlane!: THREE.Mesh;
 
   // Reusable Materials Palette
   private creamMat!: THREE.MeshStandardMaterial;
@@ -99,6 +103,7 @@ export class ParallaxLayers {
     this.createRoundedCubeBackground();
     this.createSeamlessCatwalkBridge();
     this.createForegroundTerminalConsoles();
+    this.createFakeDOFVeil();
   }
 
   private initAestheticMaterials() {
@@ -138,35 +143,35 @@ export class ParallaxLayers {
       metalness: 0.70,
     });
 
-    // Pristine Light Greys and Crisp Whites for all Background Objects
+    // Pure White, Light Silver, and Crisp Clean High-Tech Whites for Background Cubes
     this.bgPureWhiteMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      roughness: 0.38,
-      metalness: 0.05,
+      color: 0xfcfdfd,
+      roughness: 0.28,
+      metalness: 0.15,
     });
 
     this.bgLightGreyMat = new THREE.MeshStandardMaterial({
-      color: 0xf0f2f5,
-      roughness: 0.42,
-      metalness: 0.08,
+      color: 0xf2f5f9,
+      roughness: 0.32,
+      metalness: 0.18,
     });
 
     this.bgSoftSlateGreyMat = new THREE.MeshStandardMaterial({
-      color: 0xe2e6eb,
-      roughness: 0.45,
-      metalness: 0.10,
+      color: 0xe8ecf2,
+      roughness: 0.35,
+      metalness: 0.20,
     });
 
     this.bgCoolSilverMat = new THREE.MeshStandardMaterial({
-      color: 0xd4d8df,
-      roughness: 0.48,
-      metalness: 0.12,
+      color: 0xdee3eb,
+      roughness: 0.38,
+      metalness: 0.22,
     });
 
     this.bgMutedGreyMat = new THREE.MeshStandardMaterial({
-      color: 0xc8cdd6,
-      roughness: 0.52,
-      metalness: 0.10,
+      color: 0xd4dae3,
+      roughness: 0.42,
+      metalness: 0.25,
     });
 
     // Main walkway deck (cream with vibrant amber runner stripe)
@@ -222,17 +227,16 @@ export class ParallaxLayers {
     canvas.height = 1024;
     const ctx = canvas.getContext('2d')!;
 
-    // Multi-tier atmospheric strata in delicate, high-key Light Pink & Rose Quartz:
-    // Replaces dark grey with radiant sci-fi light pink aesthetic
+    // Multi-tier atmospheric strata in dark retro dusky twilight & plum wine:
+    // Provides rich, high-contrast dark backdrop so bright cyan bullets pop brilliantly
     const grad = ctx.createLinearGradient(0, 1024, 0, 0); // Bottom = 1024, Top = 0
-    grad.addColorStop(0.00, '#fff0f5'); // Radiant lavender blush horizon
-    grad.addColorStop(0.12, '#ffe4ec'); // Warm pastel cherry blossom
-    grad.addColorStop(0.25, '#ffd1dc'); // Quintessential light pink
-    grad.addColorStop(0.40, '#fbcfe8'); // Soft rose petal pink
-    grad.addColorStop(0.55, '#f8bbd0'); // Cotton candy pink
-    grad.addColorStop(0.70, '#f4a6bf'); // Muted vintage rose
-    grad.addColorStop(0.85, '#e895ae'); // Sunset mauve pink
-    grad.addColorStop(1.00, '#d97d98'); // Soft celestial dusk rose
+    grad.addColorStop(0.00, '#ffa0cf'); // Lighter, brighter vibrant retro pink horizon
+    grad.addColorStop(0.12, '#ff7eb9'); // Radiant coral strawberry pink
+    grad.addColorStop(0.26, '#f55d9d'); // Electric candy pink
+    grad.addColorStop(0.44, '#bd3881'); // Rich magenta rose
+    grad.addColorStop(0.65, '#6b194f'); // Deep plum wine
+    grad.addColorStop(0.85, '#2c0a24'); // Midnight cosmic violet
+    grad.addColorStop(1.00, '#0e020d'); // Starry abyss
 
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 256, 1024);
@@ -249,13 +253,48 @@ export class ParallaxLayers {
       ctx.fill();
     }
 
-    const skyTex = new THREE.CanvasTexture(canvas);
+    this.normalSkyTex = new THREE.CanvasTexture(canvas);
+
+    // Planet Xylos - Deep Bioluminescent Alien Sky Canvas
+    const alienCanvas = document.createElement('canvas');
+    alienCanvas.width = 256;
+    alienCanvas.height = 1024;
+    const aCtx = alienCanvas.getContext('2d')!;
+    const aGrad = aCtx.createLinearGradient(0, 1024, 0, 0);
+    aGrad.addColorStop(0.00, '#2e1065'); // Deep alien indigo horizon
+    aGrad.addColorStop(0.18, '#581c87'); // Royal alien violet
+    aGrad.addColorStop(0.38, '#701a75'); // Bioluminescent magenta
+    aGrad.addColorStop(0.58, '#86198f'); // Radiant plum
+    aGrad.addColorStop(0.78, '#4a044e'); // Cosmic purple
+    aGrad.addColorStop(1.00, '#0f051d'); // Deep cosmic void
+    aCtx.fillStyle = aGrad;
+    aCtx.fillRect(0, 0, 256, 1024);
+
+    for (let s = 0; s < 400; s++) {
+      const sx = ((s * 103) % 256);
+      const sy = ((s * 283) % 650);
+      const r = (s % 3 === 0) ? 1.6 : (s % 2 === 0 ? 1.0 : 0.6);
+      const alpha = 0.5 + (s % 5) * 0.12;
+      aCtx.fillStyle = (s % 3 === 0) ? `rgba(57, 255, 20, ${alpha})` : `rgba(0, 245, 255, ${alpha})`;
+      aCtx.beginPath();
+      aCtx.arc(sx, sy, r, 0, Math.PI * 2);
+      aCtx.fill();
+    }
+    this.alienSkyTex = new THREE.CanvasTexture(alienCanvas);
+
     const skyGeo = new THREE.PlaneGeometry(280, 280);
-    const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, depthWrite: false });
+    const skyMat = new THREE.MeshBasicMaterial({ map: this.normalSkyTex, depthWrite: false });
 
     this.skyBackdrop = new THREE.Mesh(skyGeo, skyMat);
     this.skyBackdrop.position.set(0, 75, -42);
     this.group.add(this.skyBackdrop);
+  }
+
+  public setLevel(lvl: number) {
+    if (this.skyBackdrop && (this.skyBackdrop.material as THREE.MeshBasicMaterial)) {
+      (this.skyBackdrop.material as THREE.MeshBasicMaterial).map = lvl === 2 ? this.alienSkyTex : this.normalSkyTex;
+      (this.skyBackdrop.material as THREE.MeshBasicMaterial).needsUpdate = true;
+    }
   }
 
   /**
@@ -437,6 +476,35 @@ export class ParallaxLayers {
       mCap.receiveShadow = true;
       group.add(mCap);
 
+      // Illuminated Billboard: "WELCOME TO DRONE CITY"
+      if (!this.droneCitySignTex) {
+        this.droneCitySignTex = this.createDroneCitySignTexture();
+      }
+      const signGeo = new THREE.BoxGeometry(7.2, 2.2, 0.25);
+      const signMat = new THREE.MeshStandardMaterial({
+        map: this.droneCitySignTex,
+        emissive: 0x0088cc,
+        emissiveIntensity: 0.85,
+        roughness: 0.3,
+        metalness: 0.2,
+      });
+      const signMesh = new THREE.Mesh(signGeo, signMat);
+      signMesh.position.set(15, 15.0, 0);
+      group.add(signMesh);
+
+      // Eye-level Drone City illuminated sign plaque mounted on midground block
+      const eyeSignGeo = new THREE.BoxGeometry(6.4, 2.0, 0.2);
+      const eyeSignMesh = new THREE.Mesh(eyeSignGeo, signMat);
+      eyeSignMesh.position.set(-11, 6.5, 2.0);
+      group.add(eyeSignMesh);
+
+      // Support truss struts holding the Drone City sign
+      for (const lx of [12.6, 17.4]) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.6, 8), this.steelPipeMat);
+        leg.position.set(lx, 13.7, 0);
+        group.add(leg);
+      }
+
       // Floating Accent Cubes
       const geoAccent1 = createRoundedBoxGeo(1.8, 1.8, 1.8, 0.35);
       const mAccent1 = new THREE.Mesh(geoAccent1, this.bgPureWhiteMat);
@@ -515,6 +583,105 @@ export class ParallaxLayers {
     }
   }
 
+  private createDroneCitySignTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 160;
+    const ctx = canvas.getContext('2d')!;
+
+    // Dark cyber obsidian backplate
+    ctx.fillStyle = '#080d18';
+    ctx.fillRect(0, 0, 512, 160);
+
+    // Glowing double neon border
+    ctx.strokeStyle = '#00f5ff';
+    ctx.lineWidth = 5;
+    ctx.strokeRect(8, 8, 496, 144);
+
+    ctx.strokeStyle = '#ff9900';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(14, 14, 484, 132);
+
+    // Corner brackets
+    ctx.fillStyle = '#00f5ff';
+    ctx.fillRect(4, 4, 18, 18);
+    ctx.fillRect(490, 4, 18, 18);
+    ctx.fillRect(4, 138, 18, 18);
+    ctx.fillRect(490, 138, 18, 18);
+
+    // Neon typography: "WELCOME TO DRONE CITY"
+    ctx.shadowColor = '#00d0ff';
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px "Press Start 2P", monospace, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('WELCOME TO', 256, 56);
+
+    ctx.shadowColor = '#ffaa00';
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = 'bold 34px "Press Start 2P", monospace, sans-serif';
+    ctx.fillText('DRONE CITY', 256, 114);
+
+    ctx.shadowBlur = 0;
+
+    // Small cyber drone icon dots
+    ctx.fillStyle = '#00f5ff';
+    ctx.beginPath(); ctx.arc(70, 85, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(442, 85, 8, 0, Math.PI * 2); ctx.fill();
+
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  private createFakeDOFVeil() {
+    const dofCanvas = document.createElement('canvas');
+    dofCanvas.width = 512;
+    dofCanvas.height = 512;
+    const ctx = dofCanvas.getContext('2d')!;
+
+    // Soft atmospheric bokeh diffusion gradient faking Depth of Field
+    const grad = ctx.createRadialGradient(256, 256, 40, 256, 256, 256);
+    grad.addColorStop(0.0, 'rgba(255, 230, 245, 0.16)');
+    grad.addColorStop(0.4, 'rgba(255, 200, 235, 0.10)');
+    grad.addColorStop(0.8, 'rgba(240, 180, 225, 0.05)');
+    grad.addColorStop(1.0, 'rgba(220, 160, 210, 0.0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Soft defocused bokeh circles
+    for (let b = 0; b < 24; b++) {
+      const bx = ((b * 89) % 512);
+      const by = ((b * 163) % 512);
+      const br = 28 + (b % 4) * 16;
+      const bGrad = ctx.createRadialGradient(bx, by, br * 0.2, bx, by, br);
+      bGrad.addColorStop(0.0, 'rgba(255, 255, 255, 0.08)');
+      bGrad.addColorStop(0.7, 'rgba(255, 220, 245, 0.04)');
+      bGrad.addColorStop(1.0, 'rgba(255, 200, 235, 0.0)');
+      ctx.fillStyle = bGrad;
+      ctx.beginPath();
+      ctx.arc(bx, by, br, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const dofTex = new THREE.CanvasTexture(dofCanvas);
+    dofTex.wrapS = THREE.RepeatWrapping;
+    dofTex.wrapT = THREE.RepeatWrapping;
+    dofTex.repeat.set(6, 2);
+
+    const dofGeo = new THREE.PlaneGeometry(320, 90);
+    const dofMat = new THREE.MeshBasicMaterial({
+      map: dofTex,
+      transparent: true,
+      opacity: 0.65,
+      depthWrite: false,
+      blending: THREE.NormalBlending,
+    });
+
+    this.dofVeilPlane = new THREE.Mesh(dofGeo, dofMat);
+    this.dofVeilPlane.position.set(0, 15, -17.5);
+    this.group.add(this.dofVeilPlane);
+  }
+
   /**
    * 6. Foreground Vintage CRT Computer Terminal Consoles
    */
@@ -542,13 +709,90 @@ export class ParallaxLayers {
       hood.rotation.x = -0.15;
       consoleGroup.add(hood);
 
-      // Glowing Amber/Green CRT Phosphor Screen
-      const screenGeo = new THREE.PlaneGeometry(0.75, 0.55);
-      const screenMat = new THREE.MeshBasicMaterial({ color: 0x33ff66 });
+      // High-Tech Electric Blue Phosphor Screen with Rounded Edges
+      const screenCanvas = document.createElement('canvas');
+      screenCanvas.width = 256;
+      screenCanvas.height = 192;
+      const sCtx = screenCanvas.getContext('2d')!;
+
+      // Deep cyan/blue phosphor background
+      sCtx.fillStyle = '#051428';
+      sCtx.fillRect(0, 0, 256, 192);
+
+      // Cyan digital telemetry grid
+      sCtx.strokeStyle = 'rgba(0, 180, 255, 0.25)';
+      sCtx.lineWidth = 1;
+      for (let y = 0; y < 192; y += 16) {
+        sCtx.beginPath(); sCtx.moveTo(0, y); sCtx.lineTo(256, y); sCtx.stroke();
+      }
+      for (let x = 0; x < 256; x += 24) {
+        sCtx.beginPath(); sCtx.moveTo(x, 0); sCtx.lineTo(x, 192); sCtx.stroke();
+      }
+
+      // Sine telemetry waveform
+      sCtx.strokeStyle = '#00f5ff';
+      sCtx.lineWidth = 3;
+      sCtx.beginPath();
+      for (let x = 0; x < 256; x += 4) {
+        const y = 96 + Math.sin(x * 0.08) * 26 * Math.cos(x * 0.025);
+        if (x === 0) sCtx.moveTo(x, y);
+        else sCtx.lineTo(x, y);
+      }
+      sCtx.stroke();
+
+      // Telemetry digital text in glowing electric blue
+      sCtx.fillStyle = '#00e5ff';
+      sCtx.font = 'bold 14px monospace';
+      sCtx.fillText('SYS: DRONE CITY', 14, 28);
+      sCtx.fillStyle = '#70c5ff';
+      sCtx.font = '11px monospace';
+      sCtx.fillText('GRID: ONLINE [SECURE]', 14, 46);
+      sCtx.fillText('RADAR SCAN: ACTIVE', 14, 168);
+
+      const screenTex = new THREE.CanvasTexture(screenCanvas);
+
+      // 2D Rounded Rectangle Screen Geometry
+      const shape = new THREE.Shape();
+      const sw = 0.76, sh = 0.54, sr = 0.07;
+      shape.moveTo(-sw/2 + sr, -sh/2);
+      shape.lineTo(sw/2 - sr, -sh/2);
+      shape.quadraticCurveTo(sw/2, -sh/2, sw/2, -sh/2 + sr);
+      shape.lineTo(sw/2, sh/2 - sr);
+      shape.quadraticCurveTo(sw/2, sh/2, sw/2 - sr, sh/2);
+      shape.lineTo(-sw/2 + sr, sh/2);
+      shape.quadraticCurveTo(-sw/2, sh/2, -sw/2, sh/2 - sr);
+      shape.lineTo(-sw/2, -sh/2 + sr);
+      shape.quadraticCurveTo(-sw/2, -sh/2, -sw/2 + sr, -sh/2);
+
+      const screenGeo = new THREE.ShapeGeometry(shape);
+      const screenMat = new THREE.MeshBasicMaterial({
+        map: screenTex,
+        color: 0x00c8ff,
+      });
       const screen = new THREE.Mesh(screenGeo, screenMat);
       screen.position.set(-0.15, 1.28, 0.32);
       screen.rotation.x = -0.15;
       consoleGroup.add(screen);
+
+      // Bezel Frame with Rounded Edges
+      const bShape = new THREE.Shape();
+      const bw = 0.82, bh = 0.60, br = 0.08;
+      bShape.moveTo(-bw/2 + br, -bh/2);
+      bShape.lineTo(bw/2 - br, -bh/2);
+      bShape.quadraticCurveTo(bw/2, -bh/2, bw/2, -bh/2 + br);
+      bShape.lineTo(bw/2, bh/2 - br);
+      bShape.quadraticCurveTo(bw/2, bh/2, bw/2 - br, bh/2);
+      bShape.lineTo(-bw/2 + br, bh/2);
+      bShape.quadraticCurveTo(-bw/2, bh/2, -bw/2, bh/2 - br);
+      bShape.lineTo(-bw/2, -bh/2 + br);
+      bShape.quadraticCurveTo(-bw/2, -bh/2, -bw/2 + br, -bh/2);
+
+      const bezelGeo = new THREE.ShapeGeometry(bShape);
+      const bezelMat = new THREE.MeshBasicMaterial({ color: 0x090f18 });
+      const bezel = new THREE.Mesh(bezelGeo, bezelMat);
+      bezel.position.set(-0.15, 1.28, 0.315);
+      bezel.rotation.x = -0.15;
+      consoleGroup.add(bezel);
 
       // Molded Keyboard Shelf
       const kbGeo = new THREE.BoxGeometry(0.9, 0.1, 0.45);
@@ -566,6 +810,10 @@ export class ParallaxLayers {
     const alt = Math.max(0, playerY - GROUND_Y);
 
     // 1. Follow player with celestial backdrop & moons with vertical atmospheric scrolling
+        if (this.dofVeilPlane) {
+      this.dofVeilPlane.position.x = playerX * 0.15;
+      this.dofVeilPlane.position.y = 15 + alt * 0.28;
+    }
     this.skyBackdrop.position.x = playerX;
     this.skyBackdrop.position.y = 75 + alt * 0.35; // As player ascends, sky scrolls smoothly through strata
 

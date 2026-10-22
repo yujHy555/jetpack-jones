@@ -44,6 +44,14 @@ interface BubbleBurstParticle {
   active: boolean;
 }
 
+export interface RadioWave {
+  mesh: THREE.Mesh;
+  position: THREE.Vector3;
+  age: number;
+  maxLife: number;
+  active: boolean;
+}
+
 export enum PlayerState {
   IDLE = 'idle',
   WALK = 'walk',
@@ -96,6 +104,30 @@ export class Player {
   public shieldWobbleTimer: number = 0;
   public shieldWobbleImpulse: THREE.Vector2 = new THREE.Vector2();
   public onShieldDeflect?: () => void;
+  // Bubble Force Field Ball Mode & Bouncy Ball Physics
+  public isBallMode: boolean = false;
+  public ballAngularVelocity: number = 0;
+  public ballRotationZ: number = 0;
+  public ballBounceSquash: number = 1.0;
+  public ballInternalOffset: THREE.Vector2 = new THREE.Vector2();
+  public onBallBounce?: (strength: number) => void;
+  public toggleBallMode(): boolean {
+    this.isBallMode = !this.isBallMode;
+    if (this.isBallMode) {
+      this.shieldActive = true;
+      if (this.shieldGroup) this.shieldGroup.visible = true;
+      this.shieldWobbleTimer = 0.35;
+      this.shieldWobbleImpulse.set(0, 1);
+    }
+    return this.isBallMode;
+  }
+
+  // Hyper-Ion Quantum Jetpack Upgrade
+  public hasHyperJetpack: boolean = false;
+  private hyperJetpackGroup!: THREE.Group;
+  private hyperWingtipLeft!: THREE.Mesh;
+  private hyperWingtipRight!: THREE.Mesh;
+  private hyperCoreDisc!: THREE.Mesh;
 
   // Stats
   public life: number = 100;
@@ -108,11 +140,28 @@ export class Player {
   public isDying: boolean = false;
   public isDead: boolean = false;
   public deathTimer: number = 0;
-  public maxDeathTime: number = 2.2;
+  public groundedDeathTimer: number = 0;
+  public maxDeathTime: number = 3.5;
 
   // Ragdoll Physics Hit Reaction
   public ragdollTimer: number = 0;
   public ragdollImpulseX: number = -1;
+
+  // Cartoony Helmet Antenna Radio Wave Signal System
+  public onRadioTransmit?: () => void;
+  public radioWaves: RadioWave[] = [];
+  private radioWaveTimer: number = 4.0;
+  private isBroadcastingBurst: boolean = false;
+  private burstCount: number = 0;
+  private burstIntervalTimer: number = 0;
+  private antennaBeaconMesh1!: THREE.Mesh;
+  private antennaBeaconMesh2!: THREE.Mesh;
+
+  // Flame Material References for Blue Upgraded vs Red/Orange Default Flames
+  private flameAuraMatLeft!: THREE.MeshBasicMaterial;
+  private flameAuraMatRight!: THREE.MeshBasicMaterial;
+  private flameMidMatLeft!: THREE.MeshBasicMaterial;
+  private flameMidMatRight!: THREE.MeshBasicMaterial;
 
   // Footstep Sound Callback
   public onFootstep?: () => void;
@@ -498,6 +547,16 @@ export class Player {
     visor.position.set(0.08, 0, 0);
     helmetGroup.add(visor);
 
+    // THIN BLACK STRIP / GASKET ROUNDING AROUND THE HELMET WHERE ORANGE VISOR CIRCLE MEETS THE HELMET
+    const visorGasketMat = new THREE.MeshBasicMaterial({ color: 0x050507 });
+    const visorGasketStrip = new THREE.Mesh(
+      new THREE.TorusGeometry(0.294, 0.015, 12, 36),
+      visorGasketMat
+    );
+    visorGasketStrip.rotation.y = Math.PI / 2;
+    visorGasketStrip.position.set(0.082, 0, 0);
+    helmetGroup.add(visorGasketStrip);
+
     // Dual Side Command Pods with 3 FLASHING LED BUTTONS on each side
     for (const zSide of [0.33, -0.33]) {
       const pod = new THREE.Group();
@@ -555,6 +614,9 @@ export class Player {
       );
       beacon.position.set(-0.18, 0.51, zAnt * 1.15);
       helmetGroup.add(beacon);
+
+      if (zAnt > 0) this.antennaBeaconMesh1 = beacon;
+      else this.antennaBeaconMesh2 = beacon;
     }
 
     // Rear Dual Oxygen Scrubber Vents
@@ -945,7 +1007,7 @@ export class Player {
     nozR.position.set(0, -0.37, 0.13);
     this.jetpackBone.add(nozR);
 
-    // EPIC DIAMOND SHOCKWAVE FLAME PLUMES
+    // EPIC ROUNDED RED AND ORANGE JETPACK FLAME PLUMES
     this.flameConeLeft = new THREE.Group();
     this.flameConeLeft.position.set(0, -0.42, -0.13);
     this.jetpackBone.add(this.flameConeLeft);
@@ -954,60 +1016,219 @@ export class Player {
     this.flameConeRight.position.set(0, -0.42, 0.13);
     this.jetpackBone.add(this.flameConeRight);
 
-    // Soft-Edge Luminous Aura Shell (Electric Blue Glow)
-    const auraGeo = new THREE.ConeGeometry(0.24, 1.15, 16);
-    auraGeo.rotateX(Math.PI);
-    auraGeo.translate(0, -0.57, 0);
-    const auraMat = new THREE.MeshBasicMaterial({
-      color: 0x0044ff,
+    // ROUNDED RED AND ORANGE FLAME WITH SMOOTH CLOSED BULBOUS CONTOURS (ZERO FLAT INTERSECTING PLANES)
+    // 1. Soft-Edge Outer Glowing Scarlet-Red Plume
+    const auraGeo = new THREE.SphereGeometry(0.24, 24, 24);
+    auraGeo.scale(1.0, 2.5, 1.0);
+    auraGeo.translate(0, -0.55, 0);
+    this.flameAuraMatLeft = new THREE.MeshBasicMaterial({
+      color: 0xff1a00,
       transparent: true,
-      opacity: 0.42,
+      opacity: 0.55,
       blending: THREE.AdditiveBlending,
-      side: THREE.BackSide,
+      depthWrite: false,
     });
-    this.flameConeLeft.add(new THREE.Mesh(auraGeo, auraMat));
-    this.flameConeRight.add(new THREE.Mesh(auraGeo, auraMat));
+    this.flameAuraMatRight = this.flameAuraMatLeft.clone();
+    this.flameConeLeft.add(new THREE.Mesh(auraGeo, this.flameAuraMatLeft));
+    this.flameConeRight.add(new THREE.Mesh(auraGeo, this.flameAuraMatRight));
 
-    // Outer Electric Azure Plasma Plume
-    const outerGeo = new THREE.ConeGeometry(0.18, 0.95, 14);
-    outerGeo.rotateX(Math.PI);
-    outerGeo.translate(0, -0.47, 0);
+    // 2. Volumetric Middle Molten Orange Flame Sheath
+    const outerGeo = new THREE.SphereGeometry(0.18, 24, 24);
+    outerGeo.scale(1.0, 2.2, 1.0);
+    outerGeo.translate(0, -0.45, 0);
     const outerMat = new THREE.MeshBasicMaterial({
-      color: 0x0088ff,
+      color: 0xff6600,
       transparent: true,
-      opacity: 0.82,
+      opacity: 0.80,
       blending: THREE.AdditiveBlending,
+      depthWrite: false,
     });
     this.flameOuterLeft = new THREE.Mesh(outerGeo, outerMat);
-    this.flameOuterRight = new THREE.Mesh(outerGeo, outerMat);
+    this.flameOuterRight = new THREE.Mesh(outerGeo, outerMat.clone());
     this.flameConeLeft.add(this.flameOuterLeft);
     this.flameConeRight.add(this.flameOuterRight);
 
-    // Middle Bright Cyan Shock Diamond Flame
-    const midGeo = new THREE.ConeGeometry(0.11, 0.65, 14);
-    midGeo.rotateX(Math.PI);
+    // 3. Radiant Golden-Amber Combustion Core
+    const midGeo = new THREE.SphereGeometry(0.12, 20, 20);
+    midGeo.scale(1.0, 1.8, 1.0);
     midGeo.translate(0, -0.32, 0);
-    const midMat = new THREE.MeshBasicMaterial({
-      color: 0x00f5ff,
+    this.flameMidMatLeft = new THREE.MeshBasicMaterial({
+      color: 0xffaa00,
       transparent: true,
       opacity: 0.92,
       blending: THREE.AdditiveBlending,
+      depthWrite: false,
     });
-    this.flameConeLeft.add(new THREE.Mesh(midGeo, midMat));
-    this.flameConeRight.add(new THREE.Mesh(midGeo, midMat));
+    this.flameMidMatRight = this.flameMidMatLeft.clone();
+    this.flameConeLeft.add(new THREE.Mesh(midGeo, this.flameMidMatLeft));
+    this.flameConeRight.add(new THREE.Mesh(midGeo, this.flameMidMatRight));
 
-    // Inner White-Cyan Plasma Shock Spike
-    const coreGeo = new THREE.ConeGeometry(0.06, 0.42, 14);
-    coreGeo.rotateX(Math.PI);
-    coreGeo.translate(0, -0.21, 0);
+    // 4. Inner Incandescent White-Hot Ignition Seed
+    const coreGeo = new THREE.SphereGeometry(0.065, 16, 16);
+    coreGeo.scale(1.0, 1.4, 1.0);
+    coreGeo.translate(0, -0.18, 0);
     const coreFlameMat = new THREE.MeshBasicMaterial({
-      color: 0xebffff,
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.98,
       blending: THREE.AdditiveBlending,
+      depthWrite: false,
     });
     this.flameCoreLeft = new THREE.Mesh(coreGeo, coreFlameMat);
-    this.flameCoreRight = new THREE.Mesh(coreGeo, coreFlameMat);
+    this.flameCoreRight = new THREE.Mesh(coreGeo, coreFlameMat.clone());
     this.flameConeLeft.add(this.flameCoreLeft);
     this.flameConeRight.add(this.flameCoreRight);
+
+    // --------------------------------------------------------
+    // METALLIC RETRO STYLE JETPACK UPGRADE RIG (Vintage Sci-Fi Polished Chrome & Brass)
+    // --------------------------------------------------------
+    this.hyperJetpackGroup = new THREE.Group();
+    this.hyperJetpackGroup.visible = false;
+    this.jetpackBone.add(this.hyperJetpackGroup);
+
+    // Vintage Retro Sci-Fi Materials Palette (Mirror Chrome & Brushed Brass)
+    const retroChromeMat = new THREE.MeshStandardMaterial({
+      color: 0xf5f8fb,
+      metalness: 0.96,
+      roughness: 0.08,
+    });
+    const retroBrassMat = new THREE.MeshStandardMaterial({
+      color: 0xd4a035,
+      metalness: 0.90,
+      roughness: 0.18,
+    });
+    const retroCopperMat = new THREE.MeshStandardMaterial({
+      color: 0xba6032,
+      metalness: 0.88,
+      roughness: 0.22,
+    });
+    const vacuumTubeGlassMat = new THREE.MeshPhysicalMaterial({
+      color: 0x88ddff,
+      transmission: 0.88,
+      transparent: true,
+      opacity: 0.82,
+      roughness: 0.06,
+      metalness: 0.05,
+    });
+    const neonBlueFilamentMat = new THREE.MeshBasicMaterial({
+      color: 0x00f5ff,
+    });
+
+    // Dual Heavy Mirror-Chrome Cylindrical Rocket Canisters
+    const retroTankGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.64, 20);
+    const tankL = new THREE.Mesh(retroTankGeo, retroChromeMat);
+    tankL.position.set(-0.02, 0, -0.14);
+    this.hyperJetpackGroup.add(tankL);
+
+    const tankR = new THREE.Mesh(retroTankGeo, retroChromeMat);
+    tankR.position.set(-0.02, 0, 0.14);
+    this.hyperJetpackGroup.add(tankR);
+
+    // Polished Brass Hemispherical Top Domes with Vintage Antenna Finials
+    const domeGeo = new THREE.SphereGeometry(0.12, 18, 14, 0, Math.PI * 2, 0, Math.PI / 2);
+    const domeL = new THREE.Mesh(domeGeo, retroBrassMat);
+    domeL.position.set(-0.02, 0.32, -0.14);
+    this.hyperJetpackGroup.add(domeL);
+
+    const domeR = new THREE.Mesh(domeGeo, retroBrassMat);
+    domeR.position.set(-0.02, 0.32, 0.14);
+    this.hyperJetpackGroup.add(domeR);
+
+    // Brass Acorn Finials on Top of Domes
+    const finialGeo = new THREE.CylinderGeometry(0.015, 0.035, 0.09, 10);
+    const finialL = new THREE.Mesh(finialGeo, retroBrassMat);
+    finialL.position.set(-0.02, 0.46, -0.14);
+    this.hyperJetpackGroup.add(finialL);
+
+    const finialR = new THREE.Mesh(finialGeo, retroBrassMat);
+    finialR.position.set(-0.02, 0.46, 0.14);
+    this.hyperJetpackGroup.add(finialR);
+
+    // Heavy Brass Riveted Reinforcement Bands around both tanks
+    for (const by of [-0.18, 0.16]) {
+      const bandL = new THREE.Mesh(new THREE.TorusGeometry(0.125, 0.018, 8, 24), retroBrassMat);
+      bandL.rotation.x = Math.PI / 2;
+      bandL.position.set(-0.02, by, -0.14);
+      this.hyperJetpackGroup.add(bandL);
+
+      const bandR = new THREE.Mesh(new THREE.TorusGeometry(0.125, 0.018, 8, 24), retroBrassMat);
+      bandR.rotation.x = Math.PI / 2;
+      bandR.position.set(-0.02, by, 0.14);
+      this.hyperJetpackGroup.add(bandR);
+
+      // 3D Rivet Studs around the bands
+      for (let r = 0; r < 6; r++) {
+        const ang = (r / 6) * Math.PI * 2;
+        const rivet = new THREE.Mesh(new THREE.SphereGeometry(0.014, 6, 6), retroCopperMat);
+        rivet.position.set(-0.02 + Math.cos(ang) * 0.13, by, -0.14 + Math.sin(ang) * 0.13);
+        this.hyperJetpackGroup.add(rivet);
+
+        const rivet2 = new THREE.Mesh(new THREE.SphereGeometry(0.014, 6, 6), retroCopperMat);
+        rivet2.position.set(-0.02 + Math.cos(ang) * 0.13, by, 0.14 + Math.sin(ang) * 0.13);
+        this.hyperJetpackGroup.add(rivet2);
+      }
+    }
+
+    // Central Glowing Retro Glass Vacuum Tube Plasma Chamber
+    const tubeGeo = new THREE.CylinderGeometry(0.07, 0.07, 0.40, 16);
+    const vacuumTube = new THREE.Mesh(tubeGeo, vacuumTubeGlassMat);
+    vacuumTube.position.set(-0.06, 0.02, 0);
+    this.hyperJetpackGroup.add(vacuumTube);
+
+    // Glowing Helical Neon Blue Plasma Coils inside the vacuum tube
+    for (let c = 0; c < 4; c++) {
+      const coilGeo = new THREE.TorusGeometry(0.048, 0.009, 8, 20);
+      const coil = new THREE.Mesh(coilGeo, neonBlueFilamentMat);
+      coil.rotation.x = Math.PI / 2;
+      coil.position.set(-0.06, -0.12 + c * 0.08, 0);
+      this.hyperJetpackGroup.add(coil);
+    }
+
+    // Copper Crossover Manifold Conduits Connecting Canisters
+    for (const my of [-0.10, 0.12]) {
+      const manifold = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.016, 0.016, 0.28, 10),
+        retroCopperMat
+      );
+      manifold.rotation.x = Math.PI / 2;
+      manifold.position.set(-0.04, my, 0);
+      this.hyperJetpackGroup.add(manifold);
+    }
+
+    // Retro Brass Analog Pressure Dial on Center Housing
+    const dialHousing = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.065, 0.065, 0.03, 16),
+      retroBrassMat
+    );
+    dialHousing.rotateZ(Math.PI / 2);
+    dialHousing.position.set(-0.13, 0.02, 0);
+    this.hyperJetpackGroup.add(dialHousing);
+
+    const dialGlass = new THREE.Mesh(
+      new THREE.CircleGeometry(0.055, 16),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    dialGlass.rotateY(-Math.PI / 2);
+    dialGlass.position.set(-0.146, 0.02, 0);
+    this.hyperJetpackGroup.add(dialGlass);
+
+    const dialNeedle = new THREE.Mesh(
+      new THREE.BoxGeometry(0.006, 0.042, 0.006),
+      new THREE.MeshBasicMaterial({ color: 0xee1122 })
+    );
+    dialNeedle.position.set(-0.148, 0.02, 0);
+    this.hyperJetpackGroup.add(dialNeedle);
+
+    // Flared Retro Chrome Rocket Bell Nozzles
+    const bellGeo = new THREE.ConeGeometry(0.13, 0.22, 18, 1, false);
+    bellGeo.rotateX(Math.PI);
+    const bellL = new THREE.Mesh(bellGeo, retroChromeMat);
+    bellL.position.set(-0.02, -0.38, -0.14);
+    this.hyperJetpackGroup.add(bellL);
+
+    const bellR = new THREE.Mesh(bellGeo, retroChromeMat);
+    bellR.position.set(-0.02, -0.38, 0.14);
+    this.hyperJetpackGroup.add(bellR);
 
     this.flameConeLeft.visible = false;
     this.flameConeRight.visible = false;
@@ -1058,23 +1279,157 @@ export class Player {
       }
     });
 
+    this.initRadioWaveSystem(scene);
     this.initShieldForceField(scene);
     this.reset();
+  }
+
+  private initRadioWaveSystem(scene: THREE.Scene) {
+    // Handdrawn squiggly cartoon broadcast waves (doodle line with organic wiggles)
+    function createSquigglyArcGeo(seed: number): THREE.TubeGeometry {
+      const pts: THREE.Vector3[] = [];
+      const numPts = 32;
+      const baseR = 0.42;
+      for (let i = 0; i <= numPts; i++) {
+        const t = i / numPts;
+        const angle = -Math.PI * 0.48 + t * (Math.PI * 0.96);
+        // Handdrawn squiggly doodle wiggles
+        const squiggle = Math.sin(t * Math.PI * 7.5 + seed) * 0.048
+                       + Math.cos(t * Math.PI * 13.0 + seed * 1.6) * 0.025
+                       + Math.sin(t * Math.PI * 21.0) * 0.012;
+        const r = baseR + squiggle;
+        const x = r * Math.sin(angle);
+        const y = r * Math.cos(angle);
+        pts.push(new THREE.Vector3(x, y, 0));
+      }
+      const curve = new THREE.CatmullRomCurve3(pts);
+      return new THREE.TubeGeometry(curve, 42, 0.022, 6, false);
+    }
+
+    const geos = [
+      createSquigglyArcGeo(0.2),
+      createSquigglyArcGeo(2.4),
+      createSquigglyArcGeo(4.8),
+    ];
+
+    for (let i = 0; i < 12; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x00f5ff,
+        transparent: true,
+        opacity: 0.88,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(geos[i % geos.length], mat);
+      mesh.visible = false;
+      scene.add(mesh);
+
+      this.radioWaves.push({
+        mesh,
+        position: new THREE.Vector3(),
+        age: 0,
+        maxLife: 0.88,
+        active: false,
+      });
+    }
+  }
+
+  private updateRadioWaves(dt: number, underPressure: boolean = false) {
+    this.radioWaveTimer -= dt;
+
+    // Normal base interval ~26 to 32 seconds; under fire/pressure: 3.5 to 5.5 seconds!
+    const targetCooldown = underPressure ? (3.2 + Math.random() * 2.2) : (26.0 + Math.random() * 8.0);
+
+    if (this.radioWaveTimer <= 0 && !this.isBroadcastingBurst && !this.isDying) {
+      this.isBroadcastingBurst = true;
+      this.burstCount = 0;
+      this.burstIntervalTimer = 0;
+      this.radioWaveTimer = targetCooldown;
+    }
+
+    if (this.isBroadcastingBurst) {
+      this.burstIntervalTimer -= dt;
+      if (this.burstIntervalTimer <= 0) {
+        this.burstIntervalTimer = 0.15; // 150ms staggered packet
+        this.burstCount++;
+
+        const beaconPos = new THREE.Vector3();
+        if (this.antennaBeaconMesh1) {
+          this.antennaBeaconMesh1.getWorldPosition(beaconPos);
+        } else {
+          beaconPos.set(this.position.x, this.position.y + 1.95, 0);
+        }
+
+        this.emitRadioWave(beaconPos);
+
+        // Flash antenna beacons bright cyan-white
+        if (this.antennaBeaconMat) {
+          this.antennaBeaconMat.color.setHex(0xffffff);
+        }
+
+        if (this.onRadioTransmit) {
+          this.onRadioTransmit();
+        }
+
+        if (this.burstCount >= 3) {
+          this.isBroadcastingBurst = false;
+        }
+      }
+    }
+
+    // Animate active expanding cartoon wave arcs
+    for (const rw of this.radioWaves) {
+      if (!rw.active) continue;
+
+      rw.age += dt;
+      if (rw.age >= rw.maxLife) {
+        rw.active = false;
+        rw.mesh.visible = false;
+        continue;
+      }
+
+      const prog = rw.age / rw.maxLife; // 0 to 1
+      const scale = 0.35 + prog * 2.2; // Expanding outward
+      rw.mesh.scale.set(scale, scale, scale);
+
+      // Floats gracefully upward and slightly forward
+      rw.position.y += 1.6 * dt;
+      rw.position.x += (this.facingRight ? 0.35 : -0.35) * dt;
+      rw.mesh.position.copy(rw.position);
+
+      const alpha = (1.0 - prog) * 0.90;
+      (rw.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, alpha);
+    }
+  }
+
+  private emitRadioWave(originPos: THREE.Vector3) {
+    const rw = this.radioWaves.find(w => !w.active);
+    if (!rw) return;
+
+    rw.active = true;
+    rw.age = 0;
+    rw.maxLife = 0.90;
+    rw.position.copy(originPos);
+    rw.position.z = 0.1;
+    rw.mesh.position.copy(rw.position);
+    rw.mesh.scale.set(0.35, 0.35, 0.35);
+    (rw.mesh.material as THREE.MeshBasicMaterial).opacity = 0.95;
+    rw.mesh.visible = true;
   }
 
   private initShieldForceField(scene: THREE.Scene) {
     this.shieldGroup = new THREE.Group();
 
-    // 1. Triple-AAA Translucent Iridescent Plasma Bubble (Radius 1.48m completely envelopes Jones)
-    const sphereGeo = new THREE.SphereGeometry(1.48, 36, 28);
+    // 1. Triple-AAA Ultra-Clear Iridescent Plasma Bubble (Radius 1.65m completely envelopes Jones including helmet)
+    const sphereGeo = new THREE.SphereGeometry(1.65, 36, 28);
     this.shieldMat = new THREE.MeshPhysicalMaterial({
       color: 0x00f5ff,
-      emissive: 0x004466,
-      roughness: 0.05,
-      metalness: 0.12,
-      transmission: 0.82,
+      emissive: 0x002233,
+      roughness: 0.02,
+      metalness: 0.05,
+      transmission: 0.95,
       transparent: true,
-      opacity: 0.44,
+      opacity: 0.18,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
@@ -1083,12 +1438,12 @@ export class Player {
     this.shieldGroup.add(this.shieldSphereMesh);
 
     // 2. Geodesic Energy Lattice Grid (Hexagonal Sci-Fi Shield Mesh)
-    const icosaGeo = new THREE.IcosahedronGeometry(1.50, 2);
+    const icosaGeo = new THREE.IcosahedronGeometry(1.68, 2);
     const wireGeo = new THREE.WireframeGeometry(icosaGeo);
     this.shieldGridMat = new THREE.LineBasicMaterial({
       color: 0x00f5ff,
       transparent: true,
-      opacity: 0.40,
+      opacity: 0.22,
       blending: THREE.AdditiveBlending,
     });
     this.shieldGridMesh = new THREE.LineSegments(wireGeo, this.shieldGridMat);
@@ -1096,22 +1451,22 @@ export class Player {
 
     // 3. Dual Counter-Rotating Orbital Energy Rings
     // Ring 1: Glowing Cyan Equatorial Gyro Ring
-    const ringGeo1 = new THREE.TorusGeometry(1.52, 0.026, 10, 48);
+    const ringGeo1 = new THREE.TorusGeometry(1.70, 0.022, 10, 48);
     const ringMat1 = new THREE.MeshBasicMaterial({
       color: 0x00ffff,
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.65,
       blending: THREE.AdditiveBlending,
     });
     this.shieldRingMesh1 = new THREE.Mesh(ringGeo1, ringMat1);
     this.shieldGroup.add(this.shieldRingMesh1);
 
     // Ring 2: Tilted Emerald Green / Azure Meridian Orbital Ring
-    const ringGeo2 = new THREE.TorusGeometry(1.53, 0.022, 10, 48);
+    const ringGeo2 = new THREE.TorusGeometry(1.71, 0.018, 10, 48);
     const ringMat2 = new THREE.MeshBasicMaterial({
       color: 0x39ff14,
       transparent: true,
-      opacity: 0.78,
+      opacity: 0.60,
       blending: THREE.AdditiveBlending,
     });
     this.shieldRingMesh2 = new THREE.Mesh(ringGeo2, ringMat2);
@@ -1133,6 +1488,15 @@ export class Player {
 
     this.shieldGroup.visible = false;
     scene.add(this.shieldGroup);
+  }
+
+  public upgradeJetpack() {
+    this.hasHyperJetpack = true;
+    if (this.hyperJetpackGroup) {
+      this.hyperJetpackGroup.visible = true;
+    }
+    this.fuel = this.maxFuel;
+    this.emitSparks(this.position.x, this.position.y + 1.0, 0, 24);
   }
 
   public toggleShield(): boolean {
@@ -1160,14 +1524,18 @@ export class Player {
     this.isDying = false;
     this.isDead = false;
     this.deathTimer = 0;
+    this.groundedDeathTimer = 0;
     this.animTimer = 0;
     this.shootTimer = 0;
     this.bubbleBurstTimer = 0;
     this.headFollowLag = 0;
     this.hasDroppedGun = false;
+    this.hasHyperJetpack = false;
+    if (this.hyperJetpackGroup) this.hyperJetpackGroup.visible = false;
     this.shieldActive = false;
     if (this.shieldGroup) this.shieldGroup.visible = false;
     if (this.droppedGunMesh) this.droppedGunMesh.visible = false;
+    if (this.shadowMesh) this.shadowMesh.visible = false;
     this.blasterMesh.visible = true;
     this.rigRoot.rotation.set(0, 0, 0);
     this.rigRoot.position.set(0, 0, 0);
@@ -1195,6 +1563,12 @@ export class Player {
       bp.active = false;
       bp.mesh.visible = false;
     }
+    for (const rw of this.radioWaves) {
+      rw.active = false;
+      rw.mesh.visible = false;
+    }
+    this.isBroadcastingBurst = false;
+    this.radioWaveTimer = 4.0;
   }
 
   private initSmokeSystem() {
@@ -1311,12 +1685,12 @@ export class Player {
     }
     this.currentAimAngle = aimAngle;
 
-    // Spawning location at barrel tip along line of sight
-    const muzzleDist = 1.05; // Full arm length (0.30 + 0.26 + 0.48)
-    const spawnX = originX + Math.cos(aimAngle) * muzzleDist;
-    const spawnY = originY + Math.sin(aimAngle) * muzzleDist;
+    // Calculate exact muzzle position from the physical blaster barrel tip
+    this.mesh.updateWorldMatrix(true, true);
+    const muzzlePos = new THREE.Vector3();
+    this.bubbleBurstGroup.getWorldPosition(muzzlePos);
 
-    laser.position.set(spawnX, spawnY, this.position.z);
+    laser.position.copy(muzzlePos);
     laser.velocity.set(Math.cos(aimAngle) * 34, Math.sin(aimAngle) * 34, 0);
     laser.active = true;
     laser.life = 1.3;
@@ -1336,7 +1710,8 @@ export class Player {
       bp.velocity.set(Math.cos(angle) * speed, Math.sin(angle) * speed, 0);
     }
 
-    this.muzzleLight.position.set(spawnX, spawnY, this.position.z + 0.2);
+    this.muzzleLight.position.copy(muzzlePos);
+    this.muzzleLight.position.z += 0.2;
     this.muzzleLight.intensity = 22;
 
     return true;
@@ -1350,11 +1725,19 @@ export class Player {
     this.isDying = true;
     this.isDead = false;
     this.deathTimer = 0;
+    this.groundedDeathTimer = 0;
     this.invulnerableTime = 999;
     // Dramatic death impulse: Jones reels backward
     const dir = knockbackDirX !== 0 ? knockbackDirX : (this.facingRight ? -1 : 1);
-    this.velocity.x = dir * 6.5;
-    this.velocity.y = 8.0;
+    if (!this.isGrounded) {
+      // In air death: retain downward falling momentum under gravity for center-of-mass tumble
+      this.velocity.x = dir * 3.8;
+      this.velocity.y = Math.min(this.velocity.y, 2.0);
+    } else {
+      // Ground death: reel back and pop slightly off floor
+      this.velocity.x = dir * 5.2;
+      this.velocity.y = 5.0;
+    }
     this.isGrounded = false;
 
     // Jetpack blowout sparks & smoke burst
@@ -1385,11 +1768,10 @@ export class Player {
 
     // Bubble Force Field Negates All Damage!
     if (this.shieldActive) {
-      this.shieldWobbleTimer = 0.35;
-      this.shieldWobbleImpulse.set(knockbackDirX, 0);
-      this.velocity.x += knockbackDirX * 3.5;
-      this.ragdollTimer = 0.16;
-      this.ragdollImpulseX = knockbackDirX;
+      // Zero wobble distortion: forcefield maintains stable spherical geometry!
+      this.shieldWobbleTimer = 0.22;
+      this.shieldWobbleImpulse.set(0, 0);
+      this.velocity.x += knockbackDirX * 1.5;
       this.onShieldDeflect?.();
       return false;
     }
@@ -1420,11 +1802,9 @@ export class Player {
     if (this.isDying || this.invulnerableTime > 0) return;
 
     if (this.shieldActive) {
-      this.shieldWobbleTimer = 0.40;
-      this.shieldWobbleImpulse.set(knockbackDirX, -1);
-      this.velocity.x += knockbackDirX * 4.0;
-      this.ragdollTimer = 0.18;
-      this.crushSquashTimer = 0.18;
+      this.shieldWobbleTimer = 0.22;
+      this.shieldWobbleImpulse.set(0, 0);
+      this.velocity.x += knockbackDirX * 2.0;
       this.onShieldDeflect?.();
       return;
     }
@@ -1479,7 +1859,8 @@ export class Player {
     platforms: { x: number; y: number; width: number; height: number }[] = [],
     mouseWorldTarget?: THREE.Vector3,
     hasMouseTarget: boolean = false,
-    crouchPressed: boolean = false
+    crouchPressed: boolean = false,
+    underPressure: boolean = false
   ) {
     this.animTimer += dt;
     if (this.invulnerableTime > 0) {
@@ -1540,30 +1921,62 @@ export class Player {
     const halfWidth = 0.32;
 
     // Check if an overhead platform ceiling blocks Jones from standing up
+    // Evaluated for any player under a platform whose bottom is lower than Jones's standing height (1.95m)
     let ceilingBlocked = false;
-    if (this.isGrounded && !this.isDying) {
+    if (!this.isDying && this.isBallMode) {
+      // ----------------------------------------------------
+      // BALL MODE: INTERNAL RAGDOLL PHYSICS INSIDE THE BOUNCY BUBBLE BALL
+      // Player floats and bounces playfully within the hamster-style bubble
+      // ----------------------------------------------------
+      const time = this.animTimer;
+      const squashDip = (1.0 - this.ballBounceSquash) * 0.65;
+
+      this.rigRoot.position.x = THREE.MathUtils.lerp(this.rigRoot.position.x, -this.velocity.x * 0.035, dt * 10.0);
+      this.rigRoot.position.y = THREE.MathUtils.lerp(this.rigRoot.position.y, 0.45 - squashDip, dt * 12.0);
+
+      // Jones tilts dynamically into the roll and centrifugal spin
+      const targetRollTilt = THREE.MathUtils.clamp(-this.velocity.x * 0.08, -0.65, 0.65);
+      this.rigRoot.rotation.z = THREE.MathUtils.lerp(this.rigRoot.rotation.z, targetRollTilt, dt * 8.0);
+
+      // Limbs flail and tumble with inertia inside the bouncy bubble
+      this.headBone.rotation.z = Math.sin(time * 8.0) * 0.25;
+      this.torsoBone.rotation.z = Math.cos(time * 6.0) * 0.18;
+
+      this.frontArmBone.rotation.z = Math.sin(time * 12.0) * 0.85 - 0.45;
+      this.frontForearmBone.rotation.z = 0.55 + Math.cos(time * 10.0) * 0.35;
+      this.backArmBone.rotation.z = -Math.cos(time * 11.0) * 0.75 + 0.45;
+      this.backForearmBone.rotation.z = 0.35;
+
+      this.frontThighBone.rotation.z = Math.sin(time * 9.0) * 0.65 + 0.40;
+      this.frontShinBone.rotation.z = -0.75 - Math.sin(time * 9.0) * 0.35;
+      this.backThighBone.rotation.z = -Math.sin(time * 9.0) * 0.55 - 0.25;
+      this.backShinBone.rotation.z = -0.55;
+    } else if (!this.isDying) {
       for (const plat of platforms) {
         const platBottom = plat.y - plat.height / 2;
         const platLeft = plat.x - plat.width / 2;
         const platRight = plat.x + plat.width / 2;
         const horizOverlap =
-          this.position.x + halfWidth > platLeft + 0.05 &&
-          this.position.x - halfWidth < platRight - 0.05;
+          this.position.x + halfWidth > platLeft + 0.02 &&
+          this.position.x - halfWidth < platRight - 0.02;
 
-        // If ceiling would collide with standing height (up to 1.95m above feet)
-        if (horizOverlap && platBottom > this.position.y + 0.60 && platBottom < this.position.y + 1.95) {
+        // If standing up would collide with platform ceiling
+        if (horizOverlap && platBottom > this.position.y + 0.30 && platBottom < this.position.y + 1.95) {
           ceilingBlocked = true;
           break;
         }
       }
     }
 
-    const isActuallyCrouching = this.isGrounded && (crouchPressed || ceilingBlocked) && !this.isDying;
-    const walkSpeed = 6.2;
-    const runSpeed = 10.5;
+    const isActuallyCrouching = (this.isGrounded || ceilingBlocked) && (crouchPressed || ceilingBlocked) && !this.isDying;
+    const walkSpeed = this.hasHyperJetpack ? 8.2 : 6.2;
+    const runSpeed = this.hasHyperJetpack ? 14.0 : 10.5;
     const crouchSpeed = 2.8;
     const targetSpeed = isActuallyCrouching ? crouchSpeed : (runPressed ? runSpeed : walkSpeed);
-    const accel = this.isGrounded ? 45.0 : 22.0;
+    
+    // Air acceleration and lateral control (Ultra-responsive retro upgrade: 64.0 airControl!)
+    const airControl = this.hasHyperJetpack ? 64.0 : 36.0;
+    const accel = this.isGrounded ? 45.0 : airControl;
 
     const desiredVx = moveX * targetSpeed;
     if (this.isDying && !this.isGrounded) {
@@ -1573,31 +1986,52 @@ export class Player {
       this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, desiredVx, dt * (accel / 10));
     }
 
-    // 4. Jump & Jetpack (cannot jump while crouching or under low ceiling)
-    if (jumpPressed && this.isGrounded && !isActuallyCrouching) {
+    // 4. Jump & Jetpack (STRICTLY DISABLED when crouching or under low ceiling!)
+    if (jumpPressed && this.isGrounded && !isActuallyCrouching && !ceilingBlocked) {
       this.velocity.y = 11.5;
       this.isGrounded = false;
       this.emitDust(this.position.x, this.position.y, 6);
     }
 
-    const isActuallyJetpacking = jetpackPressed && this.fuel > 0;
-    const gravity = -26.0;
-    const jetpackLift = 34.0;
+    const isActuallyJetpacking = jetpackPressed && this.fuel > 0 && !isActuallyCrouching && !ceilingBlocked;
+    const gravity = -24.0;
+    const jetpackLift = this.hasHyperJetpack ? 46.0 : 32.0;
+    const maxClampedVy = this.hasHyperJetpack ? 12.5 : 10.0;
+    const fuelConsumptionRate = this.hasHyperJetpack ? 10.0 : 20.0;
 
     if (isActuallyJetpacking) {
       this.velocity.y += jetpackLift * dt;
-      this.fuel = Math.max(0, this.fuel - 24 * dt);
+      this.fuel = Math.max(0, this.fuel - fuelConsumptionRate * dt);
       this.isGrounded = false;
+      // Gentle vertical hover dampening to prevent uncontrolled vertical slingshotting in tight spaces
+      if (this.velocity.y > maxClampedVy * 0.65) {
+        this.velocity.y *= 0.96;
+      }
     } else {
-      this.fuel = Math.min(this.maxFuel, this.fuel + 8.0 * dt);
+      this.fuel = Math.min(this.maxFuel, this.fuel + (this.hasHyperJetpack ? 16.0 : 9.0) * dt);
+      // Gentle air braking / gliding resistance when releasing jetpack in flight
+      if (!this.isGrounded && this.velocity.y < 0) {
+        this.velocity.y *= (this.hasHyperJetpack ? 0.98 : 0.99); // Prevents sudden uncontrolled plummeting
+      }
     }
 
-    this.velocity.y += gravity * dt;
-    this.velocity.y = THREE.MathUtils.clamp(this.velocity.y, -14, 12);
+    if (ceilingBlocked || isActuallyCrouching) {
+      // Crucial: When crouched under platform, lock vertical velocity <= 0 and force grounded!
+      this.velocity.y = Math.min(0, this.velocity.y);
+      this.isGrounded = true;
+    } else {
+      this.velocity.y += gravity * dt;
+      this.velocity.y = THREE.MathUtils.clamp(this.velocity.y, -12.5, maxClampedVy);
+    }
 
     const playerHeight = isActuallyCrouching ? 1.10 : 1.85;
 
-    // 1. Horizontal Movement & Solid Wall Collisions (Player CANNOT intersect with platforms)
+    // 1. Ball Mode Physics & Dynamic Dimensions
+    const ballRadius = 1.25;
+    const isBall = this.isBallMode && !this.isDying;
+    const effHalfWidth = isBall ? ballRadius : (this.isDying ? Math.sqrt((0.95 * Math.sin(this.rigRoot.rotation.z))**2 + (0.35 * Math.cos(this.rigRoot.rotation.z))**2) : 0.32);
+
+    // 1. Horizontal Movement & Solid Wall Collisions (Player & Bouncy Ball CANNOT intersect with platforms)
     const prevX = this.position.x;
     this.position.x += this.velocity.x * dt;
 
@@ -1607,65 +2041,136 @@ export class Player {
       const platLeft = plat.x - plat.width / 2;
       const platRight = plat.x + plat.width / 2;
 
+      const pHeight = isBall ? (ballRadius * 2) : playerHeight;
       const vertOverlap =
-        this.position.y + playerHeight > platBottom + 0.05 &&
+        this.position.y + pHeight > platBottom + 0.05 &&
         this.position.y < platTop - 0.05;
 
       if (vertOverlap) {
-        if (prevX + halfWidth <= platLeft && this.position.x + halfWidth > platLeft) {
-          this.position.x = platLeft - halfWidth;
-          this.velocity.x = 0;
-        } else if (prevX - halfWidth >= platRight && this.position.x - halfWidth < platRight) {
-          this.position.x = platRight + halfWidth;
-          this.velocity.x = 0;
+        if (prevX + effHalfWidth <= platLeft && this.position.x + effHalfWidth > platLeft) {
+          this.position.x = platLeft - effHalfWidth;
+          if (isBall && Math.abs(this.velocity.x) > 2.0) {
+            this.velocity.x = -this.velocity.x * 0.75; // Bouncy wall rebound!
+            this.ballBounceSquash = 0.72;
+            if (this.onBallBounce) this.onBallBounce(Math.abs(this.velocity.x));
+            this.emitSparks(platLeft, this.position.y + 0.8, -1, 6);
+          } else {
+            this.velocity.x = 0;
+          }
+        } else if (prevX - effHalfWidth >= platRight && this.position.x - effHalfWidth < platRight) {
+          this.position.x = platRight + effHalfWidth;
+          if (isBall && Math.abs(this.velocity.x) > 2.0) {
+            this.velocity.x = -this.velocity.x * 0.75; // Bouncy wall rebound!
+            this.ballBounceSquash = 0.72;
+            if (this.onBallBounce) this.onBallBounce(Math.abs(this.velocity.x));
+            this.emitSparks(platRight, this.position.y + 0.8, 1, 6);
+          } else {
+            this.velocity.x = 0;
+          }
         }
       }
     }
 
-    // 2. Vertical Movement & Solid Top/Bottom Collisions (Player CANNOT intersect with platforms)
+    // 2. Vertical Movement & Solid Platform Collisions (Bottom Ceiling & Top Landing)
     const prevVy = this.velocity.y;
     const prevY = this.position.y;
     this.position.y += this.velocity.y * dt;
     this.isGrounded = false;
 
-    // Ground Floor Boundary
-    if (this.position.y <= GROUND_Y) {
-      this.position.y = GROUND_Y;
-      this.velocity.y = 0;
-      this.isGrounded = true;
+    const H = 0.95; // Center of mass height
+    const theta = this.rigRoot.rotation.z;
+    const dDown = this.isDying ? Math.sqrt((0.95 * Math.cos(theta))**2 + (0.35 * Math.sin(theta))**2) : 0.95;
+
+    // Ground Floor Boundary (ZERO Penetration & High Bouncy Ball Restitution)
+    if (isBall) {
+      if (this.position.y <= GROUND_Y) {
+        this.position.y = GROUND_Y;
+        if (prevVy < -2.2) {
+          this.velocity.y = -prevVy * 0.76; // BOUNCE!
+          this.ballBounceSquash = 0.65;
+          this.isGrounded = false;
+          if (this.onBallBounce) this.onBallBounce(Math.abs(prevVy));
+          this.emitDust(this.position.x, GROUND_Y, 8);
+          this.emitSparks(this.position.x, GROUND_Y + 0.1, 0, 6);
+        } else {
+          this.velocity.y = 0;
+          this.isGrounded = true;
+        }
+      }
+    } else if (this.isDying) {
+      if (this.position.y + H - dDown <= GROUND_Y) {
+        this.position.y = GROUND_Y - H + dDown;
+        this.velocity.y = 0;
+        this.isGrounded = true;
+      }
+    } else {
+      if (this.position.y <= GROUND_Y) {
+        this.position.y = GROUND_Y;
+        this.velocity.y = 0;
+        this.isGrounded = true;
+      }
     }
 
-    // Solid Platform Collisions (Landing on Top & Bonking Head on Underside)
+    // Solid Platform Collisions (ZERO Penetration from bottom or top!)
     for (const plat of platforms) {
       const platTop = plat.y + plat.height / 2;
       const platBottom = plat.y - plat.height / 2;
       const platLeft = plat.x - plat.width / 2;
       const platRight = plat.x + plat.width / 2;
 
-      // When dying near edge of platform, require center of mass to be well inside platform; otherwise tumble off!
-      const edgeTolerance = this.isDying ? 0.35 : 0.02;
       const horizOverlap =
-        this.position.x + halfWidth > platLeft + edgeTolerance &&
-        this.position.x - halfWidth < platRight - edgeTolerance;
+        this.position.x + effHalfWidth > platLeft + 0.02 &&
+        this.position.x - effHalfWidth < platRight - 0.02;
 
       if (horizOverlap) {
-        // A. Landing on Top of platform
-        if (
-          this.velocity.y <= 0 &&
-          prevY >= platTop - 0.28 &&
-          this.position.y <= platTop + 0.20
-        ) {
-          this.position.y = platTop;
-          this.velocity.y = 0;
-          this.isGrounded = true;
+        // A. CEILING COLLISION
+        if (this.velocity.y > 0) {
+          const headY = isBall ? (this.position.y + ballRadius * 2) : (this.position.y + playerHeight);
+          if (this.position.y < platBottom && headY >= platBottom) {
+            this.position.y = isBall ? (platBottom - ballRadius * 2) : (platBottom - playerHeight);
+            if (isBall) {
+              this.velocity.y = -this.velocity.y * 0.72; // Ceiling bounce!
+              this.ballBounceSquash = 0.70;
+              if (this.onBallBounce) this.onBallBounce(Math.abs(this.velocity.y));
+            } else {
+              this.velocity.y = 0;
+            }
+            this.emitDust(this.position.x, platBottom - 0.05, 3);
+          }
         }
-        // B. Bonking against Bottom / ceiling of platform (Never intersect or pass through underside)
-        else if (
-          this.position.y < platBottom &&
-          this.position.y + playerHeight >= platBottom
-        ) {
-          this.position.y = platBottom - playerHeight;
-          if (this.velocity.y > 0) this.velocity.y = 0;
+
+        // B. TOP LANDING & SOLID PLATFORM BOUNCE / STANDING
+        if (this.velocity.y <= 0) {
+          if (isBall) {
+            if (prevY >= platTop - 0.35 && this.position.y <= platTop + 0.35) {
+              this.position.y = platTop;
+              if (prevVy < -2.2) {
+                this.velocity.y = -prevVy * 0.76; // Platform BOUNCE!
+                this.ballBounceSquash = 0.65;
+                this.isGrounded = false;
+                if (this.onBallBounce) this.onBallBounce(Math.abs(prevVy));
+                this.emitDust(this.position.x, platTop, 8);
+              } else {
+                this.velocity.y = 0;
+                this.isGrounded = true;
+              }
+            }
+          } else if (this.isDying) {
+            // Strictly check physical bottom of dying player: ZERO penetration!
+            const prevBottom = prevY + H - dDown;
+            const curBottom = this.position.y + H - dDown;
+            if (prevBottom >= platTop - 0.25 && curBottom <= platTop + 0.40) {
+              this.position.y = platTop - H + dDown;
+              this.velocity.y = 0;
+              this.isGrounded = true;
+            }
+          } else {
+            if (prevY >= platTop - 0.25 && this.position.y <= platTop + 0.25) {
+              this.position.y = platTop;
+              this.velocity.y = 0;
+              this.isGrounded = true;
+            }
+          }
         }
       }
     }
@@ -1679,7 +2184,7 @@ export class Player {
     this.prevVelocityY = this.velocity.y;
     this.wasGroundedLastFrame = this.isGrounded;
 
-    // 6. State Machine
+        // 6. State Machine
     if (isActuallyJetpacking) {
       this.state = PlayerState.JETPACK;
     } else if (!this.isGrounded) {
@@ -1695,33 +2200,40 @@ export class Player {
     // 7. Update Transforms & Animations
     this.mesh.position.copy(this.position);
 
-    // Update Bubble Force Field Transform & Organic Damage Wobble
+    // Update Bubble Force Field / Ball Mode Transform
     if (this.shieldGroup && this.shieldActive) {
-      // Fully covers Jones whether standing (center at 0.98m) or crouching (center at 0.60m)
-      const shieldCenterY = this.position.y + (isActuallyCrouching ? 0.60 : 0.98);
+      const isBall = this.isBallMode && !this.isDying;
+      const shieldCenterY = this.position.y + (isBall ? 1.25 : (isActuallyCrouching ? 0.70 : 1.05));
       this.shieldGroup.position.set(this.position.x, shieldCenterY, 0);
 
       const time = this.animTimer;
-      let scaleX = 1.0 + Math.sin(time * 6.0) * 0.035;
-      let scaleY = 1.0 + Math.cos(time * 7.5) * 0.035;
-      let scaleZ = 1.0 + Math.sin(time * 5.2) * 0.03;
 
       if (this.shieldWobbleTimer > 0) {
         this.shieldWobbleTimer -= dt;
-        const wT = this.shieldWobbleTimer / 0.35;
-        const wobbleWave = Math.sin((1.0 - wT) * Math.PI * 6.0) * wT;
-        scaleX += wobbleWave * 0.35;
-        scaleY -= wobbleWave * 0.28;
         this.shieldMat.emissive.setHex(0x55ffff);
-        this.shieldMat.opacity = 0.85;
-        this.shieldGridMat.opacity = 0.80;
+        this.shieldMat.opacity = isBall ? 0.55 : 0.45;
+        this.shieldGridMat.opacity = isBall ? 0.60 : 0.50;
       } else {
-        this.shieldMat.emissive.setHex(0x004466);
-        this.shieldMat.opacity = 0.44;
-        this.shieldGridMat.opacity = 0.40;
+        this.shieldMat.emissive.setHex(isBall ? 0x004466 : 0x002233);
+        this.shieldMat.opacity = isBall ? 0.32 : 0.18;
+        this.shieldGridMat.opacity = isBall ? 0.38 : 0.22;
       }
 
-      this.shieldGroup.scale.set(scaleX, scaleY, scaleZ);
+      // Dynamic Squash and Stretch Bouncy Ball scaling
+      if (isBall) {
+        this.ballBounceSquash = THREE.MathUtils.lerp(this.ballBounceSquash, 1.0, dt * 10.0);
+        const sqY = this.ballBounceSquash;
+        const stX = 1.0 / Math.sqrt(Math.max(0.2, sqY));
+        this.shieldGroup.scale.set(stX * 0.76, sqY * 0.76, stX * 0.76); // Bouncy sphere of 1.25m radius
+
+        // Roll the bubble ball with ground velocity
+        const rollRate = (-this.velocity.x / 1.25);
+        this.ballRotationZ += rollRate * dt;
+        this.shieldSphereMesh.rotation.z = this.ballRotationZ;
+        this.shieldGridMesh.rotation.z = this.ballRotationZ;
+      } else {
+        this.shieldGroup.scale.set(1.0, 1.0, 1.0);
+      }
 
       // Rotate geodesic shield grid and counter-rotating rings
       this.shieldGridMesh.rotation.y += 0.8 * dt;
@@ -1737,7 +2249,7 @@ export class Player {
       for (let i = 0; i < this.shieldNodes.length; i++) {
         const node = this.shieldNodes[i];
         const nodeAngle = time * 3.2 + (i * Math.PI / 2);
-        const nodeRad = 1.54;
+        const nodeRad = 1.70;
         const tilt = (i % 2 === 0 ? 0.4 : -0.4);
         node.position.set(
           Math.cos(nodeAngle) * nodeRad,
@@ -1764,11 +2276,21 @@ export class Player {
       }
       const heightAbove = this.position.y - surfaceY;
 
-      // CRITICAL: Shadow is strictly visible on solid ground or platform surface only, NEVER floating in the air
-      // Placed at Z = -0.25 to completely prevent any plane intersection with jetpack flames
-      if (this.isGrounded && heightAbove < 0.18) {
+      // CRITICAL: Shadow is strictly visible on solid ground or platform surface only, NEVER when flying or in the air
+      // Completely prevents any plane intersection when flying or turning around left/right!
+      const isTurning = Math.abs(this.rigRoot.rotation.y - targetTurn) > 0.08;
+      if (
+        this.isGrounded &&
+        !isActuallyJetpacking &&
+        this.state !== PlayerState.JETPACK &&
+        this.state !== PlayerState.JUMP &&
+        this.state !== PlayerState.FALL &&
+        !isTurning &&
+        Math.abs(this.velocity.y) < 0.02 &&
+        heightAbove < 0.08
+      ) {
         this.shadowMesh.visible = true;
-        this.shadowMesh.position.set(this.position.x, surfaceY + 0.015, -0.25);
+        this.shadowMesh.position.set(this.position.x, surfaceY + 0.015, 0);
         this.shadowMesh.scale.set(1.0, 1.0, 1.0);
         (this.shadowMesh.material as THREE.MeshBasicMaterial).opacity = 0.38;
       } else {
@@ -1783,6 +2305,7 @@ export class Player {
     this.updateParticles(dt);
     this.updateLasers(dt);
     this.updateDroppedGun(dt, platforms);
+    this.updateRadioWaves(dt, underPressure);
   }
 
   private updateDroppedGun(dt: number, platforms: { x: number; y: number; width: number; height: number }[]) {
@@ -1908,9 +2431,9 @@ export class Player {
         }
 
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          // Right shooting arm rests naturally by his side with pistol carried at hip
-          this.frontArmBone.rotation.z = -1.35;
-          this.frontForearmBone.rotation.z = 0.22;
+          // Right shooting arm rests naturally by his side with pistol carried at hip and bent athletic elbow
+          this.frontArmBone.rotation.z = -1.15;
+          this.frontForearmBone.rotation.z = 0.72;
         }
         break;
       }
@@ -2034,8 +2557,8 @@ export class Player {
         this.backForearmBone.rotation.z = 0.18 + Math.abs(frontStride) * 0.20;
 
         if (!hasMouseTarget && this.shootTimer <= 0) {
-          this.frontArmBone.rotation.z = -1.32 + backStride * 0.35;
-          this.frontForearmBone.rotation.z = 0.24;
+          this.frontArmBone.rotation.z = -1.10 + backStride * 0.35;
+          this.frontForearmBone.rotation.z = 0.65;
         }
         break;
       }
@@ -2226,16 +2749,18 @@ export class Player {
       // Adjust for torso lean
       const aimRotation = clampedLocal - this.torsoBone.rotation.z;
 
-      // Natural human elbow flexion in all directions:
-      const elbowFlex = 0.14;
+      // Natural human elbow flexion:
+      // When arm goes lower by the side of the player (negative aimRotation), increase elbow bend significantly!
+      const downwardness = Math.max(0, -aimRotation) / (Math.PI * 0.40); // 0 to 1 as arm lowers
+      const dynamicElbowFlex = 0.18 + downwardness * 0.68; // Bends up to 0.86 rad (~50 deg elbow bend)
       this.frontArmBone.rotation.z = THREE.MathUtils.lerp(
         this.frontArmBone.rotation.z,
-        aimRotation - elbowFlex,
+        aimRotation - dynamicElbowFlex * 0.42,
         dt * 28
       );
       this.frontForearmBone.rotation.z = THREE.MathUtils.lerp(
         this.frontForearmBone.rotation.z,
-        elbowFlex,
+        dynamicElbowFlex,
         dt * 28
       );
     }
@@ -2313,64 +2838,71 @@ export class Player {
         }
       }
 
-      if (this.deathTimer < 0.75) {
-        // Phase 1: Reeling back & flailing arms in slow-motion
-        const t = this.deathTimer / 0.75;
-        this.headBone.rotation.z = -0.55 * t;
-        this.torsoBone.rotation.z = (this.facingRight ? -0.45 : 0.45) * t;
+      const H = 0.95; // Center of mass height (hips/waist) above feet
 
-        this.frontArmBone.rotation.z = -1.8 * t;
-        this.frontForearmBone.rotation.z = 0.6 * t;
-        this.backArmBone.rotation.z = 1.4 * t;
+      if (!this.isGrounded) {
+        // ----------------------------------------------------
+        // AIR DEATH: CENTER-OF-MASS RAGDOLL TUMBLING
+        // Tumbles around center of mass (H = 0.95), NOT pivoting from feet!
+        // ----------------------------------------------------
+        const tumbleDir = this.facingRight ? -1 : 1;
+        const tumbleSpeed = tumbleDir * 5.2;
+        this.rigRoot.rotation.z += tumbleSpeed * dt;
 
-        this.frontThighBone.rotation.z = 0.5 * t;
-        this.frontShinBone.rotation.z = -0.7 * t;
-        this.backThighBone.rotation.z = -0.4 * t;
+        // Mathematical Center-of-Mass Orbit:
+        // Ensures hips/waist remain stationary in mesh space while head & boots tumble symmetrically
+        const theta = this.rigRoot.rotation.z;
+        this.rigRoot.position.x = H * Math.sin(theta);
+        this.rigRoot.position.y = H * (1.0 - Math.cos(theta));
 
-        this.rigRoot.rotation.z = (this.facingRight ? -1 : 1) * (0.8 * t);
+        // Limbs flail naturally under aerodynamic air resistance
+        this.headBone.rotation.z = Math.sin(this.deathTimer * 8.0) * 0.25 - 0.25;
+        this.torsoBone.rotation.z = Math.cos(this.deathTimer * 6.0) * 0.18;
+
+        this.frontArmBone.rotation.z = -1.4 + Math.sin(this.deathTimer * 10.0) * 0.35;
+        this.frontForearmBone.rotation.z = 0.6 + Math.cos(this.deathTimer * 9.0) * 0.25;
+        this.backArmBone.rotation.z = 1.2 + Math.cos(this.deathTimer * 9.0) * 0.30;
+        this.backForearmBone.rotation.z = 0.35;
+
+        this.frontThighBone.rotation.z = 0.5 + Math.sin(this.deathTimer * 7.0) * 0.25;
+        this.frontShinBone.rotation.z = -0.6 + Math.cos(this.deathTimer * 8.0) * 0.20;
+        this.backThighBone.rotation.z = -0.4 + Math.sin(this.deathTimer * 7.5) * 0.20;
+        this.backShinBone.rotation.z = 0.3;
       } else {
-        // Phase 2: Dynamic Edge Ragdoll Tumbling or Flat Catwalk Impact
-        if (!this.isGrounded) {
-          // In the air (e.g. falling off a platform ledge or flying from an explosion)
-          const tumbleSpeed = this.facingRight ? -4.5 : 4.5;
-          this.rigRoot.rotation.z += tumbleSpeed * dt;
-          this.rigRoot.position.y = THREE.MathUtils.lerp(this.rigRoot.position.y, 0, dt * 5.0);
+        // ----------------------------------------------------
+        // SURFACE IMPACT & COLLAPSE FLAT ON LANDING
+        // Lands on catwalk ground, platform, crate, or maze wall
+        // ----------------------------------------------------
+        this.groundedDeathTimer += dt;
 
-          // Limbs flail naturally under air resistance
-          this.headBone.rotation.z = -0.3;
-          this.torsoBone.rotation.z = 0.25;
-          this.frontArmBone.rotation.z = -1.2;
-          this.frontForearmBone.rotation.z = 0.5;
-          this.backArmBone.rotation.z = 1.1;
-          this.backForearmBone.rotation.z = 0.3;
-          this.frontThighBone.rotation.z = 0.45;
-          this.frontShinBone.rotation.z = -0.5;
-          this.backThighBone.rotation.z = -0.35;
-          this.backShinBone.rotation.z = 0.2;
-        } else {
-          // Ground impact & collapse flat onto catwalk floor
-          if (this.deathTimer - dt < 0.75) {
-            this.emitDust(this.position.x, this.position.y, 14);
-          }
-
-          const collapseTarget = this.facingRight ? -Math.PI / 2 : Math.PI / 2;
-          this.rigRoot.rotation.z = THREE.MathUtils.lerp(this.rigRoot.rotation.z, collapseTarget, dt * 8.0);
-          this.rigRoot.position.y = THREE.MathUtils.lerp(this.rigRoot.position.y, 0.25, dt * 8.0);
-
-          this.headBone.rotation.z = THREE.MathUtils.lerp(this.headBone.rotation.z, 0, dt * 6.0);
-          this.torsoBone.rotation.z = THREE.MathUtils.lerp(this.torsoBone.rotation.z, 0, dt * 6.0);
-          this.frontArmBone.rotation.z = THREE.MathUtils.lerp(this.frontArmBone.rotation.z, 0.2, dt * 6.0);
-          this.frontForearmBone.rotation.z = THREE.MathUtils.lerp(this.frontForearmBone.rotation.z, 0, dt * 6.0);
-          this.backArmBone.rotation.z = THREE.MathUtils.lerp(this.backArmBone.rotation.z, -0.2, dt * 6.0);
-          this.backForearmBone.rotation.z = THREE.MathUtils.lerp(this.backForearmBone.rotation.z, 0, dt * 6.0);
-          this.frontThighBone.rotation.z = THREE.MathUtils.lerp(this.frontThighBone.rotation.z, 0, dt * 6.0);
-          this.frontShinBone.rotation.z = THREE.MathUtils.lerp(this.frontShinBone.rotation.z, 0, dt * 6.0);
-          this.backThighBone.rotation.z = THREE.MathUtils.lerp(this.backThighBone.rotation.z, 0, dt * 6.0);
-          this.backShinBone.rotation.z = THREE.MathUtils.lerp(this.backShinBone.rotation.z, 0, dt * 6.0);
+        if (this.groundedDeathTimer - dt <= 0) {
+          // Impact dust & sparks on contact
+          this.emitDust(this.position.x, this.position.y, 16);
+          this.emitSparks(this.position.x, this.position.y + 0.1, 0, 8);
         }
+
+        // Settle flat onto surface strictly pivoting around CENTER OF MASS (y = H = 0.95)
+        const collapseTarget = this.facingRight ? -Math.PI / 2 : Math.PI / 2;
+        this.rigRoot.rotation.z = THREE.MathUtils.lerp(this.rigRoot.rotation.z, collapseTarget, dt * 9.0);
+        const thetaG = this.rigRoot.rotation.z;
+        this.rigRoot.position.x = H * Math.sin(thetaG);
+        this.rigRoot.position.y = H * (1.0 - Math.cos(thetaG));
+
+        // Limbs collapse limp onto surface
+        this.headBone.rotation.z = THREE.MathUtils.lerp(this.headBone.rotation.z, 0, dt * 8.0);
+        this.torsoBone.rotation.z = THREE.MathUtils.lerp(this.torsoBone.rotation.z, 0, dt * 8.0);
+        this.frontArmBone.rotation.z = THREE.MathUtils.lerp(this.frontArmBone.rotation.z, 0.2, dt * 8.0);
+        this.frontForearmBone.rotation.z = THREE.MathUtils.lerp(this.frontForearmBone.rotation.z, 0.1, dt * 8.0);
+        this.backArmBone.rotation.z = THREE.MathUtils.lerp(this.backArmBone.rotation.z, -0.2, dt * 8.0);
+        this.backForearmBone.rotation.z = THREE.MathUtils.lerp(this.backForearmBone.rotation.z, 0, dt * 8.0);
+        this.frontThighBone.rotation.z = THREE.MathUtils.lerp(this.frontThighBone.rotation.z, 0, dt * 8.0);
+        this.frontShinBone.rotation.z = THREE.MathUtils.lerp(this.frontShinBone.rotation.z, 0, dt * 8.0);
+        this.backThighBone.rotation.z = THREE.MathUtils.lerp(this.backThighBone.rotation.z, 0, dt * 8.0);
+        this.backShinBone.rotation.z = THREE.MathUtils.lerp(this.backShinBone.rotation.z, 0, dt * 8.0);
       }
 
-      if (this.deathTimer >= this.maxDeathTime) {
+      // Ensure death respawn only triggers after player has hit ground/surface and rested!
+      if (this.groundedDeathTimer >= 1.2 || this.deathTimer >= 4.5) {
         this.isDead = true;
       }
     }
@@ -2438,25 +2970,75 @@ export class Player {
     const fuelRatio = this.fuel / this.maxFuel;
     this.fuelGaugeNeedle.rotation.x = (fuelRatio - 0.5) * 2.2;
 
-    // 2. DIAMOND SHOCKWAVE FLAMES (Epic scale, brightness, and turbulent flutter)
+    // Animate Hyper-Ion Quantum Jetpack features
+    if (this.hasHyperJetpack && this.hyperCoreDisc) {
+      this.hyperCoreDisc.rotation.x += 18.0 * dt;
+      const wingtipScale = 1.0 + Math.sin(time * 12.0) * 0.25;
+      this.hyperWingtipLeft.scale.set(wingtipScale, wingtipScale, wingtipScale);
+      this.hyperWingtipRight.scale.set(wingtipScale, wingtipScale, wingtipScale);
+    }
+
+    // 2. JETPACK FLAMES: BIGGER BLUE FLAME for Retro Upgrade, RED/ORANGE for Default!
     if (isJetpacking && !this.isDying) {
       this.flameConeLeft.visible = true;
       this.flameConeRight.visible = true;
 
-      const flick = 1.0 + Math.sin(time * 45.0) * 0.25 + Math.random() * 0.25;
-      const coreFlick = 1.0 + Math.random() * 0.35;
+      if (this.hasHyperJetpack) {
+        // BIGGER BLUE FLAME
+        this.flameAuraMatLeft.color.setHex(0x0044ff);
+        this.flameAuraMatRight.color.setHex(0x0044ff);
+        (this.flameOuterLeft.material as THREE.MeshBasicMaterial).color.setHex(0x00aaff);
+        (this.flameOuterRight.material as THREE.MeshBasicMaterial).color.setHex(0x00aaff);
+        this.flameMidMatLeft.color.setHex(0x00f5ff);
+        this.flameMidMatRight.color.setHex(0x00f5ff);
+        (this.flameCoreLeft.material as THREE.MeshBasicMaterial).color.setHex(0xf0ffff);
+        (this.flameCoreRight.material as THREE.MeshBasicMaterial).color.setHex(0xf0ffff);
 
-      this.flameOuterLeft.scale.set(1.0 + Math.random() * 0.2, flick * 1.15, 1.0);
-      this.flameOuterRight.scale.copy(this.flameOuterLeft.scale);
+        this.thrusterLight.color.setHex(0x00c8ff);
+        this.thrusterLight.intensity = 55 + Math.sin(time * 24.0) * 8;
+        this.thrusterLight.distance = 32;
 
-      this.flameCoreLeft.scale.set(1.0, coreFlick * 1.1, 1.0);
-      this.flameCoreRight.scale.copy(this.flameCoreLeft.scale);
+        const scaleBoost = 1.85; // Much bigger flame!
+        const flick = (1.0 + Math.sin(time * 30.0) * 0.16 + Math.cos(time * 44.0) * 0.12) * scaleBoost;
+        const coreFlick = (1.0 + Math.sin(time * 36.0) * 0.18 + Math.random() * 0.12) * scaleBoost;
 
-      this.thrusterLight.intensity = 26 + Math.random() * 12;
-      this.thrusterLight.distance = 20;
+        this.flameOuterLeft.scale.set(1.15 + Math.sin(time * 16.0) * 0.10, flick * 1.15, 1.15);
+        this.flameOuterRight.scale.copy(this.flameOuterLeft.scale);
 
-      this.emitSmoke(nozzleX, nozzleY, nozzleZ, 2);
-      this.emitSparks(nozzleX, nozzleY, nozzleZ, 4);
+        this.flameCoreLeft.scale.set(1.1, coreFlick * 1.12, 1.1);
+        this.flameCoreRight.scale.copy(this.flameCoreLeft.scale);
+
+        // Emits MORE smoke for retro upgrade (3 puffs per tick!)
+        this.emitSmoke(nozzleX, nozzleY, nozzleZ, 3);
+        this.emitSparks(nozzleX, nozzleY, nozzleZ, 8);
+      } else {
+        // DEFAULT RED & ORANGE ROUNDED FLAMES
+        this.flameAuraMatLeft.color.setHex(0xff1a00);
+        this.flameAuraMatRight.color.setHex(0xff1a00);
+        (this.flameOuterLeft.material as THREE.MeshBasicMaterial).color.setHex(0xff6600);
+        (this.flameOuterRight.material as THREE.MeshBasicMaterial).color.setHex(0xff6600);
+        this.flameMidMatLeft.color.setHex(0xffaa00);
+        this.flameMidMatRight.color.setHex(0xffaa00);
+        (this.flameCoreLeft.material as THREE.MeshBasicMaterial).color.setHex(0xffffff);
+        (this.flameCoreRight.material as THREE.MeshBasicMaterial).color.setHex(0xffffff);
+
+        this.thrusterLight.color.setHex(0xff5500);
+        this.thrusterLight.intensity = 28 + Math.sin(time * 24.0) * 6;
+        this.thrusterLight.distance = 22;
+
+        const scaleBoost = 1.0;
+        const flick = (1.0 + Math.sin(time * 30.0) * 0.16 + Math.cos(time * 44.0) * 0.12) * scaleBoost;
+        const coreFlick = (1.0 + Math.sin(time * 36.0) * 0.18 + Math.random() * 0.12) * scaleBoost;
+
+        this.flameOuterLeft.scale.set(1.0 + Math.sin(time * 16.0) * 0.08, flick * 1.10, 1.0);
+        this.flameOuterRight.scale.copy(this.flameOuterLeft.scale);
+
+        this.flameCoreLeft.scale.set(1.0, coreFlick * 1.05, 1.0);
+        this.flameCoreRight.scale.copy(this.flameCoreLeft.scale);
+
+        this.emitSmoke(nozzleX, nozzleY, nozzleZ, 1);
+        this.emitSparks(nozzleX, nozzleY, nozzleZ, 4);
+      }
     } else {
       this.flameConeLeft.visible = false;
       this.flameConeRight.visible = false;
@@ -2539,7 +3121,7 @@ export class Player {
     }
   }
 
-  private emitSparks(x: number, y: number, z: number, count: number) {
+  public emitSparks(x: number, y: number, z: number = 0, count: number = 6) {
     for (let i = 0; i < count; i++) {
       const sk = this.sparks.find(p => !p.active);
       if (!sk) continue;

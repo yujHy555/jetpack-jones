@@ -348,6 +348,72 @@
       font-weight: bold;
     }
 
+    /* Mobile Landscape Orientation Lock Screen */
+    #orientation-lock-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 999999;
+      background: radial-gradient(circle at center, #1b1222 0%, #07050d 100%);
+      color: #fff;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      box-sizing: border-box;
+      pointer-events: auto;
+    }
+
+    .orientation-card {
+      background: rgba(20, 14, 28, 0.95);
+      border: 3px solid #ff77b8;
+      border-radius: 16px;
+      padding: 32px 24px;
+      max-width: 380px;
+      box-shadow: 0 0 35px rgba(255, 119, 184, 0.5), inset 0 0 15px rgba(255, 119, 184, 0.25);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .phone-rotate-icon {
+      font-size: 52px;
+      animation: rotatePhone 2.2s infinite ease-in-out;
+    }
+
+    @keyframes rotatePhone {
+      0%, 15% { transform: rotate(0deg); }
+      50%, 75% { transform: rotate(-90deg); }
+      100% { transform: rotate(0deg); }
+    }
+
+    .orientation-title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #00f5ff;
+      letter-spacing: 1.5px;
+      text-shadow: 0 0 10px #00f5ff;
+    }
+
+    .orientation-desc {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 13px;
+      color: #ffcce6;
+      line-height: 1.5;
+    }
+
+    /* Automatically trigger orientation overlay whenever device is in portrait on mobile */
+    @media screen and (orientation: portrait) and (max-width: 1024px) {
+      #orientation-lock-overlay {
+        display: flex !important;
+      }
+    }
+
     /* Top Controls - Centered at Top Screen */
     .top-controls {
       position: absolute;
@@ -533,8 +599,12 @@
             </div>
           </div>
 
-          <!-- Right side: Jump, Jetpack, Blaster -->
+          <!-- Right side: Ball Mode, Jump, Jetpack, Blaster -->
           <div class="touch-group">
+            <div id="btn-touch-ball" class="touch-btn btn-action-small" title="Bouncy Ball Mode">
+              ⚽
+              <span>BALL</span>
+            </div>
             <div id="btn-jump" class="touch-btn btn-action-small">
               ⬆
               <span>JUMP</span>
@@ -560,7 +630,8 @@
         </div>
         <button id="btn-handheld" class="icon-btn" title="Toggle Handheld Camera (H)">🎥 ON [H]</button>
         <button id="btn-fullscreen" class="icon-btn" title="Toggle Fullscreen (F)">⛶ FULL [F]</button>
-        <button id="btn-shield" class="icon-btn" title="Toggle Bubble Force Field (B)">🛡️ SHIELD [B]</button>
+        <button id="btn-shield" class="icon-btn" title="Toggle Bubble Bouncy Ball Mode (B)">⚽ BALL [B]</button>
+        <button id="btn-level" class="icon-btn" title="Toggle Level 1 / 2 (L)" style="color: #39ff14; border-color: #39ff14;">🪐 LEVEL 2: ALIEN [L]</button>
         <button id="btn-stunt" class="icon-btn" title="Ragdoll Stunt Tumble">🤸 STUNT [R]</button>
         <button id="btn-audio" class="icon-btn" title="Toggle Sound">🔊 SFX ON</button>
       </div>
@@ -599,5 +670,15 @@
   </div>
 
   <script type="module" src="/src/main.ts"></script>
+  <!-- Mobile Landscape Orientation Lock Screen -->
+  <div id="orientation-lock-overlay">
+    <div class="orientation-card">
+      <div class="phone-rotate-icon">📱 ➔ 🔄</div>
+      <div class="orientation-title">PLEASE ROTATE DEVICE</div>
+      <div class="orientation-desc">
+        JETPACK JONES IS OPTIMIZED FOR WIDESCREEN LANDSCAPE ORIENTATION. PLEASE ROTATE YOUR PHONE TO PLAY THE TOURNAMENT CAMPAIGN!
+      </div>
+    </div>
+  </div>
 </body>
 </html>

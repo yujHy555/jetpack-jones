@@ -506,4 +506,160 @@ export class AudioManager {
     osc.start(t);
     osc.stop(t + 0.1);
   }
+
+  /**
+   * Cartoony retro sci-fi radio wave transmission ping/chirp
+   */
+  public playRadioWavePing() {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1480, t);
+    osc.frequency.exponentialRampToValueAtTime(2450, t + 0.12);
+
+    gain.gain.setValueAtTime(0.08, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.16);
+  }
+
+  /**
+   * Cataclysmic Meteor impact shatter sound (deep seismic thud + glassy/metallic crack)
+   */
+  public playMeteorShatter(isCrystal: boolean = false) {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    // Deep seismic impact boom
+    const subOsc = this.ctx.createOscillator();
+    const subGain = this.ctx.createGain();
+    subOsc.type = 'triangle';
+    subOsc.frequency.setValueAtTime(120, t);
+    subOsc.frequency.exponentialRampToValueAtTime(32, t + 0.38);
+
+    subGain.gain.setValueAtTime(0.35, t);
+    subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.40);
+    subOsc.connect(subGain);
+    subGain.connect(this.ctx.destination);
+    subOsc.start(t);
+    subOsc.stop(t + 0.42);
+
+    // Crackle / shatter transient
+    const highOsc = this.ctx.createOscillator();
+    const highGain = this.ctx.createGain();
+    highOsc.type = isCrystal ? 'sine' : 'sawtooth';
+    highOsc.frequency.setValueAtTime(isCrystal ? 1800 : 450, t);
+    highOsc.frequency.exponentialRampToValueAtTime(isCrystal ? 600 : 80, t + 0.25);
+
+    highGain.gain.setValueAtTime(0.22, t);
+    highGain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    highOsc.connect(highGain);
+    highGain.connect(this.ctx.destination);
+    highOsc.start(t);
+    highOsc.stop(t + 0.30);
+  }
+
+  /**
+   * Soft vintage radio crackle static with squelch and incoming planet sediment alert
+   */
+  public playRadioCrackleSedimentWarning() {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+
+    // 1. Soft Bandpassed White Noise Radio Crackle with micro-dropouts
+    const bufferSize = Math.floor(this.ctx.sampleRate * 1.8);
+    const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const output = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      const pop = Math.random() < 0.04 ? (Math.random() - 0.5) * 1.4 : (Math.random() - 0.5) * 0.22;
+      output[i] = pop;
+    }
+
+    const whiteNoise = this.ctx.createBufferSource();
+    whiteNoise.buffer = noiseBuffer;
+
+    const bandpass = this.ctx.createBiquadFilter();
+    bandpass.type = 'bandpass';
+    bandpass.frequency.setValueAtTime(1400, t);
+    bandpass.Q.setValueAtTime(1.8, t);
+
+    const noiseGain = this.ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.01, t);
+    noiseGain.gain.linearRampToValueAtTime(0.08, t + 0.1);
+    noiseGain.gain.setValueAtTime(0.06, t + 1.2);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
+
+    whiteNoise.connect(bandpass);
+    bandpass.connect(noiseGain);
+    noiseGain.connect(this.ctx.destination);
+    whiteNoise.start(t);
+    whiteNoise.stop(t + 1.8);
+
+    // 2. Comms Radio Chirp Beep (Squelch open & alert chime)
+    const chirp = this.ctx.createOscillator();
+    const chirpGain = this.ctx.createGain();
+    chirp.type = 'sine';
+    chirp.frequency.setValueAtTime(820, t + 0.05);
+    chirp.frequency.setValueAtTime(1150, t + 0.15);
+    chirpGain.gain.setValueAtTime(0.05, t + 0.05);
+    chirpGain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    chirp.connect(chirpGain);
+    chirpGain.connect(this.ctx.destination);
+    chirp.start(t + 0.05);
+    chirp.stop(t + 0.36);
+
+    // 3. Spoken Comms Transmission: "Warning - incoming planet sediment"
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance('Warning: incoming planet sediment');
+        utterance.rate = 1.05;
+        utterance.pitch = 0.95;
+        utterance.volume = 0.9;
+        window.speechSynthesis.speak(utterance);
+      } catch (e) {}
+    }
+  }
+
+  /**
+   * Resonant springy sci-fi rubbery boing sound for Bouncy Bubble Ball
+   */
+  public playBallBounce(strength: number = 1.0) {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    const baseFreq = 160 + Math.min(200, strength * 15);
+    osc.frequency.setValueAtTime(baseFreq * 0.75, t);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.8, t + 0.06);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.85, t + 0.22);
+
+    const vol = Math.min(0.28, 0.10 + strength * 0.02);
+    gain.gain.setValueAtTime(vol, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.25);
+  }
 }

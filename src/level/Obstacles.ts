@@ -9,13 +9,55 @@ export enum ObstacleType {
   PLASMA_TUBE = 'plasma_tube',
   HAZARD_PLATFORM = 'hazard_platform',
   LASER_GATE = 'laser_gate',
-  COVER_BARRIER = 'cover_barrier'
+  COVER_BARRIER = 'cover_barrier',
+  ALIEN_SNAPPER = 'alien_snapper',
+  SPORE_SPIRE = 'spore_spire',
+  SKY_MAZE_WALL = 'sky_maze_wall',
+  ALIEN_CYBER_SENTINEL = 'alien_cyber_sentinel'
+}
+
+function createRoundedBoxGeo(
+  width: number,
+  height: number,
+  depth: number,
+  radius: number
+): THREE.BufferGeometry {
+  const shape = new THREE.Shape();
+  const x = -width / 2;
+  const y = -height / 2;
+  const w = width;
+  const h = height;
+  const r = Math.min(radius, w / 2 - 0.05, h / 2 - 0.05);
+
+  shape.moveTo(x + r, y);
+  shape.lineTo(x + w - r, y);
+  shape.quadraticCurveTo(x + w, y, x + w, y + r);
+  shape.lineTo(x + w, y + h - r);
+  shape.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  shape.lineTo(x + r, y + h);
+  shape.quadraticCurveTo(x, y + h, x, y + h - r);
+  shape.lineTo(x, y + r);
+  shape.quadraticCurveTo(x, y, x + r, y);
+
+  const extrudeSettings: THREE.ExtrudeGeometryOptions = {
+    depth: Math.max(0.05, depth - r * 2),
+    bevelEnabled: true,
+    bevelSegments: 4,
+    steps: 1,
+    bevelSize: r,
+    bevelThickness: r,
+  };
+
+  const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+  geo.center();
+  return geo;
 }
 
 export enum PickupType {
   FUEL = 'fuel',
   COIN = 'coin',
-  HEART = 'heart'
+  HEART = 'heart',
+  JETPACK_UPGRADE = 'jetpack_upgrade'
 }
 
 export interface ActiveObstacle {
@@ -256,6 +298,14 @@ export class ObstacleManager {
 
   public spawnCrate(x: number, y: number): PhysicsCrate {
     const crate = new PhysicsCrate(this.scene, x, y);
+    crate.onDestroy = (cx: number, cy: number) => {
+      // Guaranteed collectible drops when a crate is destroyed!
+      if (Math.random() > 0.40) {
+        this.spawnCoinPickup(cx, cy + 0.45);
+      } else {
+        this.spawnFuelPickup(cx, cy + 0.45);
+      }
+    };
     this.crates.push(crate);
     return crate;
   }
@@ -266,8 +316,8 @@ export class ObstacleManager {
     return blob;
   }
 
-  public spawnDrone(x: number, y: number = 1.2, patrolRange: number = 6.0): DroneEnemy {
-    const drone = new DroneEnemy(this.scene, x, y, patrolRange);
+  public spawnDrone(x: number, y: number = 1.2, patrolRange: number = 6.0, isAlien: boolean = false): DroneEnemy {
+    const drone = new DroneEnemy(this.scene, x, y, patrolRange, isAlien);
     this.drones.push(drone);
     return drone;
   }
@@ -276,108 +326,151 @@ export class ObstacleManager {
    * Spawns a Giant Steel Cog/Gear (from Image 2)
    */
   /**
-   * Spawns a Triple-AAA Quality Heavy Industrial Hazard Saw / Spinning Wheel
+   * Spawns an Ultra-Modern Sci-Fi Grav-Rotor Hazard Wheel
    * Features:
-   * - Razor-sharp beveled teeth with glowing molten thermal cutting edges
-   * - Heavy chrome perimeter rim with industrial bolt rivets
-   * - Perforated dark titanium drive disc with circular cooling vents
-   * - High-speed counter-rotating inner turbine rotor for mechanical depth
-   * - Glowing molten axle core and massive brass locking hub
+   * - Redesigned sleek cybernetic aesthetics completely replacing outdated industrial parts
+   * - Center Hub: Quantum Singularity Plasma Core surrounded by dual magnetic gimbal containment rings
+   * - Sleek aerodynamic carbon-composite impeller blades with high-frequency neon cyan plasma cutting emitters
+   * - Counter-rotating inner hyper-vortex vanes
+   * - Pulsing animated energy halos and dynamic glow
    */
   public spawnGear(x: number, y: number, radius: number = 2.2, speed: number = 1.0): ActiveObstacle {
     const group = new THREE.Group();
     group.position.set(x, y, 0);
 
-    // 1. Heavy Polished Steel Perimeter Rim with Chamfered Bevel
-    const rimGeo = new THREE.TorusGeometry(radius * 0.88, radius * 0.11, 16, 40);
-    const rimMesh = new THREE.Mesh(rimGeo, this.steelMat);
-    group.add(rimMesh);
+    // 1. Sleek Matte Carbon-Composite Outer Chassis Ring
+    const outerRingGeo = new THREE.TorusGeometry(radius * 0.88, radius * 0.08, 16, 48);
+    const chassisMat = new THREE.MeshStandardMaterial({
+      color: 0x15181f,
+      metalness: 0.85,
+      roughness: 0.25,
+    });
+    const outerRing = new THREE.Mesh(outerRingGeo, chassisMat);
+    group.add(outerRing);
 
-    // 2. Heavy Industrial Bolt Rivets around the rim
-    const rivetGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.35, 10);
-    rivetGeo.rotateX(Math.PI / 2);
-    for (let r = 0; r < 8; r++) {
-      const angle = (r / 8) * Math.PI * 2;
-      const rivet = new THREE.Mesh(rivetGeo, this.darkIronMat);
-      rivet.position.set(Math.cos(angle) * (radius * 0.88), Math.sin(angle) * (radius * 0.88), 0.06);
-      group.add(rivet);
+    // 2. High-Tech Luminous Cyan Magnetic Flux Conduit Rail
+    const conduitGeo = new THREE.TorusGeometry(radius * 0.88, radius * 0.022, 12, 48);
+    const cyanPlasmaMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff });
+    const conduitMesh = new THREE.Mesh(conduitGeo, cyanPlasmaMat);
+    group.add(conduitMesh);
+
+    // 3. Modern Aerodynamic Sci-Fi Cutter Blades with Glowing Cyan Plasma Edges
+    const bladeCount = 8;
+    const bladeAngle = (Math.PI * 2) / bladeCount;
+    const bladeMat = new THREE.MeshStandardMaterial({
+      color: 0x222630,
+      metalness: 0.9,
+      roughness: 0.2,
+    });
+    const plasmaEdgeMat = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0.95,
+    });
+
+    for (let i = 0; i < bladeCount; i++) {
+      const angle = i * bladeAngle;
+      const bladeGroup = new THREE.Group();
+      bladeGroup.position.set(Math.cos(angle) * (radius * 0.92), Math.sin(angle) * (radius * 0.92), 0);
+      bladeGroup.rotation.z = angle;
+
+      // Sleek angular blade spar
+      const sparGeo = new THREE.BoxGeometry(radius * 0.28, 0.16, 0.18);
+      const spar = new THREE.Mesh(sparGeo, bladeMat);
+      bladeGroup.add(spar);
+
+      // Razor-sharp high-frequency plasma emitter cutting tip
+      const tipGeo = new THREE.ConeGeometry(0.12, radius * 0.30, 4);
+      tipGeo.rotateZ(-Math.PI / 2);
+      const tip = new THREE.Mesh(tipGeo, plasmaEdgeMat);
+      tip.position.set(radius * 0.22, 0, 0);
+      bladeGroup.add(tip);
+
+      // Embedded energy micro-conduit on blade face
+      const lineGeo = new THREE.BoxGeometry(radius * 0.22, 0.03, 0.20);
+      const line = new THREE.Mesh(lineGeo, cyanPlasmaMat);
+      line.position.set(0, 0, 0);
+      bladeGroup.add(line);
+
+      group.add(bladeGroup);
     }
 
-    // 3. Dark Titanium Drive Disc with Circular Ventilation Ports
-    const discGeo = new THREE.CylinderGeometry(radius * 0.82, radius * 0.82, 0.18, 32);
-    discGeo.rotateX(Math.PI / 2);
-    const discMesh = new THREE.Mesh(discGeo, this.darkIronMat);
-    group.add(discMesh);
+    // 4. Sleek Aerodynamic Tri-Spoke Carbon Chassis (Open, Modern Architecture)
+    const spokeCount = 3;
+    const spokeAngle = (Math.PI * 2) / spokeCount;
+    const spokeGeo = new THREE.BoxGeometry(radius * 0.65, 0.18, 0.14);
+    for (let s = 0; s < spokeCount; s++) {
+      const angle = s * spokeAngle;
+      const spoke = new THREE.Mesh(spokeGeo, chassisMat);
+      spoke.position.set(Math.cos(angle) * (radius * 0.42), Math.sin(angle) * (radius * 0.42), 0);
+      spoke.rotation.z = angle;
+      group.add(spoke);
 
-    // Circular cooling ports cut into disc
-    const portGeo = new THREE.CylinderGeometry(radius * 0.16, radius * 0.16, 0.22, 16);
-    portGeo.rotateX(Math.PI / 2);
-    const portCavityMat = new THREE.MeshBasicMaterial({ color: 0x111215 });
-    for (let p = 0; p < 4; p++) {
-      const angle = (p / 4) * Math.PI * 2 + Math.PI / 4;
-      const port = new THREE.Mesh(portGeo, portCavityMat);
-      port.position.set(Math.cos(angle) * (radius * 0.48), Math.sin(angle) * (radius * 0.48), 0);
-      group.add(port);
+      // Neon conduit running down each spoke
+      const spokeLineGeo = new THREE.BoxGeometry(radius * 0.62, 0.03, 0.16);
+      const spokeLine = new THREE.Mesh(spokeLineGeo, cyanPlasmaMat);
+      spokeLine.position.set(Math.cos(angle) * (radius * 0.42), Math.sin(angle) * (radius * 0.42), 0);
+      spokeLine.rotation.z = angle;
+      group.add(spokeLine);
     }
 
-    // 4. Razor-Sharp Beveled Saw Teeth with Glowing Molten Amber/Orange Cutting Edges
-    const teethCount = Math.floor(radius * 6);
-    const toothAngle = (Math.PI * 2) / teethCount;
-    const toothBodyGeo = new THREE.BoxGeometry(0.32, 0.42, 0.32);
-    const toothEdgeGeo = new THREE.ConeGeometry(0.14, 0.32, 4);
-    toothEdgeGeo.rotateZ(-Math.PI / 2);
-    const thermalMat = new THREE.MeshBasicMaterial({ color: 0xff5500 });
-
-    for (let i = 0; i < teethCount; i++) {
-      const angle = i * toothAngle;
-      const toothGroup = new THREE.Group();
-      toothGroup.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
-      toothGroup.rotation.z = angle;
-
-      const body = new THREE.Mesh(toothBodyGeo, this.steelMat);
-      toothGroup.add(body);
-
-      // Glowing thermal saw tip
-      const tip = new THREE.Mesh(toothEdgeGeo, thermalMat);
-      tip.position.set(0.20, 0, 0);
-      toothGroup.add(tip);
-
-      group.add(toothGroup);
-    }
-
-    // 5. High-Speed Counter-Rotating Inner Turbine Rotor (Creates stunning mechanical motion!)
+    // 5. High-Speed Counter-Rotating Hyper-Vortex Impeller
     const innerTurbine = new THREE.Group();
     group.add(innerTurbine);
 
-    const turbineBladeGeo = new THREE.BoxGeometry(0.12, radius * 0.42, 0.18);
-    for (let b = 0; b < 6; b++) {
-      const angle = (b / 6) * Math.PI * 2;
-      const blade = new THREE.Mesh(turbineBladeGeo, this.bronzeMat);
-      blade.position.set(Math.cos(angle) * (radius * 0.24), Math.sin(angle) * (radius * 0.24), 0.05);
-      blade.rotation.z = angle + 0.35; // Angled turbine pitch
-      innerTurbine.add(blade);
+    const vaneCount = 5;
+    const vaneGeo = new THREE.BoxGeometry(0.06, radius * 0.35, 0.12);
+    for (let v = 0; v < vaneCount; v++) {
+      const angle = (v / vaneCount) * Math.PI * 2;
+      const vane = new THREE.Mesh(vaneGeo, bladeMat);
+      vane.position.set(Math.cos(angle) * (radius * 0.22), Math.sin(angle) * (radius * 0.22), 0.04);
+      vane.rotation.z = angle + 0.45; // Sleek turbine pitch
+      innerTurbine.add(vane);
     }
 
-    // 6. Central Hydraulic Axle Bearing with Glowing Molten Core
-    const hubHousingGeo = new THREE.CylinderGeometry(radius * 0.24, radius * 0.24, 0.38, 24);
-    hubHousingGeo.rotateX(Math.PI / 2);
-    const hubHousing = new THREE.Mesh(hubHousingGeo, this.steelMat);
-    group.add(hubHousing);
+    // 6. ULTRA-MODERN SCI-FI CENTER HUB: QUANTUM SINGULARITY PLASMA CORE & GIMBAL CONFINEMENT
+    // (Completely eliminates outdated hex nut, bronze hub and industrial bolts!)
+    const hubCenterGroup = new THREE.Group();
+    group.add(hubCenterGroup);
 
-    const coreLightGeo = new THREE.CircleGeometry(radius * 0.14, 16);
-    const coreMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
-    const coreLightF = new THREE.Mesh(coreLightGeo, coreMat);
-    coreLightF.position.z = 0.20;
-    group.add(coreLightF);
-    const coreLightB = new THREE.Mesh(coreLightGeo, coreMat);
-    coreLightB.position.z = -0.20;
-    group.add(coreLightB);
+    // Sleek titanium containment ring around core
+    const innerGimbalGeo = new THREE.TorusGeometry(radius * 0.28, radius * 0.035, 16, 32);
+    const innerGimbal = new THREE.Mesh(innerGimbalGeo, this.steelMat);
+    hubCenterGroup.add(innerGimbal);
 
-    // Massive Hexagonal Lock Nut on Center Axle
-    const nutGeo = new THREE.CylinderGeometry(radius * 0.09, radius * 0.09, 0.44, 6);
-    nutGeo.rotateX(Math.PI / 2);
-    const nut = new THREE.Mesh(nutGeo, this.darkIronMat);
-    group.add(nut);
+    // Glowing Neon Holographic Gimbal Halo
+    const haloRingGeo = new THREE.RingGeometry(radius * 0.22, radius * 0.28, 32);
+    const haloRingMat = new THREE.MeshBasicMaterial({
+      color: 0x00f5ff,
+      transparent: true,
+      opacity: 0.65,
+      side: THREE.DoubleSide,
+    });
+    const haloMesh = new THREE.Mesh(haloRingGeo, haloRingMat);
+    haloMesh.position.z = 0.08;
+    hubCenterGroup.add(haloMesh);
+
+    // Floating Polyhedral Quantum Antimatter / Plasma Reactor Core
+    const coreGeo = new THREE.IcosahedronGeometry(radius * 0.15, 0);
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      wireframe: false,
+    });
+    const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+    coreMesh.position.z = 0.05;
+    hubCenterGroup.add(coreMesh);
+
+    // Holographic Wireframe Overlayer for high-tech cyber lattice look
+    const wireMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.8,
+    });
+    const wireCore = new THREE.Mesh(coreGeo, wireMat);
+    wireCore.position.z = 0.05;
+    wireCore.scale.setScalar(1.08);
+    hubCenterGroup.add(wireCore);
 
     this.scene.add(group);
 
@@ -393,13 +486,19 @@ export class ObstacleManager {
       health: 9999,
       active: true,
       update: (dt: number, time: number) => {
-        // Main saw body rotation
+        // Main sci-fi rotor rotation
         group.rotation.z += speed * dt;
-        // Inner turbine counter-rotates in reverse at 2.4x speed
-        innerTurbine.rotation.z -= speed * 2.4 * dt;
-        // Core molten heat pulse
-        const pulse = 0.8 + Math.sin(time * 8.0) * 0.2;
-        coreMat.color.setRGB(1.0 * pulse, 0.65 * pulse, 0.1 * pulse);
+        // Inner hyper-vortex counter-rotates in reverse at high speed
+        innerTurbine.rotation.z -= speed * 2.8 * dt;
+        // Quantum singularity core spins along local axes
+        coreMesh.rotation.x += 3.5 * dt;
+        coreMesh.rotation.y += 2.8 * dt;
+        wireCore.rotation.x -= 2.0 * dt;
+        wireCore.rotation.z += 2.5 * dt;
+        // High-energy quantum pulse
+        const pulse = 0.85 + Math.sin(time * 9.0) * 0.15;
+        coreMat.color.setRGB(0.0, 1.0 * pulse, 1.0 * pulse);
+        plasmaEdgeMat.opacity = 0.80 + Math.sin(time * 12.0) * 0.20;
       },
     };
 
@@ -672,9 +771,11 @@ export class ObstacleManager {
   }
 
   /**
-   * Spawns a Tactical Blast Cover Barrier
-   * Height 1.25m: Jones can crouch behind it for 100% cover from drone laser fire,
+   * Spawns a Modern Sci-Fi Tactical Blast Cover Barrier
+   * Height 1.25m: Jones can crouch behind it for 100% cover from laser fire,
    * or stand upright to fire back over the top!
+   * Sleek dark titanium chassis with glowing electric cyan holographic energy blast-plate.
+   * Completely avoids obsolete hazard stripes for a pristine futuristic aesthetic.
    */
   public spawnCoverBarrier(x: number, y: number = -3.70): ActiveObstacle {
     const group = new THREE.Group();
@@ -684,34 +785,72 @@ export class ObstacleManager {
     const bHeight = 1.25;
     const bDepth = 0.55;
 
-    // 1. Heavy Armor Plate Chassis (dark iron with beveled rim)
-    const baseGeo = new THREE.BoxGeometry(bWidth, bHeight, bDepth);
-    const barrierMesh = new THREE.Mesh(baseGeo, this.darkIronMat);
-    barrierMesh.position.set(0, bHeight / 2, 0);
+    // 1. Sleek Modern Dark Titanium Armor Chassis with Chamfered Flanks
+    const baseGeo = new THREE.BoxGeometry(bWidth, bHeight * 0.72, bDepth);
+    const darkTitaniumMat = new THREE.MeshStandardMaterial({
+      color: 0x161b22,
+      metalness: 0.88,
+      roughness: 0.22,
+    });
+    const barrierMesh = new THREE.Mesh(baseGeo, darkTitaniumMat);
+    barrierMesh.position.set(0, (bHeight * 0.72) / 2, 0);
     group.add(barrierMesh);
 
-    // 2. High-Visibility Hazard Chevrons along Top Lip
-    const lipGeo = new THREE.BoxGeometry(bWidth + 0.08, 0.22, bDepth + 0.06);
-    const lipMesh = new THREE.Mesh(lipGeo, this.hazardMat);
-    lipMesh.position.set(0, bHeight - 0.11, 0);
-    group.add(lipMesh);
+    // 2. Translucent Electric Cyan Holographic Blast Shield Plate across top
+    const shieldPlateGeo = new THREE.BoxGeometry(bWidth - 0.08, bHeight * 0.38, 0.12);
+    const shieldPlateMat = new THREE.MeshPhysicalMaterial({
+      color: 0x00f0ff,
+      emissive: 0x003344,
+      roughness: 0.08,
+      metalness: 0.15,
+      transmission: 0.75,
+      transparent: true,
+      opacity: 0.85,
+    });
+    const shieldPlate = new THREE.Mesh(shieldPlateGeo, shieldPlateMat);
+    shieldPlate.position.set(0, bHeight - (bHeight * 0.38) / 2, 0);
+    group.add(shieldPlate);
 
-    // 3. Glowing Cyan Energy Deflector Strips (visual indicator for bullet protection)
-    const stripGeo = new THREE.BoxGeometry(bWidth * 0.75, 0.06, 0.05);
-    const stripMat = new THREE.MeshBasicMaterial({ color: 0x00f5ff });
-    const stripMesh = new THREE.Mesh(stripGeo, stripMat);
-    stripMesh.position.set(0, bHeight * 0.55, bDepth / 2 + 0.02);
-    group.add(stripMesh);
+    // 3. Top Armored Reinforcement Crest (Brushed Chrome)
+    const crestGeo = new THREE.BoxGeometry(bWidth + 0.04, 0.08, bDepth * 0.4);
+    const crestMesh = new THREE.Mesh(crestGeo, this.steelMat);
+    crestMesh.position.set(0, bHeight + 0.04, 0);
+    group.add(crestMesh);
 
-    // 4. Heavy Ground Anchor Cleats
-    for (const sx of [-bWidth / 2 + 0.15, bWidth / 2 - 0.15]) {
-      const cleatGeo = new THREE.BoxGeometry(0.24, 0.15, bDepth + 0.16);
-      const cleat = new THREE.Mesh(cleatGeo, this.steelMat);
-      cleat.position.set(sx, 0.08, 0);
-      group.add(cleat);
+    // 4. Recessed Status LED Indicator Lightbars (Electric Cyan & Emerald Status)
+    const ledGeo = new THREE.BoxGeometry(bWidth * 0.85, 0.04, 0.04);
+    const ledMat = new THREE.MeshBasicMaterial({ color: 0x00f5ff });
+    const ledFront = new THREE.Mesh(ledGeo, ledMat);
+    ledFront.position.set(0, bHeight * 0.72 - 0.04, bDepth / 2 + 0.015);
+    group.add(ledFront);
+
+    // 5. Dual Heavy Hydraulic Magnetic Ground Anchors
+    for (const sx of [-bWidth / 2 + 0.18, bWidth / 2 - 0.18]) {
+      const anchorGeo = new THREE.BoxGeometry(0.26, 0.20, bDepth + 0.18);
+      const anchor = new THREE.Mesh(anchorGeo, this.steelMat);
+      anchor.position.set(sx, 0.10, 0);
+      group.add(anchor);
+
+      const boltGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.08, 8);
+      const bolt = new THREE.Mesh(boltGeo, this.steelMat);
+      bolt.position.set(sx, 0.22, bDepth / 2 + 0.04);
+      group.add(bolt);
     }
 
     this.scene.add(group);
+
+    // Ensure NO collectables ever overlap or intersect with this barrier
+    for (const p of this.pickups) {
+      if (p.active) {
+        const bMinX = x - bWidth / 2 - 0.55;
+        const bMaxX = x + bWidth / 2 + 0.55;
+        const bMaxY = y + bHeight + 0.55;
+        if (p.position.x >= bMinX && p.position.x <= bMaxX && p.position.y <= bMaxY) {
+          p.position.x = p.position.x >= x ? bMaxX + 0.35 : bMinX - 0.35;
+          p.mesh.position.x = p.position.x;
+        }
+      }
+    }
 
     const obs: ActiveObstacle = {
       id: this.nextId++,
@@ -730,6 +869,520 @@ export class ObstacleManager {
 
     this.obstacles.push(obs);
     return obs;
+  }
+
+  /**
+   * Spawns an Exotic Bioluminescent Snapper Plant (Alien Venus Carnivore)
+   * Beautiful exotic plant that sways gently, tracks the player, and snaps shut with
+   * needle-sharp crystalline fangs when the player gets within 4.5m!
+   * Can be shot and destroyed by blaster shots (takes 2 hits).
+   */
+  /**
+   * Spawns an Alien Cyber Sentinel (Biomechanical Quadruped Stalker)
+   * Heavy armored predator with titanium/obsidian carapace, glowing crimson optics,
+   * 4 articulated hydraulic scythe legs, and dorsal plasma projector.
+   * Paces along ground/platforms and attacks the player! Takes 3 hits to destroy.
+   */
+  public spawnAlienCyberSentinel(x: number, y: number = -3.70): ActiveObstacle {
+    const group = new THREE.Group();
+    group.position.set(x, y, 0);
+
+    // Modern White & Chrome Chassis with Flashing Blue Buttons
+    const whiteChassisMat = new THREE.MeshStandardMaterial({
+      color: 0xf4f7fa,
+      metalness: 0.12,
+      roughness: 0.20,
+    });
+    const jointChromeMat = new THREE.MeshStandardMaterial({
+      color: 0xdae2ec,
+      metalness: 0.95,
+      roughness: 0.10,
+    });
+    const darkTrimMat = new THREE.MeshBasicMaterial({
+      color: 0x0a101d,
+    });
+    const glowBlueVisorMat = new THREE.MeshBasicMaterial({
+      color: 0x00f5ff,
+    });
+
+    const bodyRoot = new THREE.Group();
+    bodyRoot.position.set(0, 0.65, 0);
+    group.add(bodyRoot);
+
+    // 1. Sleek Modern Rounded White Carapace / Torso
+    const thoraxGeo = createRoundedBoxGeo(0.92, 0.42, 0.50, 0.10);
+    const thorax = new THREE.Mesh(thoraxGeo, whiteChassisMat);
+    bodyRoot.add(thorax);
+
+    // Dark Accent Spine Strip
+    const spineStrip = new THREE.Mesh(
+      new THREE.BoxGeometry(0.85, 0.06, 0.14),
+      darkTrimMat
+    );
+    spineStrip.position.set(0, 0.22, 0);
+    bodyRoot.add(spineStrip);
+
+    // Flashing Electric Blue LED Buttons (3 on left flank, 3 on right flank = 6 total)
+    const ledMaterials: THREE.MeshBasicMaterial[] = [];
+    for (const zSide of [0.26, -0.26]) {
+      // Recessed console plate
+      const plate = new THREE.Mesh(
+        new THREE.BoxGeometry(0.55, 0.14, 0.03),
+        darkTrimMat
+      );
+      plate.position.set(0, 0.05, zSide);
+      bodyRoot.add(plate);
+
+      // 3 flashing rounded buttons
+      for (let b = 0; b < 3; b++) {
+        const bx = -0.18 + b * 0.18;
+        const bMat = new THREE.MeshBasicMaterial({ color: 0x00f5ff });
+        ledMaterials.push(bMat);
+
+        const btnGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.04, 12);
+        btnGeo.rotateX(Math.PI / 2);
+        const btn = new THREE.Mesh(btnGeo, bMat);
+        btn.position.set(bx, 0.05, zSide + (zSide > 0 ? 0.02 : -0.02));
+        bodyRoot.add(btn);
+      }
+    }
+
+    // 2. Modern Aerodynamic Rounded Canine Head
+    const headGroup = new THREE.Group();
+    headGroup.position.set(0.52, 0.06, 0);
+    bodyRoot.add(headGroup);
+
+    const headGeo = createRoundedBoxGeo(0.44, 0.30, 0.36, 0.08);
+    const head = new THREE.Mesh(headGeo, whiteChassisMat);
+    headGroup.add(head);
+
+    // Sleek Electric Blue Visor Slit
+    const visorGeo = new THREE.BoxGeometry(0.12, 0.08, 0.30);
+    const visor = new THREE.Mesh(visorGeo, glowBlueVisorMat);
+    visor.position.set(0.18, 0.04, 0);
+    headGroup.add(visor);
+
+    // Modern Cyber Dog Ears (Angled back)
+    for (const zEar of [-0.15, 0.15]) {
+      const earGeo = new THREE.ConeGeometry(0.04, 0.18, 5);
+      earGeo.rotateZ(0.55);
+      const ear = new THREE.Mesh(earGeo, whiteChassisMat);
+      ear.position.set(-0.12, 0.18, zEar);
+      headGroup.add(ear);
+    }
+
+    // Modern Chrome Audio Sensor Grill / Chin
+    const chin = new THREE.Mesh(
+      new THREE.BoxGeometry(0.14, 0.08, 0.22),
+      jointChromeMat
+    );
+    chin.position.set(0.15, -0.10, 0);
+    headGroup.add(chin);
+
+    // 3. Dorsal Compact Plasma Pulse Coil
+    const cannonBase = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.09, 0.10, 14),
+      jointChromeMat
+    );
+    cannonBase.position.set(-0.16, 0.26, 0);
+    bodyRoot.add(cannonBase);
+
+    const cannonBarrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.038, 0.038, 0.36, 10),
+      whiteChassisMat
+    );
+    cannonBarrel.rotateZ(-Math.PI / 2);
+    cannonBarrel.position.set(0.08, 0.28, 0);
+    bodyRoot.add(cannonBarrel);
+
+    const blueCoilRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.05, 0.014, 8, 16),
+      glowBlueVisorMat
+    );
+    blueCoilRing.rotateY(Math.PI / 2);
+    blueCoilRing.position.set(0.06, 0.28, 0);
+    bodyRoot.add(blueCoilRing);
+
+    // 4. Four Articulated White Legs with Chrome Knees & Blue LED Rings
+    const legs: { upper: THREE.Group; lower: THREE.Group; isFront: boolean }[] = [];
+    const legXOffsets = [0.28, -0.28];
+    const legZOffsets = [0.27, -0.27];
+
+    for (const lx of legXOffsets) {
+      for (const lz of legZOffsets) {
+        const isFront = lx > 0;
+        const upperLeg = new THREE.Group();
+        upperLeg.position.set(lx, -0.10, lz);
+        bodyRoot.add(upperLeg);
+
+        // White upper thigh casing
+        const thighGeo = createRoundedBoxGeo(0.08, 0.34, 0.08, 0.02);
+        thighGeo.translate(0, -0.17, 0);
+        const thigh = new THREE.Mesh(thighGeo, whiteChassisMat);
+        upperLeg.add(thigh);
+
+        // Polished chrome knee joint with Blue LED ring
+        const knee = new THREE.Mesh(
+          new THREE.SphereGeometry(0.055, 10, 10),
+          jointChromeMat
+        );
+        knee.position.set(0, -0.34, 0);
+        upperLeg.add(knee);
+
+        const kneeRing = new THREE.Mesh(
+          new THREE.TorusGeometry(0.056, 0.010, 6, 12),
+          glowBlueVisorMat
+        );
+        kneeRing.rotateX(Math.PI / 2);
+        kneeRing.position.set(0, -0.34, 0);
+        upperLeg.add(kneeRing);
+
+        // Lower leg white paw
+        const lowerLeg = new THREE.Group();
+        lowerLeg.position.set(0, -0.34, 0);
+        upperLeg.add(lowerLeg);
+
+        const shinGeo = new THREE.ConeGeometry(0.038, 0.38, 6);
+        shinGeo.rotateX(Math.PI);
+        shinGeo.translate(0, -0.19, 0);
+        const shin = new THREE.Mesh(shinGeo, whiteChassisMat);
+        lowerLeg.add(shin);
+
+        legs.push({ upper: upperLeg, lower: lowerLeg, isFront });
+      }
+    }
+
+    this.scene.add(group);
+
+    // Robust Platform Edge Detection:
+    // Determine minX and maxX so the robot dog NEVER walks off platform edges into air!
+    const startX = x;
+    let minX = startX - 2.8;
+    let maxX = startX + 2.8;
+
+    if (y > -3.5) {
+      // Find platform underneath this elevated patrol dog
+      const platforms = this.getPlatforms();
+      const plat = platforms.find(p => {
+        const pTop = p.y + p.height / 2;
+        const pLeft = p.x - p.width / 2;
+        const pRight = p.x + p.width / 2;
+        return Math.abs(y - pTop) < 0.35 && x >= pLeft && x <= pRight;
+      });
+
+      if (plat) {
+        // Keep 0.45m clearance from both edges so it NEVER falls off
+        minX = plat.x - plat.width / 2 + 0.45;
+        maxX = plat.x + plat.width / 2 - 0.45;
+        if (maxX < minX) {
+          // Very narrow platform: center it
+          minX = plat.x - 0.2;
+          maxX = plat.x + 0.2;
+        }
+      }
+    }
+
+    let patrolDir = 1;
+    let walkPhase = Math.random() * Math.PI * 2;
+    let currentX = THREE.MathUtils.clamp(x, minX, maxX);
+
+    const obs: ActiveObstacle = {
+      id: this.nextId++,
+      type: ObstacleType.ALIEN_CYBER_SENTINEL,
+      group,
+      collider: {
+        type: 'box',
+        halfSize: new THREE.Vector2(0.75, 0.65),
+        center: new THREE.Vector2(x, y + 0.65),
+      },
+      health: 3,
+      destructible: true,
+      active: true,
+      update: (dt: number, time: number) => {
+        // Flashing Electric Blue LED Buttons Pattern
+        for (let i = 0; i < ledMaterials.length; i++) {
+          const pulse = Math.sin(time * 14.0 + i * 1.3);
+          const isBright = pulse > -0.2;
+          ledMaterials[i].color.setHex(isBright ? 0x00f5ff : 0x002244);
+        }
+
+        // Stalking Patrol Navigation with strict Edge Boundaries (never falls off!)
+        currentX += patrolDir * 1.6 * dt;
+        if (currentX >= maxX) {
+          currentX = maxX;
+          patrolDir = -1;
+        } else if (currentX <= minX) {
+          currentX = minX;
+          patrolDir = 1;
+        }
+
+        group.position.x = currentX;
+        if (obs.collider.center) {
+          obs.collider.center.x = currentX;
+          obs.collider.center.y = group.position.y + 0.65;
+        }
+
+        // Smooth Turn Face Direction
+        group.scale.x = patrolDir;
+
+        // Animate 4-Leg Stalking Canine Gait
+        walkPhase += dt * 7.5;
+        for (let i = 0; i < legs.length; i++) {
+          const l = legs[i];
+          const phaseOffset = i % 2 === 0 ? 0 : Math.PI;
+          const legAngle = Math.sin(walkPhase + phaseOffset) * 0.48;
+          l.upper.rotation.z = legAngle;
+          l.lower.rotation.z = -Math.abs(legAngle) * 0.65;
+        }
+
+        // Body Breathing & Head Hunting Sway
+        bodyRoot.position.y = 0.65 + Math.abs(Math.sin(walkPhase * 2)) * 0.06;
+        headGroup.rotation.y = Math.sin(time * 2.5) * 0.22;
+      },
+    };
+
+    this.obstacles.push(obs);
+    return obs;
+  }
+
+  // Legacy Plant Forwarders -> Automatically Replaced by Alien Cyber Sentinel!
+  public spawnAlienSnapper(x: number, y: number = -3.70): ActiveObstacle {
+    return this.spawnAlienCyberSentinel(x, y);
+  }
+
+  public spawnSporeSpire(x: number, y: number = -3.70): ActiveObstacle {
+    return this.spawnAlienCyberSentinel(x, y);
+  }
+
+  /**
+   * Spawns a high-voltage deadly Sky Maze Laser Barrier Wall
+   * Touching this wall causes INSTANT DEATH to the player!
+   */
+  public spawnSkyMazeWall(x: number, y: number, width: number, height: number): ActiveObstacle {
+    const group = new THREE.Group();
+    group.position.set(x, y, 0);
+
+    const frameMat = new THREE.MeshStandardMaterial({
+      color: 0x11131a,
+      metalness: 0.9,
+      roughness: 0.2,
+    });
+    const isHorizontal = width >= height;
+
+    if (isHorizontal) {
+      const railGeo = new THREE.BoxGeometry(width + 0.3, 0.14, 0.45);
+      const railTop = new THREE.Mesh(railGeo, frameMat);
+      railTop.position.set(0, height / 2, 0);
+      group.add(railTop);
+
+      const railBot = new THREE.Mesh(railGeo, frameMat);
+      railBot.position.set(0, -height / 2, 0);
+      group.add(railBot);
+
+      const nodeGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.35, 12);
+      const nodeL = new THREE.Mesh(nodeGeo, this.steelMat);
+      nodeL.position.set(-width / 2, 0, 0);
+      group.add(nodeL);
+      const nodeR = new THREE.Mesh(nodeGeo, this.steelMat);
+      nodeR.position.set(width / 2, 0, 0);
+      group.add(nodeR);
+    } else {
+      const postGeo = new THREE.BoxGeometry(0.14, height + 0.3, 0.45);
+      const postL = new THREE.Mesh(postGeo, frameMat);
+      postL.position.set(-width / 2, 0, 0);
+      group.add(postL);
+
+      const postR = new THREE.Mesh(postGeo, frameMat);
+      postR.position.set(width / 2, 0, 0);
+      group.add(postR);
+
+      const nodeGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.35, 12);
+      nodeGeo.rotateX(Math.PI / 2);
+      const nodeT = new THREE.Mesh(nodeGeo, this.steelMat);
+      nodeT.position.set(0, height / 2, 0);
+      group.add(nodeT);
+      const nodeB = new THREE.Mesh(nodeGeo, this.steelMat);
+      nodeB.position.set(0, -height / 2, 0);
+      group.add(nodeB);
+    }
+
+    // High-Voltage Bio-Plasma Laser Curtain (Lethal Violet-Magenta Field with Cyan Core)
+    const energyGeo = new THREE.PlaneGeometry(width, height);
+    const energyMat = new THREE.MeshBasicMaterial({
+      color: 0xaa00ff,
+      transparent: true,
+      opacity: 0.80,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    });
+    const energyCurtain = new THREE.Mesh(energyGeo, energyMat);
+    group.add(energyCurtain);
+
+    const coreBeamGeo = isHorizontal
+      ? new THREE.BoxGeometry(width, 0.08, 0.12)
+      : new THREE.BoxGeometry(0.08, height, 0.12);
+    const coreBeamMat = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+    });
+    const coreBeam = new THREE.Mesh(coreBeamGeo, coreBeamMat);
+    group.add(coreBeam);
+
+    this.scene.add(group);
+
+    const obs: ActiveObstacle = {
+      id: this.nextId++,
+      type: ObstacleType.SKY_MAZE_WALL,
+      group,
+      collider: {
+        type: 'box',
+        halfSize: new THREE.Vector2(width / 2, height / 2),
+        center: new THREE.Vector2(x, y),
+      },
+      destructible: false,
+      health: 99999,
+      active: true,
+      update: (dt: number, time: number) => {
+        const pulse = 0.70 + Math.sin(time * 16.0 + x) * 0.30;
+        energyMat.opacity = pulse * 0.85;
+        const hueShift = 0.5 + Math.sin(time * 8.0) * 0.5;
+        energyMat.color.setRGB(0.7 + 0.3 * hueShift, 0.1 * hueShift, 1.0);
+      },
+    };
+
+    this.obstacles.push(obs);
+    return obs;
+  }
+
+  /**
+   * Spawns a high-altitude deadly Sky Maze in Level 2 with rich collectibles!
+   * Touching ANY wall of the maze causes INSTANT DEATH.
+   */
+  public spawnSkyMaze(startX: number, baseY: number = 4.5) {
+    const mazeLength = 32.0;
+    const mazeHeight = 11.0;
+    const topY = baseY + mazeHeight;
+
+    // 1. Outer Boundary Laser Walls (Spacious 11-meter vertical arena)
+    this.spawnSkyMazeWall(startX + mazeLength / 2, topY, mazeLength, 0.5);
+    this.spawnSkyMazeWall(startX + mazeLength / 2, baseY, mazeLength, 0.5);
+
+    // 2. Interior Maze Baffles / Obstacle Gates (Extra-wide clearances for smooth, fun jetpack navigation)
+    // Gate 1: Hanging Laser Pillar from ceiling (Leaves 6.5m spacious clearance underneath!)
+    this.spawnSkyMazeWall(startX + 6.0, baseY + 8.8, 0.8, 4.4);
+
+    // Gate 2: Rising Spire Laser Pillar from floor (Leaves 6.8m wide open crest above!)
+    this.spawnSkyMazeWall(startX + 13.0, baseY + 2.1, 0.8, 4.2);
+
+    // Divider 3: Horizontal Bifurcation Beam (Splits passage with 5m+ clearance on both paths)
+    this.spawnSkyMazeWall(startX + 21.0, baseY + 5.5, 8.5, 0.5);
+
+    // Gate 4: High Path Baffle (Soft guide forcing smooth swoop to exit corridor)
+    this.spawnSkyMazeWall(startX + 25.5, baseY + 9.5, 0.8, 3.0);
+
+    // 3. Generous Collectibles along safe, wide flight corridors
+    // Entrance launch booster
+    this.spawnFuelPickup(startX - 0.8, baseY + 2.2);
+
+    // Low corridor waypoint rewards (comfortable cruising altitude)
+    this.spawnCoinPickup(startX + 4.0, baseY + 2.2);
+    this.spawnCoinPickup(startX + 6.0, baseY + 2.2);
+    this.spawnCoinPickup(startX + 8.5, baseY + 2.2);
+
+    // High crest waypoint rewards
+    this.spawnFuelPickup(startX + 13.0, baseY + 8.0);
+    this.spawnCoinPickup(startX + 11.0, baseY + 8.0);
+    this.spawnCoinPickup(startX + 15.0, baseY + 8.0);
+
+    // Fork: Low Path
+    this.spawnCoinPickup(startX + 18.5, baseY + 2.4);
+    this.spawnFuelPickup(startX + 21.0, baseY + 2.4);
+    this.spawnCoinPickup(startX + 23.5, baseY + 2.4);
+
+    // Fork: High Path (Secret Golden Stash!)
+    this.spawnCoinPickup(startX + 18.5, baseY + 8.0);
+    this.spawnCoinPickup(startX + 21.0, baseY + 8.0);
+    this.spawnFuelPickup(startX + 23.5, baseY + 8.0);
+
+    // Exit Triumphant Cache
+    this.spawnCoinPickup(startX + 28.5, baseY + 5.5);
+    this.spawnFuelPickup(startX + 30.5, baseY + 5.5);
+  }
+
+  /**
+   * Spawns the Hyper-Ion Quantum Jetpack Collectible Upgrade
+   */
+  public spawnHyperJetpackPickup(x: number, y: number): ActivePickup {
+    const group = new THREE.Group();
+    group.position.set(x, y, 0);
+
+    // Holographic Gyro Ring 1 (Cyan)
+    const ring1Geo = new THREE.TorusGeometry(0.46, 0.024, 8, 32);
+    const ring1Mat = new THREE.MeshBasicMaterial({
+      color: 0x00f5ff,
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+    });
+    const ring1 = new THREE.Mesh(ring1Geo, ring1Mat);
+    group.add(ring1);
+
+    // Holographic Gyro Ring 2 (Magenta)
+    const ring2Geo = new THREE.TorusGeometry(0.44, 0.022, 8, 32);
+    const ring2Mat = new THREE.MeshBasicMaterial({
+      color: 0xff00bb,
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+    });
+    const ring2 = new THREE.Mesh(ring2Geo, ring2Mat);
+    ring2.rotation.x = Math.PI / 3;
+    group.add(ring2);
+
+    // High-Energy Sparkling Core
+    const coreGeo = new THREE.OctahedronGeometry(0.20, 0);
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      blending: THREE.AdditiveBlending,
+    });
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    group.add(core);
+
+    // Mini Hyper Aero Wings
+    const miniWingGeo = new THREE.BoxGeometry(0.42, 0.06, 0.08);
+    const wingMat = new THREE.MeshStandardMaterial({
+      color: 0x111625,
+      metalness: 0.9,
+      roughness: 0.2,
+    });
+    const miniWings = new THREE.Mesh(miniWingGeo, wingMat);
+    miniWings.position.set(0, -0.04, 0);
+    group.add(miniWings);
+
+    this.scene.add(group);
+
+    const pickup: ActivePickup = {
+      id: this.nextId++,
+      type: PickupType.JETPACK_UPGRADE,
+      mesh: group,
+      position: group.position,
+      radius: 0.65,
+      active: true,
+      update: (dt: number, time: number) => {
+        group.position.y = y + Math.sin(time * 3.5) * 0.18;
+        ring1.rotation.z += dt * 3.2;
+        ring1.rotation.y += dt * 2.0;
+        ring2.rotation.z -= dt * 2.8;
+        ring2.rotation.x += dt * 2.2;
+        core.rotation.y += dt * 4.0;
+        core.rotation.z += dt * 3.0;
+      },
+    };
+
+    this.pickups.push(pickup);
+    return pickup;
   }
 
   /**
@@ -842,6 +1495,27 @@ export class ObstacleManager {
    * - Counter-rotating tilted atomic energy rings
    */
   public spawnFuelPickup(x: number, y: number): ActivePickup {
+    // Collision Prevention: Ensure collectibles NEVER go over/intersect with barriers or wheels
+    for (const obs of this.obstacles) {
+      if (!obs.active) continue;
+      if (obs.type === ObstacleType.COVER_BARRIER) {
+        const bHalf = obs.collider.halfSize || new THREE.Vector2(0.8, 0.625);
+        const bCenter = obs.collider.center || new THREE.Vector2(obs.group.position.x, obs.group.position.y + bHalf.y);
+        const bMinX = bCenter.x - bHalf.x - 0.55;
+        const bMaxX = bCenter.x + bHalf.x + 0.55;
+        const bMaxY = bCenter.y + bHalf.y + 0.55;
+        if (x >= bMinX && x <= bMaxX && y <= bMaxY) {
+          x = x >= bCenter.x ? bMaxX + 0.35 : bMinX - 0.35;
+        }
+      } else if (obs.type === ObstacleType.GEAR) {
+        const gearRadius = obs.collider.radius || 2.2;
+        const dist = Math.hypot(x - obs.group.position.x, y - obs.group.position.y);
+        if (dist < gearRadius + 0.55) {
+          y = obs.group.position.y + gearRadius + 0.75;
+        }
+      }
+    }
+
     const group = new THREE.Group();
     group.position.set(x, y, 0);
 
@@ -967,6 +1641,27 @@ export class ObstacleManager {
    * - Pulsing translucent holographic energy halo
    */
   public spawnCoinPickup(x: number, y: number): ActivePickup {
+    // Collision Prevention: Ensure collectibles NEVER go over/intersect with barriers or wheels
+    for (const obs of this.obstacles) {
+      if (!obs.active) continue;
+      if (obs.type === ObstacleType.COVER_BARRIER) {
+        const bHalf = obs.collider.halfSize || new THREE.Vector2(0.8, 0.625);
+        const bCenter = obs.collider.center || new THREE.Vector2(obs.group.position.x, obs.group.position.y + bHalf.y);
+        const bMinX = bCenter.x - bHalf.x - 0.55;
+        const bMaxX = bCenter.x + bHalf.x + 0.55;
+        const bMaxY = bCenter.y + bHalf.y + 0.55;
+        if (x >= bMinX && x <= bMaxX && y <= bMaxY) {
+          x = x >= bCenter.x ? bMaxX + 0.35 : bMinX - 0.35;
+        }
+      } else if (obs.type === ObstacleType.GEAR) {
+        const gearRadius = obs.collider.radius || 2.2;
+        const dist = Math.hypot(x - obs.group.position.x, y - obs.group.position.y);
+        if (dist < gearRadius + 0.55) {
+          y = obs.group.position.y + gearRadius + 0.75;
+        }
+      }
+    }
+
     const group = new THREE.Group();
     group.position.set(x, y, 0);
 
@@ -1094,6 +1789,45 @@ export class ObstacleManager {
           width: crate.width,
           height: crate.height,
         });
+      }
+    }
+    // Cover Barriers act as solid physical platforms for smooth walking on top
+    for (const obs of this.obstacles) {
+      if (obs.active && obs.type === ObstacleType.COVER_BARRIER) {
+        const half = obs.collider.halfSize || new THREE.Vector2(0.8, 0.625);
+        const center = obs.collider.center || new THREE.Vector2(obs.group.position.x, obs.group.position.y + half.y);
+        list.push({
+          x: center.x,
+          y: center.y,
+          width: half.x * 2,
+          height: half.y * 2,
+        });
+      }
+    }
+    // Upper gantry housing of mechanical press allows player to safely land, stand, and walk on top!
+    for (const obs of this.obstacles) {
+      if (obs.active && obs.type === ObstacleType.PISTON) {
+        list.push({
+          x: obs.group.position.x,
+          y: obs.group.position.y,
+          width: 2.4,
+          height: 1.2,
+        });
+      }
+    }
+    // Horizontal Sky Maze floor and ceiling barriers act as solid landing surfaces for ragdoll death
+    for (const obs of this.obstacles) {
+      if (obs.active && obs.type === ObstacleType.SKY_MAZE_WALL) {
+        const half = obs.collider.halfSize || new THREE.Vector2(0.5, 0.5);
+        if (half.x > half.y && half.x >= 1.5) {
+          const center = obs.collider.center || new THREE.Vector2(obs.group.position.x, obs.group.position.y);
+          list.push({
+            x: center.x,
+            y: center.y,
+            width: half.x * 2,
+            height: half.y * 2,
+          });
+        }
       }
     }
     return list;
@@ -1244,6 +1978,51 @@ export class ObstacleManager {
         type === PickupType.FUEL
           ? (spawned % 2 === 0 ? 0x00f5ff : 0x39ff14)
           : (spawned % 2 === 0 ? 0xffea00 : 0xff8800)
+      );
+      p.mesh.scale.set(p.baseScale, p.baseScale, p.baseScale);
+      p.mesh.visible = true;
+
+      spawned++;
+      if (spawned >= count) break;
+    }
+  }
+
+  /**
+   * Spawns Visible High-Energy Bullet Impact Flash & Ricochet Sparks on Any Surface
+   */
+  public spawnBulletImpact(x: number, y: number, color: number = 0x00f5ff) {
+    // 1. Expanding High-Energy Impact Shockwave Ring
+    const sw = this.fxShockwaves.find(s => !s.active);
+    if (sw) {
+      sw.active = true;
+      sw.age = 0;
+      sw.mesh.position.set(x, y, 0.12);
+      sw.mesh.scale.set(0.15, 0.15, 0.15);
+      (sw.mesh.material as THREE.MeshBasicMaterial).color.setHex(color);
+      sw.mesh.visible = true;
+    }
+
+    // 2. High-Speed Ricochet Spark Particles
+    const count = 10;
+    let spawned = 0;
+    for (const p of this.fxParticles) {
+      if (p.active) continue;
+      p.active = true;
+      p.age = 0;
+      p.maxLife = 0.22 + Math.random() * 0.16;
+      p.baseScale = 0.65 + Math.random() * 0.45;
+      p.mesh.position.set(x, y, 0.12);
+
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 4.0 + Math.random() * 6.5;
+      p.velocity.set(
+        Math.cos(angle) * speed,
+        Math.sin(angle) * speed,
+        0
+      );
+
+      (p.mesh.material as THREE.MeshBasicMaterial).color.setHex(
+        spawned % 2 === 0 ? color : 0xffffff
       );
       p.mesh.scale.set(p.baseScale, p.baseScale, p.baseScale);
       p.mesh.visible = true;

@@ -7,6 +7,7 @@ import { ObstacleManager, ObstacleType, PickupType } from './level/Obstacles';
 import { ParallaxLayers } from './level/ParallaxLayers';
 import { LevelGenerator } from './level/LevelGenerator';
 import { HUD } from './ui/HUD';
+import { MeteorManager, MeteorType } from './entities/MeteorManager';
 
 enum GameState {
   START,
@@ -23,6 +24,7 @@ class Game {
   private parallaxLayers: ParallaxLayers;
   private levelGenerator: LevelGenerator;
   private hud: HUD;
+  private meteorManager: MeteorManager;
 
   private state: GameState = GameState.START;
   private score: number = 0;
@@ -42,9 +44,16 @@ class Game {
     this.player = new Player(this.sceneManager.scene);
     this.player.onFootstep = () => this.audioManager.playFootstep();
     this.player.onShieldDeflect = () => this.audioManager.playShieldDeflect();
+    this.player.onRadioTransmit = () => this.audioManager.playRadioWavePing();
+    this.player.onBallBounce = (s) => this.audioManager.playBallBounce(s);
     this.obstacleManager = new ObstacleManager(this.sceneManager.scene);
     this.parallaxLayers = new ParallaxLayers(this.sceneManager.scene);
     this.levelGenerator = new LevelGenerator(this.obstacleManager);
+    this.meteorManager = new MeteorManager(this.sceneManager.scene);
+    this.meteorManager.onSedimentWarning = () => {
+      this.audioManager.playRadioCrackleSedimentWarning();
+      this.hud.showRadioWarningBanner('WARNING — INCOMING PLANET SEDIMENT');
+    };
 
     this.setupLockOnSystem();
     this.setupUIEvents();
@@ -103,18 +112,107 @@ class Game {
       });
     }
 
-    const shieldBtn = document.getElementById('btn-shield');
-    if (shieldBtn) {
-      shieldBtn.addEventListener('click', () => {
-        const active = this.player.toggleShield();
-        this.audioManager.playShieldToggle(active);
-        shieldBtn.textContent = active ? '🛡️ SHIELD ON [B]' : '🛡️ SHIELD [B]';
+    const toggleBall = () => {
+      const active = this.player.toggleBallMode();
+      this.audioManager.playShieldToggle(active);
+      const shieldBtn = document.getElementById('btn-shield');
+      if (shieldBtn) {
+        shieldBtn.textContent = active ? '⚽ BALL MODE: ON [B]' : '⚽ BALL [B]';
         shieldBtn.style.color = active ? '#00f5ff' : '#ffaa00';
         shieldBtn.style.borderColor = active ? '#00f5ff' : '#666';
+      }
+      const touchBall = document.getElementById('btn-touch-ball');
+      if (touchBall) {
+        touchBall.style.background = active
+          ? 'radial-gradient(circle at 35% 35%, rgba(0, 245, 255, 0.8), rgba(0, 50, 100, 0.9))'
+          : '';
+        touchBall.style.borderColor = active ? '#00f5ff' : '';
+      }
+    };
+
+    const shieldBtn = document.getElementById('btn-shield');
+    if (shieldBtn) {
+      shieldBtn.addEventListener('click', toggleBall);
+    }
+    const touchBall = document.getElementById('btn-touch-ball');
+    if (touchBall) {
+      touchBall.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        toggleBall();
       });
     }
 
+    const levelBtn = document.getElementById('btn-level');
+    if (levelBtn) {
+      levelBtn.addEventListener('click', () => {
+        const nextLevel = this.levelGenerator.currentLevel === 1 ? 2 : 1;
+        this.switchLevel(nextLevel);
+      });
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyL') {
+        const nextLevel = this.levelGenerator.currentLevel === 1 ? 2 : 1;
+        this.switchLevel(nextLevel);
+      }
+    });
+
     (window as any).__game = this;
+  }
+
+  public switchLevel(lvl: number) {
+    this.levelGenerator.setLevel(lvl);
+    this.parallaxLayers.setLevel(lvl);
+    this.player.reset(0, -3.70);
+    this.score = 0;
+    const levelBtn = document.getElementById('btn-level');
+    if (levelBtn) {
+      if (lvl === 2) {
+        levelBtn.textContent = '🏭 LEVEL 1: COMPLEX [L]';
+        levelBtn.style.color = '#ffaa00';
+        levelBtn.style.borderColor = '#ffaa00';
+      } else {
+        levelBtn.textContent = '🪐 LEVEL 2: ALIEN [L]';
+        levelBtn.style.color = '#39ff14';
+        levelBtn.style.borderColor = '#39ff14';
+      }
+    }
+    const levelName = lvl === 2 ? 'PLANET XYLOS (ALIEN WORLD)' : 'INDUSTRIAL COMPLEX';
+    this.showUpgradeBanner(`★ SWITCHED TO ${levelName} ★`);
+  }
+
+  private showUpgradeBanner(msg: string) {
+    let banner = document.getElementById('hud-upgrade-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'hud-upgrade-banner';
+      banner.style.position = 'fixed';
+      banner.style.top = '72px';
+      banner.style.left = '50%';
+      banner.style.transform = 'translateX(-50%)';
+      banner.style.background = 'rgba(0, 18, 25, 0.94)';
+      banner.style.border = '2px solid #00f5ff';
+      banner.style.boxShadow = '0 0 25px rgba(0, 245, 255, 0.7)';
+      banner.style.color = '#00f5ff';
+      banner.style.padding = '12px 24px';
+      banner.style.fontFamily = "'Press Start 2P', monospace";
+      banner.style.fontSize = '12px';
+      banner.style.zIndex = '250';
+      banner.style.borderRadius = '8px';
+      banner.style.textAlign = 'center';
+      banner.style.pointerEvents = 'none';
+      banner.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
+      document.body.appendChild(banner);
+    }
+    banner.textContent = msg;
+    banner.style.opacity = '1';
+    banner.style.transform = 'translateX(-50%) scale(1.05)';
+    setTimeout(() => {
+      if (banner) {
+        banner.style.opacity = '0';
+        banner.style.transform = 'translateX(-50%) scale(0.9)';
+      }
+    }, 3200);
   }
 
   private startGame() {
@@ -122,6 +220,7 @@ class Game {
     this.score = 0;
     this.player.reset(0, -3.70); // Start in idle on solid ground
     this.levelGenerator.reset(0);
+    this.meteorManager.reset();
   }
 
   private onGameOver() {
@@ -170,15 +269,22 @@ class Game {
         this.audioManager.playHitImpact();
       }
 
-      // Bubble Force Field Toggle ([B] key or UI button)
+      // Bubble Force Field / Ball Mode Toggle ([B] key or UI button)
       if (this.inputManager.consumeShieldTrigger()) {
-        const active = this.player.toggleShield();
+        const active = this.player.toggleBallMode();
         this.audioManager.playShieldToggle(active);
         const shieldBtn = document.getElementById('btn-shield');
         if (shieldBtn) {
-          shieldBtn.textContent = active ? '🛡️ SHIELD ON [B]' : '🛡️ SHIELD [B]';
+          shieldBtn.textContent = active ? '⚽ BALL MODE: ON [B]' : '⚽ BALL [B]';
           shieldBtn.style.color = active ? '#00f5ff' : '#ffaa00';
           shieldBtn.style.borderColor = active ? '#00f5ff' : '#666';
+        }
+        const touchBall = document.getElementById('btn-touch-ball');
+        if (touchBall) {
+          touchBall.style.background = active
+            ? 'radial-gradient(circle at 35% 35%, rgba(0, 245, 255, 0.8), rgba(0, 50, 100, 0.9))'
+            : '';
+          touchBall.style.borderColor = active ? '#00f5ff' : '';
         }
       }
 
@@ -194,6 +300,14 @@ class Game {
       const jumpPressed = this.inputManager.consumeJumpTrigger();
       const platforms = this.obstacleManager.getPlatforms();
 
+      // Determine if Jones is under fire or under pressure for antennae radio signals
+      const underPressure =
+        this.player.life < 55 ||
+        this.player.invulnerableTime > 0 ||
+        this.obstacleManager.drones.some(
+          d => d.active && Math.hypot(d.position.x - this.player.position.x, d.position.y - this.player.position.y) < 10.0
+        );
+
       this.player.update(
         dt,
         this.inputManager.moveX,
@@ -203,16 +317,25 @@ class Game {
         platforms,
         this.inputManager.mouseWorldTarget,
         this.inputManager.hasMouse,
-        this.inputManager.crouch
+        this.inputManager.crouch,
+        underPressure
       );
 
-      // 4. Update Level & Obstacles & Alien Blobs
+      // Update Falling Meteor & Shatter Shrapnel System
+      this.meteorManager.update(
+        dt,
+        this.player,
+        this.obstacleManager,
+        (type) => this.audioManager.playMeteorShatter(type === MeteorType.CRYSTAL)
+      );
+
+      // 4. Update Level & Obstacles & Alien Enemies
       this.levelGenerator.update(this.player.position.x);
       this.obstacleManager.update(dt, totalTime, this.player.position.x, this.player.position.y);
       this.parallaxLayers.update(this.player.position.x, this.player.position.y, totalTime);
 
       // 5. Collision Checks
-      this.checkCollisions();
+      this.checkCollisions(dt);
 
       // 6. Score tracking
       if (this.player.position.x * 10 > this.score) {
@@ -251,7 +374,7 @@ class Game {
     this.sceneManager.render();
   }
 
-  private checkCollisions() {
+  private checkCollisions(dt: number = 0.016) {
     const pPos = this.player.position;
     const pCenterY = pPos.y + 1.0;
     const pRadius = 0.45;
@@ -265,39 +388,8 @@ class Game {
       let hit = false;
       const obsPos = obs.group.position;
 
+      // Cover Barriers are in platforms list (getPlatforms), so player lands & walks on them natively
       if (obs.type === ObstacleType.COVER_BARRIER) {
-        // Tactical Cover Barrier: Solid waist-high blast barricade
-        const half = obs.collider.halfSize || new THREE.Vector2(0.8, 0.625);
-        const center = obs.collider.center || new THREE.Vector2(obsPos.x, obsPos.y + half.y);
-        const barrierMinX = center.x - half.x;
-        const barrierMaxX = center.x + half.x;
-        const barrierTopY = center.y + half.y;
-
-        // 1. Standing on top of barrier
-        if (
-          pPos.y >= barrierTopY - 0.28 &&
-          pPos.x >= barrierMinX - 0.15 &&
-          pPos.x <= barrierMaxX + 0.15
-        ) {
-          if (this.player.velocity.y <= 0) {
-            this.player.position.y = barrierTopY;
-            this.player.velocity.y = 0;
-            this.player.isGrounded = true;
-          }
-        }
-        // 2. Solid horizontal wall blocking
-        else if (
-          pPos.y < barrierTopY - 0.05 &&
-          pPos.x + 0.35 >= barrierMinX &&
-          pPos.x - 0.35 <= barrierMaxX
-        ) {
-          if (pPos.x < center.x) {
-            this.player.position.x = barrierMinX - 0.35;
-          } else {
-            this.player.position.x = barrierMaxX + 0.35;
-          }
-          this.player.velocity.x = 0;
-        }
         continue;
       } else if (obs.type === ObstacleType.LASER_GATE) {
         const half = obs.collider.halfSize || new THREE.Vector2(1.3, 1.2);
@@ -334,8 +426,8 @@ class Game {
           continue;
         }
       } else if (obs.type === ObstacleType.PISTON) {
-        // ACCURATE PISTON / MECHANICAL PRESS COLLISION TAKING PLAYER'S FULL SIZE INTO ACCOUNT:
-        // Player Bounding Box: Width [pPos.x - 0.35, pPos.x + 0.35], Height [pPos.y, pPos.y + 1.85] (boots to helmet)
+        // ACCURATE PISTON / MECHANICAL PRESS COLLISION
+        // Only the downward crushing hammer kills/damages the player; player can land safely on top!
         const half = obs.collider.halfSize || new THREE.Vector2(0.9, 0.45);
         const center = obs.collider.center || new THREE.Vector2(obsPos.x, obsPos.y);
 
@@ -353,11 +445,49 @@ class Game {
         const overlapY = playerMinY <= hammerMaxY && playerMaxY >= hammerMinY;
 
         if (overlapX && overlapY) {
+          // If player landed safely on top surface of hammer and is not squashed from above
+          if (playerMinY >= hammerMaxY - 0.20 && !obs.isCrushing) {
+            pPos.y = hammerMaxY;
+            this.player.velocity.y = Math.max(0, this.player.velocity.y);
+            this.player.isGrounded = true;
+            continue;
+          }
+
           if (this.player.invulnerableTime <= 0) {
             const knockX = pPos.x < center.x ? -1 : 1;
             this.player.crushHit(35, knockX);
             this.audioManager.playCrushHit();
             this.sceneManager.triggerShake(0.50, 0.32);
+          }
+          continue;
+        }
+      } else if (obs.type === ObstacleType.SKY_MAZE_WALL) {
+        // DEADLY SKY MAZE WALL: Instant death upon contact with any maze wall!
+        const half = obs.collider.halfSize || new THREE.Vector2(0.5, 0.5);
+        const center = obs.collider.center || new THREE.Vector2(obsPos.x, obsPos.y);
+
+        const wallMinX = center.x - half.x;
+        const wallMaxX = center.x + half.x;
+        const wallMinY = center.y - half.y;
+        const wallMaxY = center.y + half.y;
+
+        const playerMinX = pPos.x - 0.32;
+        const playerMaxX = pPos.x + 0.32;
+        const playerMinY = pPos.y;
+        const playerMaxY = pPos.y + (this.player.isCrouching ? 1.10 : 1.85);
+
+        const overlapX = playerMinX <= wallMaxX && playerMaxX >= wallMinX;
+        const overlapY = playerMinY <= wallMaxY && playerMaxY >= wallMinY;
+
+        if (overlapX && overlapY) {
+          if (!this.player.isDying) {
+            this.player.shieldActive = false; // Overwhelms forcefield
+            this.player.life = 0;
+            const knockX = pPos.x < center.x ? -1 : 1;
+            this.player.triggerDeath(knockX);
+            this.audioManager.playExplosion();
+            this.audioManager.playHitImpact();
+            this.sceneManager.triggerShake(0.70, 0.45);
           }
           continue;
         }
@@ -439,27 +569,22 @@ class Game {
         }
       }
 
-      // Drone Red Lasers vs Platforms, Ground, Crates, Cover Barriers, and Player
+      // Drone Red Lasers vs Platforms, Ground, Crates, Cover Barriers, and Player (Tight Bounding Radius)
       for (const rLaser of drone.lasers) {
         if (!rLaser.active) continue;
 
-        // 1. Check against Solid Platforms (Bullets cannot pass through platforms)
-        let hitSolid = false;
-        const rLenX = Math.abs(rLaser.velocity.x) > 0.1 ? 0.45 : 0.15;
-        const rLenY = Math.abs(rLaser.velocity.y) > 0.1 ? 0.45 : 0.15;
-        const rMinX = rLaser.position.x - rLenX;
-        const rMaxX = rLaser.position.x + rLenX;
-        const rMinY = rLaser.position.y - rLenY;
-        const rMaxY = rLaser.position.y + rLenY;
+        const rR = 0.05; // Tight, accurate bullet radius
 
+        // 1. Check against Solid Platforms
+        let hitSolid = false;
         for (const plat of platforms) {
           const platHalfW = plat.width / 2;
           const platHalfH = plat.height / 2;
           if (
-            rMaxX >= plat.x - platHalfW &&
-            rMinX <= plat.x + platHalfW &&
-            rMaxY >= plat.y - platHalfH &&
-            rMinY <= plat.y + platHalfH
+            rLaser.position.x + rR >= plat.x - platHalfW &&
+            rLaser.position.x - rR <= plat.x + platHalfW &&
+            rLaser.position.y + rR >= plat.y - platHalfH &&
+            rLaser.position.y - rR <= plat.y + platHalfH
           ) {
             hitSolid = true;
             break;
@@ -476,10 +601,10 @@ class Game {
           for (const crate of this.obstacleManager.crates) {
             if (!crate.active || crate.isDestroyed) continue;
             if (
-              rMaxX >= crate.position.x - crate.halfW &&
-              rMinX <= crate.position.x + crate.halfW &&
-              rMaxY >= crate.position.y - crate.halfH &&
-              rMinY <= crate.position.y + crate.halfH
+              rLaser.position.x + rR >= crate.position.x - crate.halfW &&
+              rLaser.position.x - rR <= crate.position.x + crate.halfW &&
+              rLaser.position.y + rR >= crate.position.y - crate.halfH &&
+              rLaser.position.y - rR <= crate.position.y + crate.halfH
             ) {
               hitSolid = true;
               crate.takeDamage(1, Math.sign(rLaser.velocity.x) || 1);
@@ -493,18 +618,27 @@ class Game {
           for (const obs of this.obstacleManager.obstacles) {
             if (!obs.active) continue;
             if (obs.type === ObstacleType.HAZARD_PLATFORM) continue;
-            if (
+            
+            if (obs.type === ObstacleType.GEAR) {
+              const gDistSq = (rLaser.position.x - obs.group.position.x) ** 2 + (rLaser.position.y - obs.group.position.y) ** 2;
+              const gRadius = obs.collider.radius || 2.2;
+              if (gDistSq <= gRadius * gRadius) {
+                hitSolid = true;
+                break;
+              }
+            } else if (
               obs.type === ObstacleType.COVER_BARRIER ||
               obs.type === ObstacleType.LASER_GATE ||
-              obs.type === ObstacleType.PISTON
+              obs.type === ObstacleType.PISTON ||
+              obs.type === ObstacleType.SKY_MAZE_WALL
             ) {
               const half = obs.collider.halfSize || new THREE.Vector2(0.8, 0.625);
               const center = obs.collider.center || new THREE.Vector2(obs.group.position.x, obs.group.position.y + half.y);
               if (
-                rMaxX >= center.x - half.x &&
-                rMinX <= center.x + half.x &&
-                rMaxY >= center.y - half.y &&
-                rMinY <= center.y + half.y
+                rLaser.position.x + rR >= center.x - half.x &&
+                rLaser.position.x - rR <= center.x + half.x &&
+                rLaser.position.y + rR >= center.y - half.y &&
+                rLaser.position.y - rR <= center.y + half.y
               ) {
                 hitSolid = true;
                 break;
@@ -514,14 +648,50 @@ class Game {
         }
 
         if (hitSolid) {
+          this.obstacleManager.spawnBulletImpact(rLaser.position.x, rLaser.position.y, drone.isAlien ? 0x39ff14 : 0xff2222);
+          this.player.emitSparks(rLaser.position.x, rLaser.position.y, 0, 6);
           rLaser.active = false;
           rLaser.mesh.visible = false;
           continue;
         }
 
-        // 5. Red Laser vs Player (takes crouch height into account)
+        // 5. Red Laser vs Player (takes crouch height & Bubble Force Field Ricochet into account)
         const playerCurrentHeight = this.player.isCrouching ? 1.10 : 1.85;
         const playerCenterY = pPos.y + playerCurrentHeight / 2;
+
+        // BUBBLE FORCE FIELD: Ricochets & Deflects Bullets Away on Contact!
+        if (this.player.shieldActive) {
+          const shieldCenterY = pPos.y + (this.player.isCrouching ? 0.70 : 1.05);
+          const sDistSq = (pPos.x - rLaser.position.x) ** 2 + (shieldCenterY - rLaser.position.y) ** 2;
+          const shieldRadius = 1.65;
+
+          if (sDistSq <= shieldRadius * shieldRadius) {
+            // Calculate outward normal from bubble center to impact point
+            const dist = Math.sqrt(sDistSq) || 1;
+            const normX = (rLaser.position.x - pPos.x) / dist;
+            const normY = (rLaser.position.y - shieldCenterY) / dist;
+
+            // Reflect bullet velocity vector: v = v - 2*(v·n)*n with bounce boost
+            const dot = rLaser.velocity.x * normX + rLaser.velocity.y * normY;
+            rLaser.velocity.x = (rLaser.velocity.x - 2 * dot * normX) * 1.30 + (Math.random() - 0.5) * 3.5;
+            rLaser.velocity.y = (rLaser.velocity.y - 2 * dot * normY) * 1.30 + (Math.random() - 0.5) * 3.5;
+
+            // Push bullet outside shield boundary
+            rLaser.position.x = pPos.x + normX * (shieldRadius + 0.15);
+            rLaser.position.y = shieldCenterY + normY * (shieldRadius + 0.15);
+            rLaser.mesh.position.copy(rLaser.position);
+            rLaser.mesh.rotation.z = Math.atan2(rLaser.velocity.y, rLaser.velocity.x);
+
+            // Trigger dazzling ricochet sparks and deflect effects
+            this.player.takeDamage(0, normX > 0 ? -1 : 1);
+            this.player.emitSparks(rLaser.position.x, rLaser.position.y, 0, 8);
+            this.obstacleManager.spawnBulletImpact(rLaser.position.x, rLaser.position.y, 0x00ffff);
+            this.audioManager.playShieldDeflect();
+            this.sceneManager.triggerShake(0.18, 0.12);
+            continue;
+          }
+        }
+
         const lDistSq = (pPos.x - rLaser.position.x) ** 2 + (playerCenterY - rLaser.position.y) ** 2;
         const hitRadius = this.player.isCrouching ? 0.38 : 0.48;
 
@@ -539,18 +709,23 @@ class Game {
       }
     }
 
-    // Interactive Physics Supply Crates vs Player (Horizontal Push Momentum)
+    // Interactive Physics Supply Crates vs Player (Smooth Horizontal Push Momentum)
     for (const crate of this.obstacleManager.crates) {
       if (!crate.active || crate.isDestroyed) continue;
       const dx = pPos.x - crate.position.x;
       const overlapX = (pRadius + crate.halfW) - Math.abs(dx);
 
       // Only push horizontally when beside the crate, never when standing smoothly on top
-      if (overlapX > 0 && pPos.y < crate.position.y + crate.halfH - 0.05) {
+      if (overlapX > 0 && pPos.y < crate.position.y + crate.halfH - 0.16 && pPos.y + 1.85 > crate.position.y - crate.halfH) {
         const pushDir = Math.sign(dx) || 1;
-        pPos.x = crate.position.x + pushDir * (pRadius + crate.halfW);
-        crate.velocity.x -= pushDir * (Math.abs(this.player.velocity.x) * 0.7 + 1.5);
-        this.player.velocity.x *= 0.5;
+        if (pushDir < 0) {
+          pPos.x = crate.position.x - (pRadius + crate.halfW);
+          crate.velocity.x += Math.max(1.8, Math.abs(this.player.velocity.x) * 0.85);
+        } else {
+          pPos.x = crate.position.x + (pRadius + crate.halfW);
+          crate.velocity.x -= Math.max(1.8, Math.abs(this.player.velocity.x) * 0.85);
+        }
+        this.player.velocity.x *= 0.55;
       }
     }
 
@@ -564,6 +739,7 @@ class Game {
 
         const distSq = (laser.position.x - enemy.position.x) ** 2 + (laser.position.y - (enemy.position.y + 0.4)) ** 2;
         if (distSq < (enemy.radius + 0.2) ** 2) {
+          this.obstacleManager.spawnBulletImpact(laser.position.x, laser.position.y, 0x00f5ff);
           laser.active = false;
           laser.mesh.visible = false;
           this.audioManager.playEnemyImpact();
@@ -587,6 +763,7 @@ class Game {
 
         const distSq = (laser.position.x - drone.position.x) ** 2 + (laser.position.y - drone.position.y) ** 2;
         if (distSq < (drone.radius + 0.28) ** 2) {
+          this.obstacleManager.spawnBulletImpact(laser.position.x, laser.position.y, 0x00f5ff);
           laser.active = false;
           laser.mesh.visible = false;
           this.audioManager.playEnemyImpact();
@@ -609,14 +786,15 @@ class Game {
 
       if (!laser.active) continue;
 
-      // 3. Check against Physics Supply Crates
+      // 3. Check against Physics Supply Crates (Tight Bounding Box)
       for (const crate of this.obstacleManager.crates) {
         if (!crate.active || crate.isDestroyed) continue;
 
         if (
-          Math.abs(laser.position.x - crate.position.x) < crate.halfW + 0.15 &&
-          Math.abs(laser.position.y - crate.position.y) < crate.halfH + 0.15
+          Math.abs(laser.position.x - crate.position.x) < crate.halfW + 0.05 &&
+          Math.abs(laser.position.y - crate.position.y) < crate.halfH + 0.05
         ) {
+          this.obstacleManager.spawnBulletImpact(laser.position.x, laser.position.y, 0x00f5ff);
           laser.active = false;
           laser.mesh.visible = false;
           this.audioManager.playEnemyImpact();
@@ -627,12 +805,6 @@ class Game {
             this.audioManager.playExplosion();
             this.sceneManager.triggerShake(0.32, 0.20);
             this.score += 200;
-            // Pop out a reward pickup from destroyed crate!
-            if (Math.random() > 0.45) {
-              this.obstacleManager.spawnFuelPickup(crate.position.x, crate.position.y + 0.4);
-            } else {
-              this.obstacleManager.spawnCoinPickup(crate.position.x, crate.position.y + 0.4);
-            }
           }
           break;
         }
@@ -640,16 +812,17 @@ class Game {
 
       if (!laser.active) continue;
 
-      // 4. Check against Plasma Tubes
+      // 4. Check against Destructible Obstacles & Alien Plants (Tight Bounding Box)
       for (const obs of this.obstacleManager.obstacles) {
         if (!obs.active || !obs.destructible) continue;
 
-        const obsPos = obs.group.position;
+        const center = obs.collider.center || obs.group.position;
         const half = obs.collider.halfSize || new THREE.Vector2(0.65, 1.7);
         if (
-          Math.abs(laser.position.x - obsPos.x) < half.x + 0.35 &&
-          Math.abs(laser.position.y - obsPos.y) < half.y + 0.35
+          Math.abs(laser.position.x - center.x) < half.x + 0.08 &&
+          Math.abs(laser.position.y - center.y) < half.y + 0.08
         ) {
+          this.obstacleManager.spawnBulletImpact(laser.position.x, laser.position.y, 0x00f5ff);
           laser.active = false;
           laser.mesh.visible = false;
           obs.health -= 1;
@@ -667,23 +840,28 @@ class Game {
 
       if (!laser.active) continue;
 
-      // 5. Check against Solid Platforms & Ground Floor (Bullets cannot pass through platforms)
-      const lLenX = Math.abs(laser.velocity.x) > 0.1 ? 0.48 : 0.15;
-      const lLenY = Math.abs(laser.velocity.y) > 0.1 ? 0.48 : 0.15;
-      const lMinX = laser.position.x - lLenX;
-      const lMaxX = laser.position.x + lLenX;
-      const lMinY = laser.position.y - lLenY;
-      const lMaxY = laser.position.y + lLenY;
+      // 5. Check against Solid Platforms & Ground Floor (Swept ray interval prevents any penetration)
+      const bR = 0.08;
+      const lx = laser.position.x;
+      const ly = laser.position.y;
+      const lPrevX = lx - laser.velocity.x * dt * 0.75;
+      const lPrevY = ly - laser.velocity.y * dt * 0.75;
+      const rayMinX = Math.min(lx, lPrevX) - bR;
+      const rayMaxX = Math.max(lx, lPrevX) + bR;
+      const rayMinY = Math.min(ly, lPrevY) - bR;
+      const rayMaxY = Math.max(ly, lPrevY) + bR;
 
       for (const plat of platforms) {
         const platHalfW = plat.width / 2;
         const platHalfH = plat.height / 2;
         if (
-          lMaxX >= plat.x - platHalfW &&
-          lMinX <= plat.x + platHalfW &&
-          lMaxY >= plat.y - platHalfH &&
-          lMinY <= plat.y + platHalfH
+          rayMaxX >= plat.x - platHalfW &&
+          rayMinX <= plat.x + platHalfW &&
+          rayMaxY >= plat.y - platHalfH &&
+          rayMinY <= plat.y + platHalfH
         ) {
+          this.obstacleManager.spawnBulletImpact(laser.position.x, laser.position.y, 0x00f5ff);
+          this.player.emitSparks(laser.position.x, laser.position.y, 0, 7);
           laser.active = false;
           laser.mesh.visible = false;
           this.audioManager.playEnemyImpact();
@@ -692,29 +870,46 @@ class Game {
       }
 
       if (laser.active && laser.position.y <= -3.70) {
+        this.obstacleManager.spawnBulletImpact(laser.position.x, -3.70, 0x00f5ff);
+        this.player.emitSparks(laser.position.x, -3.70, 0, 7);
         laser.active = false;
         laser.mesh.visible = false;
         this.audioManager.playEnemyImpact();
       }
 
-      // 6. Check against Solid Level Objects & Cover Barriers
+      // 6. Check against Solid Level Objects & Scene Obstacles (Barriers, Gates, Pistons, Gears, Sky Maze Walls)
       if (laser.active) {
         for (const obs of this.obstacleManager.obstacles) {
           if (!obs.active) continue;
           if (obs.type === ObstacleType.HAZARD_PLATFORM || obs.destructible) continue;
-          if (
+
+          if (obs.type === ObstacleType.GEAR) {
+            const gDistSq = (laser.position.x - obs.group.position.x) ** 2 + (laser.position.y - obs.group.position.y) ** 2;
+            const gRadius = obs.collider.radius || 2.2;
+            if (gDistSq <= gRadius * gRadius) {
+              this.obstacleManager.spawnBulletImpact(laser.position.x, laser.position.y, 0x00f5ff);
+              this.player.emitSparks(laser.position.x, laser.position.y, 0, 8);
+              laser.active = false;
+              laser.mesh.visible = false;
+              this.audioManager.playEnemyImpact();
+              break;
+            }
+          } else if (
             obs.type === ObstacleType.COVER_BARRIER ||
             obs.type === ObstacleType.LASER_GATE ||
-            obs.type === ObstacleType.PISTON
+            obs.type === ObstacleType.PISTON ||
+            obs.type === ObstacleType.SKY_MAZE_WALL
           ) {
             const half = obs.collider.halfSize || new THREE.Vector2(0.8, 0.625);
             const center = obs.collider.center || new THREE.Vector2(obs.group.position.x, obs.group.position.y + half.y);
             if (
-              lMaxX >= center.x - half.x &&
-              lMinX <= center.x + half.x &&
-              lMaxY >= center.y - half.y &&
-              lMinY <= center.y + half.y
+              rayMaxX >= center.x - half.x &&
+              rayMinX <= center.x + half.x &&
+              rayMaxY >= center.y - half.y &&
+              rayMinY <= center.y + half.y
             ) {
+              this.obstacleManager.spawnBulletImpact(laser.position.x, laser.position.y, 0x00f5ff);
+              this.player.emitSparks(laser.position.x, laser.position.y, 0, 8);
               laser.active = false;
               laser.mesh.visible = false;
               this.audioManager.playEnemyImpact();
@@ -743,6 +938,12 @@ class Game {
         } else if (p.type === PickupType.COIN) {
           this.audioManager.playCoin();
           this.score += 500;
+        } else if (p.type === PickupType.JETPACK_UPGRADE) {
+          this.audioManager.playPickup();
+          this.audioManager.playShieldToggle(true);
+          this.player.upgradeJetpack();
+          this.score += 1500;
+          this.showUpgradeBanner('★ METALLIC RETRO JETPACK UNLOCKED! BIGGER BLUE FLAME & ULTRA AGILITY! ★');
         }
       }
     }
@@ -850,14 +1051,24 @@ class Game {
       }
     }
 
+    // Modern Robot Dogs (Alien Cyber Sentinels) Cursor Lock-On
+    for (const obs of this.obstacleManager.obstacles) {
+      if (!obs.active || obs.type !== ObstacleType.ALIEN_CYBER_SENTINEL) continue;
+      const targetPos = new THREE.Vector3(obs.group.position.x, obs.group.position.y + 0.65, 0);
+      const d = mousePos.distanceTo(targetPos);
+      if (d < closestDist) {
+        closestDist = d;
+        closestEnemy = obs;
+      }
+    }
+
     if (closestEnemy) {
       this.lockedEnemy = closestEnemy;
       const isBlob = !!closestEnemy.slimeTrail;
-      const enemyCenter = new THREE.Vector3(
-        closestEnemy.position.x,
-        closestEnemy.position.y + (isBlob ? 0.45 : 0),
-        0
-      );
+      const isSentinel = closestEnemy.type === ObstacleType.ALIEN_CYBER_SENTINEL;
+      const posX = isSentinel ? closestEnemy.group.position.x : closestEnemy.position.x;
+      const posY = isSentinel ? (closestEnemy.group.position.y + 0.65) : (closestEnemy.position.y + (isBlob ? 0.45 : 0));
+      const enemyCenter = new THREE.Vector3(posX, posY, 0);
 
       // Snap mouse aiming target directly to locked enemy center!
       this.inputManager.mouseWorldTarget.copy(enemyCenter);
@@ -881,7 +1092,8 @@ class Game {
 
 // Robust app initialization
 function startApp() {
-  new Game();
+  const g = new Game();
+  (window as any).game = g;
 }
 
 if (document.readyState === 'loading') {

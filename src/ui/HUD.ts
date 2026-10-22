@@ -127,4 +127,46 @@ export class HUD {
       this.overlayScreen.classList.add('hidden');
     }
   }
+
+  public showRadioWarningBanner(text: string = 'WARNING — INCOMING PLANET SEDIMENT', durationMs: number = 3800) {
+    let banner = document.getElementById('radio-warning-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'radio-warning-banner';
+      banner.style.position = 'fixed';
+      banner.style.top = '68px';
+      banner.style.left = '50%';
+      banner.style.transform = 'translateX(-50%)';
+      banner.style.padding = '10px 22px';
+      banner.style.background = 'rgba(25, 12, 16, 0.94)';
+      banner.style.border = '2px solid #ff4444';
+      banner.style.borderRadius = '6px';
+      banner.style.color = '#ffdd44';
+      banner.style.fontFamily = "'Share Tech Mono', monospace";
+      banner.style.fontSize = '15px';
+      banner.style.fontWeight = 'bold';
+      banner.style.letterSpacing = '1.5px';
+      banner.style.boxShadow = '0 0 24px rgba(255, 68, 68, 0.8), inset 0 0 12px rgba(255, 68, 68, 0.4)';
+      banner.style.zIndex = '999';
+      banner.style.pointerEvents = 'none';
+      banner.style.textAlign = 'center';
+      banner.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+      banner.style.textShadow = '0 0 8px #ff4444';
+      document.body.appendChild(banner);
+    }
+    banner.innerHTML = `<span style="display:inline-block; margin-right:8px;">📻 [RADIO COMMS]</span> ${text}`;
+    banner.style.display = 'block';
+    banner.style.opacity = '1';
+    banner.style.transform = 'translateX(-50%) translateY(0)';
+
+    setTimeout(() => {
+      if (banner) {
+        banner.style.opacity = '0';
+        banner.style.transform = 'translateX(-50%) translateY(-15px)';
+        setTimeout(() => {
+          if (banner) banner.style.display = 'none';
+        }, 400);
+      }
+    }, durationMs);
+  }
 }

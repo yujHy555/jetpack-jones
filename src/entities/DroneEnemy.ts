@@ -34,11 +34,13 @@ export class DroneEnemy {
   public active: boolean = true;
 
   // Visual Meshes - Helmet-styled Attack Drone
+  public isAlien: boolean = false;
   private chassisMesh: THREE.Mesh;
   private eyeMesh: THREE.Mesh;
   private ledMaterials: THREE.MeshBasicMaterial[] = [];
   private antennaBeaconMat: THREE.MeshBasicMaterial;
   private shadowMesh: THREE.Mesh;
+  private tentacleChains: THREE.Group[][] = [];
 
   // AI & Flight Physics
   private patrolX: number;
@@ -58,7 +60,8 @@ export class DroneEnemy {
   private fireballMesh: THREE.Mesh;
   private flashMesh: THREE.Mesh;
 
-  constructor(scene: THREE.Scene, startX: number, startY: number = 0.8, patrolRange: number = 6.0) {
+  constructor(scene: THREE.Scene, startX: number, startY: number = 0.8, patrolRange: number = 6.0, isAlien: boolean = false) {
+    this.isAlien = isAlien;
     this.group = new THREE.Group();
     this.position = this.group.position;
     this.position.set(startX, startY, 0);
@@ -71,12 +74,12 @@ export class DroneEnemy {
 
     // Shared Helmet Materials
     const spaceWhiteMat = new THREE.MeshStandardMaterial({
-      color: 0xf5f7fa,
+      color: this.isAlien ? 0x6a1b9a : 0xf5f7fa,
       roughness: 0.32,
-      metalness: 0.15,
+      metalness: this.isAlien ? 0.35 : 0.15,
     });
     const darkHarnessMat = new THREE.MeshStandardMaterial({
-      color: 0x1e232a,
+      color: this.isAlien ? 0x240046 : 0x1e232a,
       roughness: 0.55,
       metalness: 0.35,
     });
@@ -86,20 +89,81 @@ export class DroneEnemy {
       roughness: 0.18,
     });
     const rubyVisorMat = new THREE.MeshPhysicalMaterial({
-      color: 0xff1133,
-      emissive: 0x660011,
+      color: this.isAlien ? 0x00e676 : 0xff1133,
+      emissive: this.isAlien ? 0x004d20 : 0x660011,
       roughness: 0.12,
       metalness: 0.10,
       transmission: 0.75,
       transparent: true,
       opacity: 0.88,
     });
-    const cyanThrusterMat = new THREE.MeshBasicMaterial({ color: 0x00f5ff });
+    const cyanThrusterMat = new THREE.MeshBasicMaterial({ color: this.isAlien ? 0x39ff14 : 0x00f5ff });
 
     // 1. Aerodynamic Space Helmet Dome Shell
     const helmetGeo = new THREE.SphereGeometry(0.46, 24, 24);
     this.chassisMesh = new THREE.Mesh(helmetGeo, spaceWhiteMat);
     this.group.add(this.chassisMesh);
+
+    // LONG WHITE TENTACLES (Dangling underneath EVERY drone in the level!)
+    const whiteTentacleMat = new THREE.MeshStandardMaterial({
+      color: 0xfafcff,
+      roughness: 0.28,
+      metalness: 0.12,
+    });
+
+    const tentacleBasePositions = [
+      { x: -0.16, z: -0.16 },
+      { x: 0.16, z: -0.16 },
+      { x: -0.16, z: 0.16 },
+      { x: 0.16, z: 0.16 },
+      { x: 0.0, z: -0.22 },
+      { x: 0.0, z: 0.22 },
+    ];
+
+    for (let t = 0; t < tentacleBasePositions.length; t++) {
+      const pos = tentacleBasePositions[t];
+      const chain: THREE.Group[] = [];
+      let parentObj: THREE.Object3D = this.chassisMesh;
+
+      const baseRoot = new THREE.Group();
+      baseRoot.position.set(pos.x, -0.42, pos.z);
+      parentObj.add(baseRoot);
+      parentObj = baseRoot;
+      chain.push(baseRoot);
+
+      const numSegments = 6;
+      for (let s = 0; s < numSegments; s++) {
+        const segGroup = new THREE.Group();
+        if (s > 0) {
+          segGroup.position.set(0, -0.22, 0);
+          parentObj.add(segGroup);
+          parentObj = segGroup;
+          chain.push(segGroup);
+        }
+
+        const topR = 0.042 - s * 0.005;
+        const botR = Math.max(0.012, 0.036 - s * 0.005);
+        const segGeo = new THREE.CylinderGeometry(topR, botR, 0.22, 8);
+        segGeo.translate(0, -0.11, 0);
+        const segMesh = new THREE.Mesh(segGeo, whiteTentacleMat);
+        segGroup.add(segMesh);
+
+        // Rounded spherical knuckle joint
+        const jointGeo = new THREE.SphereGeometry(topR * 1.05, 8, 8);
+        const joint = new THREE.Mesh(jointGeo, whiteTentacleMat);
+        segGroup.add(joint);
+
+        // Tip bead at final segment
+        if (s === numSegments - 1) {
+          const tipGeo = new THREE.SphereGeometry(botR * 1.1, 8, 8);
+          const tip = new THREE.Mesh(tipGeo, whiteTentacleMat);
+          tip.position.set(0, -0.22, 0);
+          segGroup.add(tip);
+        }
+      }
+
+      this.tentacleChains.push(chain);
+    }
 
     // 2. Top Centerline Crest Fin
     const crest = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.08, 0.05), darkHarnessMat);
@@ -227,10 +291,10 @@ export class DroneEnemy {
     this.shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
     scene.add(this.shadowMesh);
 
-    // 4. Red Laser Bolt Pool (Lightweight & High-Performance)
+    // 4. Laser Bolt Pool (Lightweight & High-Performance)
     const laserGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.75, 8);
     laserGeo.rotateZ(Math.PI / 2);
-    const laserMat = new THREE.MeshBasicMaterial({ color: 0xff0022 });
+    const laserMat = new THREE.MeshBasicMaterial({ color: this.isAlien ? 0x39ff14 : 0xff0022 });
 
     for (let i = 0; i < 8; i++) {
       const mesh = new THREE.Mesh(laserGeo, laserMat);
@@ -246,15 +310,29 @@ export class DroneEnemy {
       });
     }
 
-    // 5. Death Scrap Shrapnel Pool
-    const scrapGeo = new THREE.BoxGeometry(0.14, 0.14, 0.14);
-    for (let i = 0; i < 16; i++) {
-      const sMat = new THREE.MeshStandardMaterial({
-        color: i % 2 === 0 ? 0xe58835 : 0x2b313a,
-        roughness: 0.4,
-        metalness: 0.6,
-      });
-      const sMesh = new THREE.Mesh(scrapGeo, sMat);
+    // 5. Death Scrap Shrapnel Pool (Organic Shards & Glowing Spherical Embers - ZERO square components!)
+    const shardGeo = new THREE.TetrahedronGeometry(0.13, 0);
+    const emberGeo = new THREE.SphereGeometry(0.085, 10, 10);
+
+    for (let i = 0; i < 24; i++) {
+      const isEmber = i % 2 === 0;
+      const sMat = isEmber
+        ? new THREE.MeshStandardMaterial({
+            color: 0xffaa00,
+            emissive: 0xff5500,
+            emissiveIntensity: 2.2,
+            roughness: 0.2,
+            metalness: 0.1,
+          })
+        : new THREE.MeshStandardMaterial({
+            color: i % 3 === 0 ? 0xff4400 : 0x2b313a,
+            emissive: i % 3 === 0 ? 0x992200 : 0x000000,
+            emissiveIntensity: 1.0,
+            roughness: 0.35,
+            metalness: 0.8,
+          });
+
+      const sMesh = new THREE.Mesh(isEmber ? emberGeo : shardGeo, sMat);
       sMesh.visible = false;
       scene.add(sMesh);
 
@@ -262,13 +340,13 @@ export class DroneEnemy {
         mesh: sMesh,
         velocity: new THREE.Vector3(),
         age: 0,
-        maxLife: 0.5 + Math.random() * 0.3,
+        maxLife: 0.55 + Math.random() * 0.35,
         active: false,
       });
     }
 
     // Expanding fiery shockwave ring
-    const ringGeo = new THREE.RingGeometry(0.2, 0.42, 28);
+    const ringGeo = new THREE.RingGeometry(0.2, 0.42, 32);
     const shockMat = new THREE.MeshBasicMaterial({
       color: 0xff4400,
       side: THREE.DoubleSide,
@@ -281,7 +359,7 @@ export class DroneEnemy {
     scene.add(this.shockRing);
 
     // Blinding core fireball sphere
-    const fireGeo = new THREE.SphereGeometry(0.85, 16, 12);
+    const fireGeo = new THREE.SphereGeometry(0.85, 20, 16);
     const fireMat = new THREE.MeshBasicMaterial({
       color: 0xffaa00,
       transparent: true,
@@ -292,8 +370,8 @@ export class DroneEnemy {
     this.fireballMesh.visible = false;
     scene.add(this.fireballMesh);
 
-    // Blinding initial flash starburst
-    const flashGeo = new THREE.PlaneGeometry(1.8, 1.8);
+    // Blinding initial flash starburst (Smooth Radial Circle - ZERO square plane!)
+    const flashGeo = new THREE.CircleGeometry(1.6, 32);
     const flashMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
@@ -323,7 +401,7 @@ export class DroneEnemy {
     (this.chassisMesh.material as THREE.MeshStandardMaterial).color.setHex(0xffffff);
     setTimeout(() => {
       if (this.active && !this.isDying) {
-        (this.chassisMesh.material as THREE.MeshStandardMaterial).color.setHex(0xf5f7fa);
+        (this.chassisMesh.material as THREE.MeshStandardMaterial).color.setHex(this.isAlien ? 0x6a1b9a : 0xf5f7fa);
       }
     }, 85);
 
@@ -476,6 +554,17 @@ export class DroneEnemy {
     }
 
     this.position.x += this.velocity.x * dt;
+
+    // Organic Waving of Long White Tentacles
+    for (let t = 0; t < this.tentacleChains.length; t++) {
+      const chain = this.tentacleChains[t];
+      for (let s = 1; s < chain.length; s++) {
+        const seg = chain[s];
+        const phase = time * 3.4 + t * 0.95 + s * 0.55;
+        seg.rotation.z = Math.sin(phase) * 0.16 + Math.cos(time * 2.0 + s) * 0.06 - this.velocity.x * 0.03;
+        seg.rotation.x = Math.cos(phase * 0.8) * 0.12;
+      }
+    }
 
     // Banking tilt based on horizontal velocity
     const targetTilt = -this.velocity.x * 0.08;
