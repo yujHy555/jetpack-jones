@@ -8,7 +8,8 @@ export enum ObstacleType {
   PISTON = 'piston',
   PLASMA_TUBE = 'plasma_tube',
   HAZARD_PLATFORM = 'hazard_platform',
-  LASER_GATE = 'laser_gate'
+  LASER_GATE = 'laser_gate',
+  COVER_BARRIER = 'cover_barrier'
 }
 
 export enum PickupType {
@@ -664,6 +665,67 @@ export class ObstacleManager {
         // Bobbing floating flight arrow
         arrow.position.y = Math.sin(time * 6.0) * 0.12;
       },
+    };
+
+    this.obstacles.push(obs);
+    return obs;
+  }
+
+  /**
+   * Spawns a Tactical Blast Cover Barrier
+   * Height 1.25m: Jones can crouch behind it for 100% cover from drone laser fire,
+   * or stand upright to fire back over the top!
+   */
+  public spawnCoverBarrier(x: number, y: number = -3.70): ActiveObstacle {
+    const group = new THREE.Group();
+    group.position.set(x, y, 0);
+
+    const bWidth = 1.6;
+    const bHeight = 1.25;
+    const bDepth = 0.55;
+
+    // 1. Heavy Armor Plate Chassis (dark iron with beveled rim)
+    const baseGeo = new THREE.BoxGeometry(bWidth, bHeight, bDepth);
+    const barrierMesh = new THREE.Mesh(baseGeo, this.darkIronMat);
+    barrierMesh.position.set(0, bHeight / 2, 0);
+    group.add(barrierMesh);
+
+    // 2. High-Visibility Hazard Chevrons along Top Lip
+    const lipGeo = new THREE.BoxGeometry(bWidth + 0.08, 0.22, bDepth + 0.06);
+    const lipMesh = new THREE.Mesh(lipGeo, this.hazardMat);
+    lipMesh.position.set(0, bHeight - 0.11, 0);
+    group.add(lipMesh);
+
+    // 3. Glowing Cyan Energy Deflector Strips (visual indicator for bullet protection)
+    const stripGeo = new THREE.BoxGeometry(bWidth * 0.75, 0.06, 0.05);
+    const stripMat = new THREE.MeshBasicMaterial({ color: 0x00f5ff });
+    const stripMesh = new THREE.Mesh(stripGeo, stripMat);
+    stripMesh.position.set(0, bHeight * 0.55, bDepth / 2 + 0.02);
+    group.add(stripMesh);
+
+    // 4. Heavy Ground Anchor Cleats
+    for (const sx of [-bWidth / 2 + 0.15, bWidth / 2 - 0.15]) {
+      const cleatGeo = new THREE.BoxGeometry(0.24, 0.15, bDepth + 0.16);
+      const cleat = new THREE.Mesh(cleatGeo, this.steelMat);
+      cleat.position.set(sx, 0.08, 0);
+      group.add(cleat);
+    }
+
+    this.scene.add(group);
+
+    const obs: ActiveObstacle = {
+      id: this.nextId++,
+      type: ObstacleType.COVER_BARRIER,
+      group,
+      collider: {
+        type: 'box',
+        halfSize: new THREE.Vector2(bWidth / 2, bHeight / 2),
+        center: new THREE.Vector2(x, y + bHeight / 2),
+      },
+      health: 999,
+      destructible: false,
+      active: true,
+      update: () => {},
     };
 
     this.obstacles.push(obs);

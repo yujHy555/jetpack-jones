@@ -255,6 +255,7 @@ class Game {
     const pPos = this.player.position;
     const pCenterY = pPos.y + 1.0;
     const pRadius = 0.45;
+    const platforms = this.obstacleManager.getPlatforms();
 
     // A. Player vs Mechanical Obstacles (Gears, Pistons, Tubes)
     for (const obs of this.obstacleManager.obstacles) {
@@ -264,7 +265,41 @@ class Game {
       let hit = false;
       const obsPos = obs.group.position;
 
-      if (obs.type === ObstacleType.LASER_GATE) {
+      if (obs.type === ObstacleType.COVER_BARRIER) {
+        // Tactical Cover Barrier: Solid waist-high blast barricade
+        const half = obs.collider.halfSize || new THREE.Vector2(0.8, 0.625);
+        const center = obs.collider.center || new THREE.Vector2(obsPos.x, obsPos.y + half.y);
+        const barrierMinX = center.x - half.x;
+        const barrierMaxX = center.x + half.x;
+        const barrierTopY = center.y + half.y;
+
+        // 1. Standing on top of barrier
+        if (
+          pPos.y >= barrierTopY - 0.28 &&
+          pPos.x >= barrierMinX - 0.15 &&
+          pPos.x <= barrierMaxX + 0.15
+        ) {
+          if (this.player.velocity.y <= 0) {
+            this.player.position.y = barrierTopY;
+            this.player.velocity.y = 0;
+            this.player.isGrounded = true;
+          }
+        }
+        // 2. Solid horizontal wall blocking
+        else if (
+          pPos.y < barrierTopY - 0.05 &&
+          pPos.x + 0.35 >= barrierMinX &&
+          pPos.x - 0.35 <= barrierMaxX
+        ) {
+          if (pPos.x < center.x) {
+            this.player.position.x = barrierMinX - 0.35;
+          } else {
+            this.player.position.x = barrierMaxX + 0.35;
+          }
+          this.player.velocity.x = 0;
+        }
+        continue;
+      } else if (obs.type === ObstacleType.LASER_GATE) {
         const half = obs.collider.halfSize || new THREE.Vector2(1.3, 1.2);
         const center = obs.collider.center || new THREE.Vector2(obsPos.x, obsPos.y + 1.2);
 
@@ -404,11 +439,93 @@ class Game {
         }
       }
 
-      // Drone Red Lasers vs Player
+      // Drone Red Lasers vs Platforms, Ground, Crates, Cover Barriers, and Player
       for (const rLaser of drone.lasers) {
         if (!rLaser.active) continue;
-        const lDistSq = (pPos.x - rLaser.position.x) ** 2 + (pCenterY - rLaser.position.y) ** 2;
-        if (lDistSq < (pRadius + 0.25) ** 2) {
+
+        // 1. Check against Solid Platforms (Bullets cannot pass through platforms)
+        let hitSolid = false;
+        const rLenX = Math.abs(rLaser.velocity.x) > 0.1 ? 0.45 : 0.15;
+        const rLenY = Math.abs(rLaser.velocity.y) > 0.1 ? 0.45 : 0.15;
+        const rMinX = rLaser.position.x - rLenX;
+        const rMaxX = rLaser.position.x + rLenX;
+        const rMinY = rLaser.position.y - rLenY;
+        const rMaxY = rLaser.position.y + rLenY;
+
+        for (const plat of platforms) {
+          const platHalfW = plat.width / 2;
+          const platHalfH = plat.height / 2;
+          if (
+            rMaxX >= plat.x - platHalfW &&
+            rMinX <= plat.x + platHalfW &&
+            rMaxY >= plat.y - platHalfH &&
+            rMinY <= plat.y + platHalfH
+          ) {
+            hitSolid = true;
+            break;
+          }
+        }
+
+        // 2. Check against Ground Floor
+        if (!hitSolid && rLaser.position.y <= -3.70) {
+          hitSolid = true;
+        }
+
+        // 3. Check against Supply Crates
+        if (!hitSolid) {
+          for (const crate of this.obstacleManager.crates) {
+            if (!crate.active || crate.isDestroyed) continue;
+            if (
+              rMaxX >= crate.position.x - crate.halfW &&
+              rMinX <= crate.position.x + crate.halfW &&
+              rMaxY >= crate.position.y - crate.halfH &&
+              rMinY <= crate.position.y + crate.halfH
+            ) {
+              hitSolid = true;
+              crate.takeDamage(1, Math.sign(rLaser.velocity.x) || 1);
+              break;
+            }
+          }
+        }
+
+        // 4. Check against Cover Barriers & Level Obstacles (Tactical Cover Block)
+        if (!hitSolid) {
+          for (const obs of this.obstacleManager.obstacles) {
+            if (!obs.active) continue;
+            if (obs.type === ObstacleType.HAZARD_PLATFORM) continue;
+            if (
+              obs.type === ObstacleType.COVER_BARRIER ||
+              obs.type === ObstacleType.LASER_GATE ||
+              obs.type === ObstacleType.PISTON
+            ) {
+              const half = obs.collider.halfSize || new THREE.Vector2(0.8, 0.625);
+              const center = obs.collider.center || new THREE.Vector2(obs.group.position.x, obs.group.position.y + half.y);
+              if (
+                rMaxX >= center.x - half.x &&
+                rMinX <= center.x + half.x &&
+                rMaxY >= center.y - half.y &&
+                rMinY <= center.y + half.y
+              ) {
+                hitSolid = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (hitSolid) {
+          rLaser.active = false;
+          rLaser.mesh.visible = false;
+          continue;
+        }
+
+        // 5. Red Laser vs Player (takes crouch height into account)
+        const playerCurrentHeight = this.player.isCrouching ? 1.10 : 1.85;
+        const playerCenterY = pPos.y + playerCurrentHeight / 2;
+        const lDistSq = (pPos.x - rLaser.position.x) ** 2 + (playerCenterY - rLaser.position.y) ** 2;
+        const hitRadius = this.player.isCrouching ? 0.38 : 0.48;
+
+        if (lDistSq < hitRadius * hitRadius) {
           rLaser.active = false;
           rLaser.mesh.visible = false;
 
@@ -545,6 +662,65 @@ class Game {
             this.score += 250;
           }
           break;
+        }
+      }
+
+      if (!laser.active) continue;
+
+      // 5. Check against Solid Platforms & Ground Floor (Bullets cannot pass through platforms)
+      const lLenX = Math.abs(laser.velocity.x) > 0.1 ? 0.48 : 0.15;
+      const lLenY = Math.abs(laser.velocity.y) > 0.1 ? 0.48 : 0.15;
+      const lMinX = laser.position.x - lLenX;
+      const lMaxX = laser.position.x + lLenX;
+      const lMinY = laser.position.y - lLenY;
+      const lMaxY = laser.position.y + lLenY;
+
+      for (const plat of platforms) {
+        const platHalfW = plat.width / 2;
+        const platHalfH = plat.height / 2;
+        if (
+          lMaxX >= plat.x - platHalfW &&
+          lMinX <= plat.x + platHalfW &&
+          lMaxY >= plat.y - platHalfH &&
+          lMinY <= plat.y + platHalfH
+        ) {
+          laser.active = false;
+          laser.mesh.visible = false;
+          this.audioManager.playEnemyImpact();
+          break;
+        }
+      }
+
+      if (laser.active && laser.position.y <= -3.70) {
+        laser.active = false;
+        laser.mesh.visible = false;
+        this.audioManager.playEnemyImpact();
+      }
+
+      // 6. Check against Solid Level Objects & Cover Barriers
+      if (laser.active) {
+        for (const obs of this.obstacleManager.obstacles) {
+          if (!obs.active) continue;
+          if (obs.type === ObstacleType.HAZARD_PLATFORM || obs.destructible) continue;
+          if (
+            obs.type === ObstacleType.COVER_BARRIER ||
+            obs.type === ObstacleType.LASER_GATE ||
+            obs.type === ObstacleType.PISTON
+          ) {
+            const half = obs.collider.halfSize || new THREE.Vector2(0.8, 0.625);
+            const center = obs.collider.center || new THREE.Vector2(obs.group.position.x, obs.group.position.y + half.y);
+            if (
+              lMaxX >= center.x - half.x &&
+              lMinX <= center.x + half.x &&
+              lMaxY >= center.y - half.y &&
+              lMinY <= center.y + half.y
+            ) {
+              laser.active = false;
+              laser.mesh.visible = false;
+              this.audioManager.playEnemyImpact();
+              break;
+            }
+          }
         }
       }
     }

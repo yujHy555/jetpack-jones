@@ -228,8 +228,8 @@ export class Player {
     this.rigRoot = new THREE.Group();
     this.mesh.add(this.rigRoot);
 
-    // Dynamic Lights
-    this.thrusterLight = new THREE.PointLight(0xff7700, 0, 16, 1.2);
+    // Dynamic Lights: Soft vibrant cyan-blue thruster wash
+    this.thrusterLight = new THREE.PointLight(0x00bbff, 0, 18, 1.2);
     scene.add(this.thrusterLight);
 
     this.muzzleLight = new THREE.PointLight(0x00f5ff, 0, 10, 1.8);
@@ -954,14 +954,28 @@ export class Player {
     this.flameConeRight.position.set(0, -0.42, 0.13);
     this.jetpackBone.add(this.flameConeRight);
 
-    // Outer Roaring Fiery Plume
+    // Soft-Edge Luminous Aura Shell (Electric Blue Glow)
+    const auraGeo = new THREE.ConeGeometry(0.24, 1.15, 16);
+    auraGeo.rotateX(Math.PI);
+    auraGeo.translate(0, -0.57, 0);
+    const auraMat = new THREE.MeshBasicMaterial({
+      color: 0x0044ff,
+      transparent: true,
+      opacity: 0.42,
+      blending: THREE.AdditiveBlending,
+      side: THREE.BackSide,
+    });
+    this.flameConeLeft.add(new THREE.Mesh(auraGeo, auraMat));
+    this.flameConeRight.add(new THREE.Mesh(auraGeo, auraMat));
+
+    // Outer Electric Azure Plasma Plume
     const outerGeo = new THREE.ConeGeometry(0.18, 0.95, 14);
     outerGeo.rotateX(Math.PI);
     outerGeo.translate(0, -0.47, 0);
     const outerMat = new THREE.MeshBasicMaterial({
-      color: 0xff3300,
+      color: 0x0088ff,
       transparent: true,
-      opacity: 0.88,
+      opacity: 0.82,
       blending: THREE.AdditiveBlending,
     });
     this.flameOuterLeft = new THREE.Mesh(outerGeo, outerMat);
@@ -969,12 +983,14 @@ export class Player {
     this.flameConeLeft.add(this.flameOuterLeft);
     this.flameConeRight.add(this.flameOuterRight);
 
-    // Middle Bright Golden Shock Diamond Flame
+    // Middle Bright Cyan Shock Diamond Flame
     const midGeo = new THREE.ConeGeometry(0.11, 0.65, 14);
     midGeo.rotateX(Math.PI);
     midGeo.translate(0, -0.32, 0);
     const midMat = new THREE.MeshBasicMaterial({
-      color: 0xffaa00,
+      color: 0x00f5ff,
+      transparent: true,
+      opacity: 0.92,
       blending: THREE.AdditiveBlending,
     });
     this.flameConeLeft.add(new THREE.Mesh(midGeo, midMat));
@@ -985,7 +1001,7 @@ export class Player {
     coreGeo.rotateX(Math.PI);
     coreGeo.translate(0, -0.21, 0);
     const coreFlameMat = new THREE.MeshBasicMaterial({
-      color: 0xddffff,
+      color: 0xebffff,
       blending: THREE.AdditiveBlending,
     });
     this.flameCoreLeft = new THREE.Mesh(coreGeo, coreFlameMat);
@@ -1746,11 +1762,18 @@ export class Player {
           }
         }
       }
-      this.shadowMesh.position.set(this.position.x, surfaceY + 0.015, -0.05);
-      const heightAbove = Math.max(0, this.position.y - surfaceY);
-      const sScale = Math.max(0.25, 1.0 - heightAbove * 0.14);
-      this.shadowMesh.scale.set(sScale, sScale, sScale);
-      (this.shadowMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0.08, 0.45 - heightAbove * 0.07);
+      const heightAbove = this.position.y - surfaceY;
+
+      // CRITICAL: Shadow is strictly visible on solid ground or platform surface only, NEVER floating in the air
+      // Placed at Z = -0.25 to completely prevent any plane intersection with jetpack flames
+      if (this.isGrounded && heightAbove < 0.18) {
+        this.shadowMesh.visible = true;
+        this.shadowMesh.position.set(this.position.x, surfaceY + 0.015, -0.25);
+        this.shadowMesh.scale.set(1.0, 1.0, 1.0);
+        (this.shadowMesh.material as THREE.MeshBasicMaterial).opacity = 0.38;
+      } else {
+        this.shadowMesh.visible = false;
+      }
     }
     this.animateSkeletalRig(dt, hasMouseTarget);
     this.updateJetpackVFX(dt, isActuallyJetpacking);

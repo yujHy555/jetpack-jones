@@ -22,9 +22,10 @@ export class LevelGenerator {
     this.obstacleManager.spawnFuelPickup(13, 6.5);
     this.obstacleManager.spawnFuelPickup(15, 12.0);
 
-    // Interactive Physics Supply Crates
-    this.obstacleManager.spawnCrate(5.0, -3.2);
-    this.obstacleManager.spawnCrate(9.2, -1.3);
+    // Interactive Physics Supply Crates & Tactical Cover Barrier
+    this.obstacleManager.spawnCrate(4.5, -3.2);
+    this.obstacleManager.spawnCoverBarrier(7.0, -3.70);
+    this.obstacleManager.spawnCrate(9.5, -1.3);
 
     // Aerial Attack Drone bot in air! (Helmet-styled)
     this.obstacleManager.spawnDrone(12.5, 0.9, 4.0);
@@ -44,6 +45,7 @@ export class LevelGenerator {
       case 0:
         // MANDATORY FLIGHT ZONE: High-Voltage Laser Barrier Forcefield Gate!
         // Ground is completely blocked, player MUST fire jetpack to soar over the barrier!
+        this.obstacleManager.spawnCoverBarrier(x - 3.5, -3.70);
         this.obstacleManager.spawnLaserGate(x + 2, -3.70);
         this.obstacleManager.spawnFuelPickup(x + 2, 2.2); // Mid-air fuel refill reward
         this.obstacleManager.spawnFuelPickup(x + 2, 8.5); // Sky fuel pod
@@ -55,6 +57,7 @@ export class LevelGenerator {
       case 1:
         // STRATEGIC MECHANICAL PRESS: Slams to ground floor (squashes player against ground!)
         // Collectibles placed low (Y = -3.20) so player can grab them walking or crouched without jumping!
+        this.obstacleManager.spawnCoverBarrier(x - 2.0, -3.70);
         this.obstacleManager.spawnPiston(x, -3.70);
         this.obstacleManager.spawnCoinPickup(x, -3.20);
         this.obstacleManager.spawnCoinPickup(x - 1.2, -3.20);
@@ -89,7 +92,8 @@ export class LevelGenerator {
 
       case 4:
         // STRATEGIC ELEVATED PLATFORM PRESS: Slams directly onto platform surface!
-        // Collectible placed low right on platform top (Y = -0.45) so player can grab without jumping!
+        // Tactical cover barrier placed on ground before platform
+        this.obstacleManager.spawnCoverBarrier(x - 4.5, -3.70);
         this.obstacleManager.spawnPlatform(x, -1.2, 6.0, 0.5);
         this.obstacleManager.spawnCrate(x - 2.0, -0.7);
         this.obstacleManager.spawnPiston(x + 0.8, -0.95);
@@ -101,6 +105,7 @@ export class LevelGenerator {
 
       case 5:
         // MANDATORY FLIGHT ZONE: Laser Gate with Aerial Attack Drone Patrol
+        this.obstacleManager.spawnCoverBarrier(x - 2.5, -3.70);
         this.obstacleManager.spawnLaserGate(x, -3.70);
         this.obstacleManager.spawnDrone(x, 2.8, 4.0);
         this.obstacleManager.spawnFuelPickup(x, 4.2);
@@ -125,6 +130,7 @@ export class LevelGenerator {
       case 7:
       default:
         // STRATOSPHERE ROCKET LAUNCH CHUTE: Sky fuel pillars soaring to space
+        this.obstacleManager.spawnCoverBarrier(x - 0.5, -3.70);
         this.obstacleManager.spawnLaserGate(x + 3, -3.70);
         this.spawnSkyFuelChain(x + 3, 3.2, 5, 7.0); // Y = 3.2, 10.2, 17.2, 24.2, 31.2
         this.obstacleManager.spawnPlatform(x - 2, -1.5, 5.0, 0.5);

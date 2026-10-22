@@ -307,8 +307,8 @@
 
     .touch-btn {
       pointer-events: auto;
-      width: clamp(60px, 13vw, 84px);
-      height: clamp(60px, 13vw, 84px);
+      width: clamp(72px, 15vw, 96px);
+      height: clamp(72px, 15vw, 96px);
       border-radius: 50%;
       background: radial-gradient(circle at 35% 35%, rgba(255, 150, 50, 0.45), rgba(40, 20, 10, 0.75));
       border: 3px solid rgba(255, 180, 80, 0.7);
@@ -318,7 +318,7 @@
       align-items: center;
       justify-content: center;
       color: #fff;
-      font-size: clamp(14px, 2.5vw, 22px);
+      font-size: clamp(18px, 3.2vw, 26px);
       touch-action: none;
       user-select: none;
       opacity: 0.88;
@@ -326,9 +326,10 @@
     }
 
     .touch-btn.btn-action-small {
-      width: clamp(50px, 11vw, 70px);
-      height: clamp(50px, 11vw, 70px);
-      border-radius: 12px;
+      width: clamp(62px, 12.5vw, 82px);
+      height: clamp(62px, 12.5vw, 82px);
+      border-radius: 14px;
+      font-size: clamp(16px, 2.6vw, 22px);
     }
 
     .touch-btn:active, .touch-btn.active {
@@ -340,25 +341,27 @@
     }
 
     .touch-btn span {
-      margin-top: 2px;
-      font-size: clamp(8px, 1.2vw, 10px);
-      opacity: 0.9;
+      margin-top: 3px;
+      font-size: clamp(9px, 1.4vw, 12px);
+      opacity: 0.95;
       font-family: 'Share Tech Mono', monospace;
+      font-weight: bold;
     }
 
-    /* Top Controls - Non-overlapping responsive layout */
+    /* Top Controls - Centered at Top Screen */
     .top-controls {
       position: absolute;
-      top: 12px;
-      right: 15px;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      justify-content: flex-end;
+      justify-content: center;
       gap: 8px;
       pointer-events: auto;
       z-index: 25;
-      max-width: calc(100vw - 230px);
+      max-width: 95vw;
     }
 
     .cam-slider-container {
