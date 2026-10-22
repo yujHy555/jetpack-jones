@@ -52,9 +52,11 @@ export class DroneEnemy {
   // Projectiles & Death FX
   public lasers: DroneLaser[] = [];
   private scrapPool: ScrapParticle[] = [];
-  private isDying: boolean = false;
+  public isDying: boolean = false;
   private deathTimer: number = 0;
   private shockRing: THREE.Mesh;
+  private fireballMesh: THREE.Mesh;
+  private flashMesh: THREE.Mesh;
 
   constructor(scene: THREE.Scene, startX: number, startY: number = 0.8, patrolRange: number = 6.0) {
     this.group = new THREE.Group();
@@ -265,17 +267,43 @@ export class DroneEnemy {
       });
     }
 
-    // Expanding shockwave ring
-    const ringGeo = new THREE.RingGeometry(0.2, 0.35, 24);
+    // Expanding fiery shockwave ring
+    const ringGeo = new THREE.RingGeometry(0.2, 0.42, 28);
     const shockMat = new THREE.MeshBasicMaterial({
-      color: 0xff3300,
+      color: 0xff4400,
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0,
+      blending: THREE.AdditiveBlending,
     });
     this.shockRing = new THREE.Mesh(ringGeo, shockMat);
     this.shockRing.visible = false;
     scene.add(this.shockRing);
+
+    // Blinding core fireball sphere
+    const fireGeo = new THREE.SphereGeometry(0.85, 16, 12);
+    const fireMat = new THREE.MeshBasicMaterial({
+      color: 0xffaa00,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+    });
+    this.fireballMesh = new THREE.Mesh(fireGeo, fireMat);
+    this.fireballMesh.visible = false;
+    scene.add(this.fireballMesh);
+
+    // Blinding initial flash starburst
+    const flashGeo = new THREE.PlaneGeometry(1.8, 1.8);
+    const flashMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+    });
+    this.flashMesh = new THREE.Mesh(flashGeo, flashMat);
+    this.flashMesh.visible = false;
+    scene.add(this.flashMesh);
   }
 
   public takeDamage(amount: number = 1): boolean {
@@ -304,47 +332,84 @@ export class DroneEnemy {
 
   private triggerDeath() {
     this.isDying = true;
-    this.active = false;
+    // CRITICAL FIX: Keep this.active = true while isDying so ObstacleManager does not destroy it instantly!
+    this.active = true;
     this.group.visible = false;
     if (this.shadowMesh) this.shadowMesh.visible = false;
 
     const origin = this.position.clone();
+    this.deathTimer = 0.65;
 
-    // Shockwave Ring
+    // 1. Initial White Flash Starburst
+    this.flashMesh.position.copy(origin);
+    this.flashMesh.position.z = 0.05;
+    this.flashMesh.rotation.z = Math.random() * Math.PI;
+    this.flashMesh.scale.set(1.0, 1.0, 1.0);
+    (this.flashMesh.material as THREE.MeshBasicMaterial).opacity = 1.0;
+    this.flashMesh.visible = true;
+
+    // 2. Fiery Expanding Fireball
+    this.fireballMesh.position.copy(origin);
+    this.fireballMesh.scale.set(0.3, 0.3, 0.3);
+    (this.fireballMesh.material as THREE.MeshBasicMaterial).opacity = 0.95;
+    (this.fireballMesh.material as THREE.MeshBasicMaterial).color.setHex(0xff7700);
+    this.fireballMesh.visible = true;
+
+    // 3. Expanding Shockwave Ring
     this.shockRing.position.copy(origin);
-    this.shockRing.scale.set(0.3, 0.3, 0.3);
+    this.shockRing.position.z = 0.02;
+    this.shockRing.scale.set(0.25, 0.25, 0.25);
     (this.shockRing.material as THREE.MeshBasicMaterial).opacity = 1.0;
     this.shockRing.visible = true;
-    this.deathTimer = 0.45;
 
-    // Shrapnel burst
+    // 4. Fiery Shrapnel & Spark Debris
     for (const sc of this.scrapPool) {
       sc.active = true;
       sc.age = 0;
       sc.mesh.position.copy(origin);
-      sc.mesh.scale.set(1, 1, 1);
+      sc.mesh.scale.set(1.2, 1.2, 1.2);
       sc.mesh.visible = true;
 
       const angle = Math.random() * Math.PI * 2;
-      const spd = 4.5 + Math.random() * 6.5;
+      const spd = 4.8 + Math.random() * 7.5;
       sc.velocity.set(
         Math.cos(angle) * spd,
-        Math.sin(angle) * spd + 2.5,
-        (Math.random() - 0.5) * 3.0
+        Math.sin(angle) * spd + 3.0,
+        (Math.random() - 0.5) * 3.5
       );
     }
   }
 
   public update(dt: number, time: number, playerX: number, playerY: number, groundY: number = -3.70) {
-    // A. Death Explosion FX
+    // A. Death Explosion FX (Spectacular visual animation)
     if (this.isDying) {
       if (this.deathTimer > 0) {
         this.deathTimer -= dt;
-        const prog = 1.0 - this.deathTimer / 0.45;
-        const s = 0.3 + Math.sin(prog * Math.PI * 0.5) * 3.4;
+        const totalDur = 0.65;
+        const prog = THREE.MathUtils.clamp(1.0 - this.deathTimer / totalDur, 0, 1);
+
+        // Flash fade
+        if (this.flashMesh.visible) {
+          const flashAlpha = Math.max(0, 1.0 - prog * 4.0);
+          (this.flashMesh.material as THREE.MeshBasicMaterial).opacity = flashAlpha;
+          this.flashMesh.scale.addScalar(dt * 3.0);
+          if (flashAlpha <= 0) this.flashMesh.visible = false;
+        }
+
+        // Fireball expansion & fade
+        if (this.fireballMesh.visible) {
+          const fireScale = 0.4 + Math.sin(prog * Math.PI * 0.7) * 2.8;
+          this.fireballMesh.scale.set(fireScale, fireScale, fireScale);
+          (this.fireballMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.95 * (1.0 - prog * 1.2));
+          if (prog > 0.85) this.fireballMesh.visible = false;
+        }
+
+        // Shockwave expansion
+        const s = 0.35 + Math.sin(prog * Math.PI * 0.5) * 4.8;
         this.shockRing.scale.set(s, s, s);
         (this.shockRing.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1.0 - prog);
 
+        // Debris scrap physics
         for (const sc of this.scrapPool) {
           if (!sc.active) continue;
           sc.age += dt;
@@ -355,18 +420,22 @@ export class DroneEnemy {
           }
           sc.velocity.y -= 18.0 * dt;
           sc.mesh.position.addScaledVector(sc.velocity, dt);
-          sc.mesh.rotation.x += dt * 6.0;
-          sc.mesh.rotation.z += dt * 8.0;
+          sc.mesh.rotation.x += dt * 7.0;
+          sc.mesh.rotation.z += dt * 9.0;
+          const scrapProg = sc.age / sc.maxLife;
+          sc.mesh.scale.setScalar(Math.max(0.1, 1.2 * (1.0 - scrapProg * 0.8)));
         }
 
         if (this.deathTimer <= 0) {
           this.shockRing.visible = false;
+          this.fireballMesh.visible = false;
+          this.flashMesh.visible = false;
           for (const sc of this.scrapPool) {
             sc.active = false;
             sc.mesh.visible = false;
           }
           this.isDying = false;
-          this.active = false;
+          this.active = false; // Finally deactivate after full explosion completes!
         }
       }
       this.updateLasers(dt);
@@ -502,7 +571,9 @@ export class DroneEnemy {
     this.isDying = false;
     scene.remove(this.group);
     if (this.shadowMesh) scene.remove(this.shadowMesh);
-    scene.remove(this.shockRing);
+    if (this.shockRing) scene.remove(this.shockRing);
+    if (this.fireballMesh) scene.remove(this.fireballMesh);
+    if (this.flashMesh) scene.remove(this.flashMesh);
     for (const l of this.lasers) {
       scene.remove(l.mesh);
     }

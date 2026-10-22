@@ -26,11 +26,8 @@ export class LevelGenerator {
     this.obstacleManager.spawnCrate(5.0, -3.2);
     this.obstacleManager.spawnCrate(9.2, -1.3);
 
-    // First Alien Blob enemy encounter on ground!
-    this.obstacleManager.spawnBlob(14, -3.70, 3.5);
-
-    // First Flying Attack Drone bot in air! (Helmet-styled)
-    this.obstacleManager.spawnDrone(11.5, 0.8, 3.5);
+    // Aerial Attack Drone bot in air! (Helmet-styled)
+    this.obstacleManager.spawnDrone(12.5, 0.9, 4.0);
   }
 
   public update(playerX: number) {
@@ -52,16 +49,19 @@ export class LevelGenerator {
         this.obstacleManager.spawnFuelPickup(x + 2, 8.5); // Sky fuel pod
         this.spawnCoinLine(x - 2, 0.8, 4);
         this.obstacleManager.spawnPlatform(x + 7.0, -1.2, 5.0, 0.5);
-        this.obstacleManager.spawnBlob(x + 7.0, -0.95, 2.0);
+        this.obstacleManager.spawnDrone(x + 7.0, 1.2, 3.5);
         break;
 
       case 1:
         // STRATEGIC MECHANICAL PRESS: Slams to ground floor (squashes player against ground!)
+        // Collectibles placed low (Y = -3.20) so player can grab them walking or crouched without jumping!
         this.obstacleManager.spawnPiston(x, -3.70);
-        this.obstacleManager.spawnBlob(x - 3.5, -3.70, 2.5);
+        this.obstacleManager.spawnCoinPickup(x, -3.20);
+        this.obstacleManager.spawnCoinPickup(x - 1.2, -3.20);
+        this.obstacleManager.spawnCoinPickup(x + 1.2, -3.20);
         this.obstacleManager.spawnCrate(x + 3.0, -3.2);
-        this.obstacleManager.spawnFuelPickup(x + 4.5, -2.2);
-        this.spawnCoinLine(x - 1.5, -1.5, 3);
+        this.obstacleManager.spawnFuelPickup(x + 4.5, -3.20);
+        this.obstacleManager.spawnDrone(x - 3.5, 0.9, 3.5);
         break;
 
       case 2:
@@ -73,7 +73,7 @@ export class LevelGenerator {
         this.obstacleManager.spawnDrone(x, 7.5, 4.5);
         this.obstacleManager.spawnDrone(x + 4, 18.0, 5.0);
         this.obstacleManager.spawnPlatform(x + 2, -1.8, 6.0, 0.5);
-        this.obstacleManager.spawnBlob(x + 2, -1.55, 2.0);
+        this.obstacleManager.spawnDrone(x + 2, 0.8, 3.5);
         break;
 
       case 3:
@@ -83,17 +83,19 @@ export class LevelGenerator {
         this.obstacleManager.spawnPlatform(x + 1, 1.2, 5.5, 0.5);
         this.obstacleManager.spawnFuelPickup(x + 1, 2.8);
         this.obstacleManager.spawnFuelPickup(x + 1, 9.0);
-        this.obstacleManager.spawnBlob(x + 1, 1.45, 1.8);
+        this.obstacleManager.spawnDrone(x + 1, 3.2, 3.5);
         this.spawnCoinLine(x - 2, -0.5, 4);
         break;
 
       case 4:
         // STRATEGIC ELEVATED PLATFORM PRESS: Slams directly onto platform surface!
+        // Collectible placed low right on platform top (Y = -0.45) so player can grab without jumping!
         this.obstacleManager.spawnPlatform(x, -1.2, 6.0, 0.5);
         this.obstacleManager.spawnCrate(x - 2.0, -0.7);
         this.obstacleManager.spawnPiston(x + 0.8, -0.95);
-        this.obstacleManager.spawnFuelPickup(x + 3.2, 0.2);
-        this.obstacleManager.spawnBlob(x - 3.0, -3.70, 3.0);
+        this.obstacleManager.spawnCoinPickup(x + 0.8, -0.45);
+        this.obstacleManager.spawnFuelPickup(x + 2.8, -0.45);
+        this.obstacleManager.spawnDrone(x - 3.0, 1.2, 3.5);
         this.spawnCoinLine(x - 2, 1.0, 3);
         break;
 
@@ -114,7 +116,7 @@ export class LevelGenerator {
         this.obstacleManager.spawnPlasmaTube(x - 2, 0.9);
         this.obstacleManager.spawnPlatform(x + 4, 1.5, 5.0, 0.5);
         this.obstacleManager.spawnCrate(x + 3.2, 2.0);
-        this.obstacleManager.spawnBlob(x + 4, 1.75, 2.0);
+        this.obstacleManager.spawnDrone(x + 4, 3.2, 3.5);
         this.obstacleManager.spawnFuelPickup(x + 4, 3.0);
         this.obstacleManager.spawnFuelPickup(x + 1, 15.0);
         this.spawnCoinLine(x - 2, -3.2, 3);
@@ -126,7 +128,7 @@ export class LevelGenerator {
         this.obstacleManager.spawnLaserGate(x + 3, -3.70);
         this.spawnSkyFuelChain(x + 3, 3.2, 5, 7.0); // Y = 3.2, 10.2, 17.2, 24.2, 31.2
         this.obstacleManager.spawnPlatform(x - 2, -1.5, 5.0, 0.5);
-        this.obstacleManager.spawnBlob(x - 2, -1.25, 2.0);
+        this.obstacleManager.spawnDrone(x - 2, 0.8, 3.0);
         this.obstacleManager.spawnCrate(x - 0.5, -1.0);
         this.spawnCoinLine(x + 1, 20.0, 4);
         break;

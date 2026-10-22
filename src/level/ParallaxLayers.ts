@@ -222,21 +222,17 @@ export class ParallaxLayers {
     canvas.height = 1024;
     const ctx = canvas.getContext('2d')!;
 
-    // Multi-tier atmospheric strata:
-    // Bottom: Warm buff peach/apricot horizon
-    // Middle: Sunset salmon, coral, dusk violet, midnight purple
-    // Top: Cosmic deep space navy with star clusters
+    // Multi-tier atmospheric strata in delicate, high-key Light Pink & Rose Quartz:
+    // Replaces dark grey with radiant sci-fi light pink aesthetic
     const grad = ctx.createLinearGradient(0, 1024, 0, 0); // Bottom = 1024, Top = 0
-    grad.addColorStop(0.00, '#fedab1'); // Warm buff cream horizon
-    grad.addColorStop(0.08, '#feb88e'); // Golden apricot
-    grad.addColorStop(0.18, '#f79a7a'); // Warm peach
-    grad.addColorStop(0.28, '#eb826e'); // Soft salmon
-    grad.addColorStop(0.38, '#d96c5b'); // Coral rose
-    grad.addColorStop(0.50, '#8e4b6e'); // Sunset violet mauve
-    grad.addColorStop(0.65, '#462b53'); // Deep twilight purple
-    grad.addColorStop(0.78, '#221b3d'); // Midnight indigo
-    grad.addColorStop(0.90, '#0f1224'); // Cosmic deep space
-    grad.addColorStop(1.00, '#06070f'); // Obsidian starfield
+    grad.addColorStop(0.00, '#fff0f5'); // Radiant lavender blush horizon
+    grad.addColorStop(0.12, '#ffe4ec'); // Warm pastel cherry blossom
+    grad.addColorStop(0.25, '#ffd1dc'); // Quintessential light pink
+    grad.addColorStop(0.40, '#fbcfe8'); // Soft rose petal pink
+    grad.addColorStop(0.55, '#f8bbd0'); // Cotton candy pink
+    grad.addColorStop(0.70, '#f4a6bf'); // Muted vintage rose
+    grad.addColorStop(0.85, '#e895ae'); // Sunset mauve pink
+    grad.addColorStop(1.00, '#d97d98'); // Soft celestial dusk rose
 
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 256, 1024);
@@ -270,9 +266,9 @@ export class ParallaxLayers {
     this.atmosphereClouds.position.set(0, 24, -28);
 
     const cloudMat = new THREE.MeshBasicMaterial({
-      color: 0xffe0cc,
+      color: 0xfff5f8,
       transparent: true,
-      opacity: 0.32,
+      opacity: 0.38,
       depthWrite: false,
     });
 

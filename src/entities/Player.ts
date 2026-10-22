@@ -83,12 +83,16 @@ export class Player {
     return this.state === PlayerState.CROUCH || this.state === PlayerState.CROUCH_WALK;
   }
 
-  // Bubble Force Field System
+  // Triple-AAA Multi-Layer Bubble Force Field System
   public shieldActive: boolean = false;
   private shieldGroup!: THREE.Group;
   private shieldSphereMesh!: THREE.Mesh;
-  private shieldRingMesh!: THREE.Mesh;
+  private shieldGridMesh!: THREE.LineSegments;
+  private shieldRingMesh1!: THREE.Mesh;
+  private shieldRingMesh2!: THREE.Mesh;
+  private shieldNodes: THREE.Mesh[] = [];
   private shieldMat!: THREE.MeshPhysicalMaterial;
+  private shieldGridMat!: THREE.LineBasicMaterial;
   public shieldWobbleTimer: number = 0;
   public shieldWobbleImpulse: THREE.Vector2 = new THREE.Vector2();
   public onShieldDeflect?: () => void;
@@ -1045,15 +1049,16 @@ export class Player {
   private initShieldForceField(scene: THREE.Scene) {
     this.shieldGroup = new THREE.Group();
 
-    // 1. Iridescent Outer Shield Bubble Sphere
-    const sphereGeo = new THREE.SphereGeometry(1.28, 32, 24);
+    // 1. Triple-AAA Translucent Iridescent Plasma Bubble (Radius 1.48m completely envelopes Jones)
+    const sphereGeo = new THREE.SphereGeometry(1.48, 36, 28);
     this.shieldMat = new THREE.MeshPhysicalMaterial({
       color: 0x00f5ff,
       emissive: 0x004466,
-      roughness: 0.08,
-      metalness: 0.15,
+      roughness: 0.05,
+      metalness: 0.12,
+      transmission: 0.82,
       transparent: true,
-      opacity: 0.38,
+      opacity: 0.44,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
@@ -1061,17 +1066,54 @@ export class Player {
     this.shieldSphereMesh = new THREE.Mesh(sphereGeo, this.shieldMat);
     this.shieldGroup.add(this.shieldSphereMesh);
 
-    // 2. Orbital Electric Shield Rings
-    const ringGeo = new THREE.TorusGeometry(1.30, 0.025, 8, 36);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0x39ff14,
+    // 2. Geodesic Energy Lattice Grid (Hexagonal Sci-Fi Shield Mesh)
+    const icosaGeo = new THREE.IcosahedronGeometry(1.50, 2);
+    const wireGeo = new THREE.WireframeGeometry(icosaGeo);
+    this.shieldGridMat = new THREE.LineBasicMaterial({
+      color: 0x00f5ff,
       transparent: true,
-      opacity: 0.75,
+      opacity: 0.40,
       blending: THREE.AdditiveBlending,
     });
-    this.shieldRingMesh = new THREE.Mesh(ringGeo, ringMat);
-    this.shieldRingMesh.rotation.x = Math.PI / 3;
-    this.shieldGroup.add(this.shieldRingMesh);
+    this.shieldGridMesh = new THREE.LineSegments(wireGeo, this.shieldGridMat);
+    this.shieldGroup.add(this.shieldGridMesh);
+
+    // 3. Dual Counter-Rotating Orbital Energy Rings
+    // Ring 1: Glowing Cyan Equatorial Gyro Ring
+    const ringGeo1 = new THREE.TorusGeometry(1.52, 0.026, 10, 48);
+    const ringMat1 = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+    });
+    this.shieldRingMesh1 = new THREE.Mesh(ringGeo1, ringMat1);
+    this.shieldGroup.add(this.shieldRingMesh1);
+
+    // Ring 2: Tilted Emerald Green / Azure Meridian Orbital Ring
+    const ringGeo2 = new THREE.TorusGeometry(1.53, 0.022, 10, 48);
+    const ringMat2 = new THREE.MeshBasicMaterial({
+      color: 0x39ff14,
+      transparent: true,
+      opacity: 0.78,
+      blending: THREE.AdditiveBlending,
+    });
+    this.shieldRingMesh2 = new THREE.Mesh(ringGeo2, ringMat2);
+    this.shieldRingMesh2.rotation.x = Math.PI / 3;
+    this.shieldRingMesh2.rotation.y = Math.PI / 6;
+    this.shieldGroup.add(this.shieldRingMesh2);
+
+    // 4. Orbiting Deflector Energy Micro-Nodes
+    const nodeGeo = new THREE.OctahedronGeometry(0.065, 0);
+    const nodeMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      blending: THREE.AdditiveBlending,
+    });
+    for (let i = 0; i < 4; i++) {
+      const node = new THREE.Mesh(nodeGeo, nodeMat);
+      this.shieldNodes.push(node);
+      this.shieldGroup.add(node);
+    }
 
     this.shieldGroup.visible = false;
     scene.add(this.shieldGroup);
@@ -1479,7 +1521,28 @@ export class Player {
     );
 
     // 3. Movement Physics
-    const isActuallyCrouching = this.isGrounded && crouchPressed && !this.isDying;
+    const halfWidth = 0.32;
+
+    // Check if an overhead platform ceiling blocks Jones from standing up
+    let ceilingBlocked = false;
+    if (this.isGrounded && !this.isDying) {
+      for (const plat of platforms) {
+        const platBottom = plat.y - plat.height / 2;
+        const platLeft = plat.x - plat.width / 2;
+        const platRight = plat.x + plat.width / 2;
+        const horizOverlap =
+          this.position.x + halfWidth > platLeft + 0.05 &&
+          this.position.x - halfWidth < platRight - 0.05;
+
+        // If ceiling would collide with standing height (up to 1.95m above feet)
+        if (horizOverlap && platBottom > this.position.y + 0.60 && platBottom < this.position.y + 1.95) {
+          ceilingBlocked = true;
+          break;
+        }
+      }
+    }
+
+    const isActuallyCrouching = this.isGrounded && (crouchPressed || ceilingBlocked) && !this.isDying;
     const walkSpeed = 6.2;
     const runSpeed = 10.5;
     const crouchSpeed = 2.8;
@@ -1494,7 +1557,7 @@ export class Player {
       this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, desiredVx, dt * (accel / 10));
     }
 
-    // 4. Jump & Jetpack (cannot jump while crouching)
+    // 4. Jump & Jetpack (cannot jump while crouching or under low ceiling)
     if (jumpPressed && this.isGrounded && !isActuallyCrouching) {
       this.velocity.y = 11.5;
       this.isGrounded = false;
@@ -1516,7 +1579,6 @@ export class Player {
     this.velocity.y += gravity * dt;
     this.velocity.y = THREE.MathUtils.clamp(this.velocity.y, -14, 12);
 
-    const halfWidth = 0.32;
     const playerHeight = isActuallyCrouching ? 1.10 : 1.85;
 
     // 1. Horizontal Movement & Solid Wall Collisions (Player CANNOT intersect with platforms)
@@ -1581,14 +1643,13 @@ export class Player {
           this.velocity.y = 0;
           this.isGrounded = true;
         }
-        // B. Bonking against Bottom / ceiling of platform (Cannot jump through)
+        // B. Bonking against Bottom / ceiling of platform (Never intersect or pass through underside)
         else if (
-          this.velocity.y > 0 &&
-          prevY + playerHeight <= platBottom + 0.20 &&
+          this.position.y < platBottom &&
           this.position.y + playerHeight >= platBottom
         ) {
           this.position.y = platBottom - playerHeight;
-          this.velocity.y = 0;
+          if (this.velocity.y > 0) this.velocity.y = 0;
         }
       }
     }
@@ -1620,30 +1681,56 @@ export class Player {
 
     // Update Bubble Force Field Transform & Organic Damage Wobble
     if (this.shieldGroup && this.shieldActive) {
-      const shieldCenterY = this.position.y + (isActuallyCrouching ? 0.65 : 0.95);
+      // Fully covers Jones whether standing (center at 0.98m) or crouching (center at 0.60m)
+      const shieldCenterY = this.position.y + (isActuallyCrouching ? 0.60 : 0.98);
       this.shieldGroup.position.set(this.position.x, shieldCenterY, 0);
 
       const time = this.animTimer;
-      let scaleX = 1.0 + Math.sin(time * 6.0) * 0.04;
-      let scaleY = 1.0 + Math.cos(time * 7.5) * 0.04;
+      let scaleX = 1.0 + Math.sin(time * 6.0) * 0.035;
+      let scaleY = 1.0 + Math.cos(time * 7.5) * 0.035;
       let scaleZ = 1.0 + Math.sin(time * 5.2) * 0.03;
 
       if (this.shieldWobbleTimer > 0) {
         this.shieldWobbleTimer -= dt;
         const wT = this.shieldWobbleTimer / 0.35;
         const wobbleWave = Math.sin((1.0 - wT) * Math.PI * 6.0) * wT;
-        scaleX += wobbleWave * 0.32;
-        scaleY -= wobbleWave * 0.24;
-        this.shieldMat.emissive.setHex(0x00ffff);
-        this.shieldMat.opacity = 0.72;
+        scaleX += wobbleWave * 0.35;
+        scaleY -= wobbleWave * 0.28;
+        this.shieldMat.emissive.setHex(0x55ffff);
+        this.shieldMat.opacity = 0.85;
+        this.shieldGridMat.opacity = 0.80;
       } else {
         this.shieldMat.emissive.setHex(0x004466);
-        this.shieldMat.opacity = 0.38;
+        this.shieldMat.opacity = 0.44;
+        this.shieldGridMat.opacity = 0.40;
       }
 
       this.shieldGroup.scale.set(scaleX, scaleY, scaleZ);
-      this.shieldRingMesh.rotation.z += 2.5 * dt;
-      this.shieldRingMesh.rotation.y += 1.8 * dt;
+
+      // Rotate geodesic shield grid and counter-rotating rings
+      this.shieldGridMesh.rotation.y += 0.8 * dt;
+      this.shieldGridMesh.rotation.x += 0.5 * dt;
+
+      this.shieldRingMesh1.rotation.z += 2.8 * dt;
+      this.shieldRingMesh1.rotation.y += 1.6 * dt;
+
+      this.shieldRingMesh2.rotation.z -= 2.2 * dt;
+      this.shieldRingMesh2.rotation.x += 1.9 * dt;
+
+      // Orbit the 4 deflector micro-nodes
+      for (let i = 0; i < this.shieldNodes.length; i++) {
+        const node = this.shieldNodes[i];
+        const nodeAngle = time * 3.2 + (i * Math.PI / 2);
+        const nodeRad = 1.54;
+        const tilt = (i % 2 === 0 ? 0.4 : -0.4);
+        node.position.set(
+          Math.cos(nodeAngle) * nodeRad,
+          Math.sin(nodeAngle) * nodeRad * Math.cos(tilt),
+          Math.sin(nodeAngle) * nodeRad * Math.sin(tilt)
+        );
+        node.rotation.x += dt * 4.0;
+        node.rotation.y += dt * 5.0;
+      }
     }
 
     // Update Dynamic Contact Shadow Decal

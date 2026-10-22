@@ -1088,10 +1088,9 @@ export class ObstacleManager {
       const d = this.drones[i];
       d.update(dt, time, playerX, playerY);
 
-      if (!d.active || d.position.x < playerX - 35) {
-        if (d.position.x < playerX - 35 || !d.active) {
-          d.destroy(this.scene);
-        }
+      // Only recycle attack drone when death explosion has fully finished
+      if ((!d.active && !d.isDying) || d.position.x < playerX - 35) {
+        d.destroy(this.scene);
         this.drones.splice(i, 1);
       }
     }
