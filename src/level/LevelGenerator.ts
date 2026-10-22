@@ -57,7 +57,7 @@ export class LevelGenerator {
 
       case 1:
         // STRATEGIC MECHANICAL PRESS: Slams to ground floor (squashes player against ground!)
-        this.obstacleManager.spawnPiston(x, -3.70, 2.8);
+        this.obstacleManager.spawnPiston(x, -3.70);
         this.obstacleManager.spawnBlob(x - 3.5, -3.70, 2.5);
         this.obstacleManager.spawnCrate(x + 3.0, -3.2);
         this.obstacleManager.spawnFuelPickup(x + 4.5, -2.2);
@@ -91,7 +91,7 @@ export class LevelGenerator {
         // STRATEGIC ELEVATED PLATFORM PRESS: Slams directly onto platform surface!
         this.obstacleManager.spawnPlatform(x, -1.2, 6.0, 0.5);
         this.obstacleManager.spawnCrate(x - 2.0, -0.7);
-        this.obstacleManager.spawnPiston(x + 0.8, -0.95, 4.5);
+        this.obstacleManager.spawnPiston(x + 0.8, -0.95);
         this.obstacleManager.spawnFuelPickup(x + 3.2, 0.2);
         this.obstacleManager.spawnBlob(x - 3.0, -3.70, 3.0);
         this.spawnCoinLine(x - 2, 1.0, 3);

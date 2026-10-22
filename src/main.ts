@@ -41,6 +41,7 @@ class Game {
 
     this.player = new Player(this.sceneManager.scene);
     this.player.onFootstep = () => this.audioManager.playFootstep();
+    this.player.onShieldDeflect = () => this.audioManager.playShieldDeflect();
     this.obstacleManager = new ObstacleManager(this.sceneManager.scene);
     this.parallaxLayers = new ParallaxLayers(this.sceneManager.scene);
     this.levelGenerator = new LevelGenerator(this.obstacleManager);
@@ -102,6 +103,17 @@ class Game {
       });
     }
 
+    const shieldBtn = document.getElementById('btn-shield');
+    if (shieldBtn) {
+      shieldBtn.addEventListener('click', () => {
+        const active = this.player.toggleShield();
+        this.audioManager.playShieldToggle(active);
+        shieldBtn.textContent = active ? '🛡️ SHIELD ON [B]' : '🛡️ SHIELD [B]';
+        shieldBtn.style.color = active ? '#00f5ff' : '#ffaa00';
+        shieldBtn.style.borderColor = active ? '#00f5ff' : '#666';
+      });
+    }
+
     (window as any).__game = this;
   }
 
@@ -158,6 +170,18 @@ class Game {
         this.audioManager.playHitImpact();
       }
 
+      // Bubble Force Field Toggle ([B] key or UI button)
+      if (this.inputManager.consumeShieldTrigger()) {
+        const active = this.player.toggleShield();
+        this.audioManager.playShieldToggle(active);
+        const shieldBtn = document.getElementById('btn-shield');
+        if (shieldBtn) {
+          shieldBtn.textContent = active ? '🛡️ SHIELD ON [B]' : '🛡️ SHIELD [B]';
+          shieldBtn.style.color = active ? '#00f5ff' : '#ffaa00';
+          shieldBtn.style.borderColor = active ? '#00f5ff' : '#666';
+        }
+      }
+
       // 2. Audio Jetpack Thruster Sound
       const isJetpacking = this.inputManager.jetpack && this.player.fuel > 0;
       this.audioManager.setJetpackThrust(isJetpacking);
@@ -178,7 +202,8 @@ class Game {
         this.inputManager.jetpack,
         platforms,
         this.inputManager.mouseWorldTarget,
-        this.inputManager.hasMouse
+        this.inputManager.hasMouse,
+        this.inputManager.crouch
       );
 
       // 4. Update Level & Obstacles & Alien Blobs
@@ -287,7 +312,7 @@ class Game {
         const playerMinX = pPos.x - 0.35;
         const playerMaxX = pPos.x + 0.35;
         const playerMinY = pPos.y;
-        const playerMaxY = pPos.y + 1.85;
+        const playerMaxY = pPos.y + (this.player.isCrouching ? 1.10 : 1.85);
 
         const overlapX = playerMinX <= hammerMaxX && playerMaxX >= hammerMinX;
         const overlapY = playerMinY <= hammerMaxY && playerMaxY >= hammerMinY;
@@ -532,13 +557,15 @@ class Game {
       const combinedRadius = pRadius + p.radius;
 
       if (distSq < combinedRadius * combinedRadius) {
+        this.obstacleManager.spawnPickupFX(p.position.x, p.position.y, p.type);
         this.obstacleManager.removePickup(p);
-        this.audioManager.playPickup();
 
         if (p.type === PickupType.FUEL) {
+          this.audioManager.playPickup();
           this.player.addFuel(35);
           this.score += 100;
         } else if (p.type === PickupType.COIN) {
+          this.audioManager.playCoin();
           this.score += 500;
         }
       }

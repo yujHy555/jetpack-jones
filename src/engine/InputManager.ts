@@ -11,6 +11,9 @@ export class InputManager {
   public shootJustPressed: boolean = false;
   public ragdollJustPressed: boolean = false;
   public handheldToggleJustPressed: boolean = false;
+  public shieldJustPressed: boolean = false;
+  public crouch: boolean = false;
+  public touchCrouch: boolean = false;
 
   // Mouse & 360° Aiming
   public mouseScreenX: number = window.innerWidth / 2;
@@ -62,6 +65,10 @@ export class InputManager {
 
       if ((e.code === 'KeyH') && !wasPressed) {
         this.handheldToggleJustPressed = true;
+      }
+
+      if ((e.code === 'KeyB') && !wasPressed) {
+        this.shieldJustPressed = true;
       }
 
       if ((e.code === 'KeyF') && !wasPressed) {
@@ -137,6 +144,8 @@ export class InputManager {
       this.shootJustPressed = true;
       this.triggerReticlePulse();
     }, () => {});
+    bindBtn('btn-shield', () => { this.shieldJustPressed = true; }, () => {});
+    bindBtn('btn-crouch', () => { this.touchCrouch = true; }, () => { this.touchCrouch = false; });
   }
 
   public triggerReticlePulse() {
@@ -202,6 +211,10 @@ export class InputManager {
     // 3. Jetpack Thrust
     const kbJetpack = !!(this.keys['Space'] || (this.keys['KeyW'] && !this.jumpJustPressed) || (this.keys['ArrowUp'] && !this.jumpJustPressed));
     this.jetpack = kbJetpack || this.touchJetpack;
+
+    // 4. Crouch Input (Hold S or Down Arrow)
+    const kbCrouch = !!(this.keys['KeyS'] || this.keys['ArrowDown']);
+    this.crouch = kbCrouch || this.touchCrouch;
   }
 
   public consumeJumpTrigger(): boolean {
@@ -231,6 +244,14 @@ export class InputManager {
   public consumeHandheldToggleTrigger(): boolean {
     if (this.handheldToggleJustPressed) {
       this.handheldToggleJustPressed = false;
+      return true;
+    }
+    return false;
+  }
+
+  public consumeShieldTrigger(): boolean {
+    if (this.shieldJustPressed) {
+      this.shieldJustPressed = false;
       return true;
     }
     return false;

@@ -398,6 +398,94 @@ export class AudioManager {
     osc.stop(t + 0.36);
   }
 
+  public playCoin() {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const osc2 = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc2.type = 'triangle';
+    osc.frequency.setValueAtTime(1318.51, t); // E6
+    osc.frequency.setValueAtTime(1760.00, t + 0.08); // A6
+    osc2.frequency.setValueAtTime(2637.02, t + 0.08); // E7 harmonic
+
+    gain.gain.setValueAtTime(0.24, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+
+    osc.connect(gain);
+    osc2.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t);
+    osc2.start(t);
+    osc.stop(t + 0.46);
+    osc2.stop(t + 0.46);
+  }
+
+  public playShieldToggle(active: boolean) {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    if (active) {
+      osc.frequency.setValueAtTime(440, t);
+      osc.frequency.exponentialRampToValueAtTime(1174.66, t + 0.22);
+    } else {
+      osc.frequency.setValueAtTime(880, t);
+      osc.frequency.exponentialRampToValueAtTime(220, t + 0.18);
+    }
+
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.26);
+  }
+
+  public playShieldDeflect() {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const lfo = this.ctx.createOscillator();
+    const lfoGain = this.ctx.createGain();
+    const gain = this.ctx.createGain();
+
+    // FM Wobble: 620Hz base with 28Hz wobble vibrato
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(620, t);
+    osc.frequency.exponentialRampToValueAtTime(280, t + 0.28);
+
+    lfo.type = 'sine';
+    lfo.frequency.setValueAtTime(28, t);
+    lfoGain.gain.setValueAtTime(140, t);
+
+    lfo.connect(osc.frequency);
+    lfo.start(t);
+    lfo.stop(t + 0.30);
+
+    gain.gain.setValueAtTime(0.32, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.30);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.31);
+  }
+
   public playWarning() {
     if (!this.enabled) return;
     this.initCtx();

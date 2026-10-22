@@ -50,7 +50,9 @@ export enum PlayerState {
   RUN = 'run',
   JUMP = 'jump',
   FALL = 'fall',
-  JETPACK = 'jetpack'
+  JETPACK = 'jetpack',
+  CROUCH = 'crouch',
+  CROUCH_WALK = 'crouch_walk'
 }
 
 /**
@@ -76,6 +78,20 @@ export class Player {
   public facingRight: boolean = true;
   public radius: number = 0.45;
   public height: number = 1.95;
+
+  public get isCrouching(): boolean {
+    return this.state === PlayerState.CROUCH || this.state === PlayerState.CROUCH_WALK;
+  }
+
+  // Bubble Force Field System
+  public shieldActive: boolean = false;
+  private shieldGroup!: THREE.Group;
+  private shieldSphereMesh!: THREE.Mesh;
+  private shieldRingMesh!: THREE.Mesh;
+  private shieldMat!: THREE.MeshPhysicalMaterial;
+  public shieldWobbleTimer: number = 0;
+  public shieldWobbleImpulse: THREE.Vector2 = new THREE.Vector2();
+  public onShieldDeflect?: () => void;
 
   // Stats
   public life: number = 100;
@@ -1022,7 +1038,55 @@ export class Player {
       }
     });
 
+    this.initShieldForceField(scene);
     this.reset();
+  }
+
+  private initShieldForceField(scene: THREE.Scene) {
+    this.shieldGroup = new THREE.Group();
+
+    // 1. Iridescent Outer Shield Bubble Sphere
+    const sphereGeo = new THREE.SphereGeometry(1.28, 32, 24);
+    this.shieldMat = new THREE.MeshPhysicalMaterial({
+      color: 0x00f5ff,
+      emissive: 0x004466,
+      roughness: 0.08,
+      metalness: 0.15,
+      transparent: true,
+      opacity: 0.38,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    this.shieldSphereMesh = new THREE.Mesh(sphereGeo, this.shieldMat);
+    this.shieldGroup.add(this.shieldSphereMesh);
+
+    // 2. Orbital Electric Shield Rings
+    const ringGeo = new THREE.TorusGeometry(1.30, 0.025, 8, 36);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0x39ff14,
+      transparent: true,
+      opacity: 0.75,
+      blending: THREE.AdditiveBlending,
+    });
+    this.shieldRingMesh = new THREE.Mesh(ringGeo, ringMat);
+    this.shieldRingMesh.rotation.x = Math.PI / 3;
+    this.shieldGroup.add(this.shieldRingMesh);
+
+    this.shieldGroup.visible = false;
+    scene.add(this.shieldGroup);
+  }
+
+  public toggleShield(): boolean {
+    this.shieldActive = !this.shieldActive;
+    if (this.shieldGroup) {
+      this.shieldGroup.visible = this.shieldActive;
+    }
+    if (this.shieldActive) {
+      this.shieldWobbleTimer = 0.32;
+      this.shieldWobbleImpulse.set(0, 1);
+    }
+    return this.shieldActive;
   }
 
   public reset(startX: number = 0, startY: number = GROUND_Y) {
@@ -1043,6 +1107,8 @@ export class Player {
     this.bubbleBurstTimer = 0;
     this.headFollowLag = 0;
     this.hasDroppedGun = false;
+    this.shieldActive = false;
+    if (this.shieldGroup) this.shieldGroup.visible = false;
     if (this.droppedGunMesh) this.droppedGunMesh.visible = false;
     this.blasterMesh.visible = true;
     this.rigRoot.rotation.set(0, 0, 0);
@@ -1256,13 +1322,25 @@ export class Player {
   /**
    * Ragdoll hit reaction with physical knockback (NO FLASHING!)
    */
-  public takeDamage(amount: number = 25, knockbackDirX: number = -1) {
-    if (this.isDying || this.invulnerableTime > 0) return;
+  public takeDamage(amount: number = 25, knockbackDirX: number = -1): boolean {
+    if (this.isDying || this.invulnerableTime > 0) return false;
+
+    // Bubble Force Field Negates All Damage!
+    if (this.shieldActive) {
+      this.shieldWobbleTimer = 0.35;
+      this.shieldWobbleImpulse.set(knockbackDirX, 0);
+      this.velocity.x += knockbackDirX * 3.5;
+      this.ragdollTimer = 0.16;
+      this.ragdollImpulseX = knockbackDirX;
+      this.onShieldDeflect?.();
+      return false;
+    }
+
     this.life = Math.max(0, this.life - amount);
 
     if (this.life <= 0) {
       this.triggerDeath(knockbackDirX);
-      return;
+      return true;
     }
 
     this.invulnerableTime = 0.55;
@@ -1273,6 +1351,7 @@ export class Player {
     this.velocity.x = knockbackDirX * 7.5;
     this.velocity.y = 7.0;
     this.isGrounded = false;
+    return true;
   }
 
   /**
@@ -1281,6 +1360,17 @@ export class Player {
    */
   public crushHit(amount: number = 30, knockbackDirX: number = 0) {
     if (this.isDying || this.invulnerableTime > 0) return;
+
+    if (this.shieldActive) {
+      this.shieldWobbleTimer = 0.40;
+      this.shieldWobbleImpulse.set(knockbackDirX, -1);
+      this.velocity.x += knockbackDirX * 4.0;
+      this.ragdollTimer = 0.18;
+      this.crushSquashTimer = 0.18;
+      this.onShieldDeflect?.();
+      return;
+    }
+
     this.life = Math.max(0, this.life - amount);
 
     if (this.life <= 0) {
@@ -1330,7 +1420,8 @@ export class Player {
     jetpackPressed: boolean,
     platforms: { x: number; y: number; width: number; height: number }[] = [],
     mouseWorldTarget?: THREE.Vector3,
-    hasMouseTarget: boolean = false
+    hasMouseTarget: boolean = false,
+    crouchPressed: boolean = false
   ) {
     this.animTimer += dt;
     if (this.invulnerableTime > 0) {
@@ -1346,6 +1437,7 @@ export class Player {
       jumpPressed = false;
       jetpackPressed = false;
       hasMouseTarget = false;
+      crouchPressed = false;
     }
 
     // 1. Aim Tracking with Arc Limits (clears helmet dome cleanly)
@@ -1387,16 +1479,23 @@ export class Player {
     );
 
     // 3. Movement Physics
+    const isActuallyCrouching = this.isGrounded && crouchPressed && !this.isDying;
     const walkSpeed = 6.2;
     const runSpeed = 10.5;
-    const targetSpeed = runPressed ? runSpeed : walkSpeed;
+    const crouchSpeed = 2.8;
+    const targetSpeed = isActuallyCrouching ? crouchSpeed : (runPressed ? runSpeed : walkSpeed);
     const accel = this.isGrounded ? 45.0 : 22.0;
 
     const desiredVx = moveX * targetSpeed;
-    this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, desiredVx, dt * (accel / 10));
+    if (this.isDying && !this.isGrounded) {
+      // Retain lateral momentum during death tumble off platform edges
+      this.velocity.x *= 0.985;
+    } else {
+      this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, desiredVx, dt * (accel / 10));
+    }
 
-    // 4. Jump & Jetpack
-    if (jumpPressed && this.isGrounded) {
+    // 4. Jump & Jetpack (cannot jump while crouching)
+    if (jumpPressed && this.isGrounded && !isActuallyCrouching) {
       this.velocity.y = 11.5;
       this.isGrounded = false;
       this.emitDust(this.position.x, this.position.y, 6);
@@ -1418,7 +1517,7 @@ export class Player {
     this.velocity.y = THREE.MathUtils.clamp(this.velocity.y, -14, 12);
 
     const halfWidth = 0.32;
-    const playerHeight = 1.85;
+    const playerHeight = isActuallyCrouching ? 1.10 : 1.85;
 
     // 1. Horizontal Movement & Solid Wall Collisions (Player CANNOT intersect with platforms)
     const prevX = this.position.x;
@@ -1465,9 +1564,11 @@ export class Player {
       const platLeft = plat.x - plat.width / 2;
       const platRight = plat.x + plat.width / 2;
 
+      // When dying near edge of platform, require center of mass to be well inside platform; otherwise tumble off!
+      const edgeTolerance = this.isDying ? 0.35 : 0.02;
       const horizOverlap =
-        this.position.x + halfWidth > platLeft + 0.02 &&
-        this.position.x - halfWidth < platRight - 0.02;
+        this.position.x + halfWidth > platLeft + edgeTolerance &&
+        this.position.x - halfWidth < platRight - edgeTolerance;
 
       if (horizOverlap) {
         // A. Landing on Top of platform
@@ -1506,6 +1607,8 @@ export class Player {
       this.state = PlayerState.JETPACK;
     } else if (!this.isGrounded) {
       this.state = this.velocity.y > 0 ? PlayerState.JUMP : PlayerState.FALL;
+    } else if (isActuallyCrouching) {
+      this.state = Math.abs(this.velocity.x) > 0.2 ? PlayerState.CROUCH_WALK : PlayerState.CROUCH;
     } else if (Math.abs(this.velocity.x) > 0.4) {
       this.state = Math.abs(this.velocity.x) > 7.0 ? PlayerState.RUN : PlayerState.WALK;
     } else {
@@ -1514,6 +1617,34 @@ export class Player {
 
     // 7. Update Transforms & Animations
     this.mesh.position.copy(this.position);
+
+    // Update Bubble Force Field Transform & Organic Damage Wobble
+    if (this.shieldGroup && this.shieldActive) {
+      const shieldCenterY = this.position.y + (isActuallyCrouching ? 0.65 : 0.95);
+      this.shieldGroup.position.set(this.position.x, shieldCenterY, 0);
+
+      const time = this.animTimer;
+      let scaleX = 1.0 + Math.sin(time * 6.0) * 0.04;
+      let scaleY = 1.0 + Math.cos(time * 7.5) * 0.04;
+      let scaleZ = 1.0 + Math.sin(time * 5.2) * 0.03;
+
+      if (this.shieldWobbleTimer > 0) {
+        this.shieldWobbleTimer -= dt;
+        const wT = this.shieldWobbleTimer / 0.35;
+        const wobbleWave = Math.sin((1.0 - wT) * Math.PI * 6.0) * wT;
+        scaleX += wobbleWave * 0.32;
+        scaleY -= wobbleWave * 0.24;
+        this.shieldMat.emissive.setHex(0x00ffff);
+        this.shieldMat.opacity = 0.72;
+      } else {
+        this.shieldMat.emissive.setHex(0x004466);
+        this.shieldMat.opacity = 0.38;
+      }
+
+      this.shieldGroup.scale.set(scaleX, scaleY, scaleZ);
+      this.shieldRingMesh.rotation.z += 2.5 * dt;
+      this.shieldRingMesh.rotation.y += 1.8 * dt;
+    }
 
     // Update Dynamic Contact Shadow Decal
     if (this.shadowMesh) {
@@ -1670,6 +1801,82 @@ export class Player {
           // Right shooting arm rests naturally by his side with pistol carried at hip
           this.frontArmBone.rotation.z = -1.35;
           this.frontForearmBone.rotation.z = 0.22;
+        }
+        break;
+      }
+
+      // ----------------------------------------------------
+      // CROUCH & CROUCH WALK (AAA Tactical Low-Profile Stance)
+      // ----------------------------------------------------
+      case PlayerState.CROUCH: {
+        this.idleTimer = 0;
+        this.hipBone.position.y = 0.52; // Low hips!
+        this.torsoBone.rotation.z = -0.32; // Lean forward
+        this.torsoBone.position.y = -0.06;
+        this.headBone.rotation.z = 0.28; // Head up, vigilant
+        this.headBone.rotation.y = 0;
+        this.torsoBone.rotation.y = 0;
+        this.jetpackBone.rotation.z = 0;
+
+        // Deep knee fold & flat boot contact
+        this.frontThighBone.rotation.z = 1.18;
+        this.frontShinBone.rotation.z = -1.98;
+        this.frontFootBone.rotation.z = 0.82;
+
+        this.backThighBone.rotation.z = 1.08;
+        this.backShinBone.rotation.z = -1.88;
+        this.backFootBone.rotation.z = 0.80;
+
+        this.backArmBone.rotation.z = -0.45;
+        this.backForearmBone.rotation.z = 0.85;
+
+        if (!hasMouseTarget && this.shootTimer <= 0) {
+          this.frontArmBone.rotation.z = -0.35;
+          this.frontForearmBone.rotation.z = 0.75;
+        }
+        break;
+      }
+
+      case PlayerState.CROUCH_WALK: {
+        this.idleTimer = 0;
+        this.headBone.rotation.y = 0;
+        this.torsoBone.rotation.y = 0;
+        this.jetpackBone.rotation.z = 0;
+
+        const crawlFreq = 9.0;
+        const phase = t * crawlFreq;
+
+        // Trigger footstep sound on creeping steps
+        if (this.isGrounded) {
+          if (Math.sin(phase) * Math.sin(this.prevStridePhase) <= 0 && phase !== this.prevStridePhase) {
+            this.onFootstep?.();
+          }
+        }
+        this.prevStridePhase = phase;
+
+        const bob = Math.abs(Math.sin(phase)) * 0.05;
+        this.hipBone.position.y = 0.52 + bob;
+        this.torsoBone.rotation.z = -0.34 + Math.sin(phase * 2) * 0.03;
+        this.torsoBone.position.y = -0.06;
+        this.headBone.rotation.z = 0.28 + this.headFollowLag;
+
+        const crawlFront = Math.sin(phase);
+        const crawlBack = Math.sin(phase + Math.PI);
+
+        this.frontThighBone.rotation.z = 1.15 + crawlFront * 0.35;
+        this.frontShinBone.rotation.z = -1.90 - Math.max(0, crawlFront) * 0.40;
+        this.frontFootBone.rotation.z = 0.80;
+
+        this.backThighBone.rotation.z = 1.15 + crawlBack * 0.35;
+        this.backShinBone.rotation.z = -1.90 - Math.max(0, crawlBack) * 0.40;
+        this.backFootBone.rotation.z = 0.80;
+
+        this.backArmBone.rotation.z = -0.55 + crawlFront * 0.30;
+        this.backForearmBone.rotation.z = 0.85;
+
+        if (!hasMouseTarget && this.shootTimer <= 0) {
+          this.frontArmBone.rotation.z = -0.45 + crawlBack * 0.30;
+          this.frontForearmBone.rotation.z = 0.75;
         }
         break;
       }
@@ -2012,25 +2219,45 @@ export class Player {
 
         this.rigRoot.rotation.z = (this.facingRight ? -1 : 1) * (0.8 * t);
       } else {
-        // Phase 2: Ground impact & collapse flat onto catwalk floor
-        if (this.deathTimer - dt < 0.75) {
-          this.emitDust(this.position.x, this.position.y, 14);
+        // Phase 2: Dynamic Edge Ragdoll Tumbling or Flat Catwalk Impact
+        if (!this.isGrounded) {
+          // In the air (e.g. falling off a platform ledge or flying from an explosion)
+          const tumbleSpeed = this.facingRight ? -4.5 : 4.5;
+          this.rigRoot.rotation.z += tumbleSpeed * dt;
+          this.rigRoot.position.y = THREE.MathUtils.lerp(this.rigRoot.position.y, 0, dt * 5.0);
+
+          // Limbs flail naturally under air resistance
+          this.headBone.rotation.z = -0.3;
+          this.torsoBone.rotation.z = 0.25;
+          this.frontArmBone.rotation.z = -1.2;
+          this.frontForearmBone.rotation.z = 0.5;
+          this.backArmBone.rotation.z = 1.1;
+          this.backForearmBone.rotation.z = 0.3;
+          this.frontThighBone.rotation.z = 0.45;
+          this.frontShinBone.rotation.z = -0.5;
+          this.backThighBone.rotation.z = -0.35;
+          this.backShinBone.rotation.z = 0.2;
+        } else {
+          // Ground impact & collapse flat onto catwalk floor
+          if (this.deathTimer - dt < 0.75) {
+            this.emitDust(this.position.x, this.position.y, 14);
+          }
+
+          const collapseTarget = this.facingRight ? -Math.PI / 2 : Math.PI / 2;
+          this.rigRoot.rotation.z = THREE.MathUtils.lerp(this.rigRoot.rotation.z, collapseTarget, dt * 8.0);
+          this.rigRoot.position.y = THREE.MathUtils.lerp(this.rigRoot.position.y, 0.25, dt * 8.0);
+
+          this.headBone.rotation.z = THREE.MathUtils.lerp(this.headBone.rotation.z, 0, dt * 6.0);
+          this.torsoBone.rotation.z = THREE.MathUtils.lerp(this.torsoBone.rotation.z, 0, dt * 6.0);
+          this.frontArmBone.rotation.z = THREE.MathUtils.lerp(this.frontArmBone.rotation.z, 0.2, dt * 6.0);
+          this.frontForearmBone.rotation.z = THREE.MathUtils.lerp(this.frontForearmBone.rotation.z, 0, dt * 6.0);
+          this.backArmBone.rotation.z = THREE.MathUtils.lerp(this.backArmBone.rotation.z, -0.2, dt * 6.0);
+          this.backForearmBone.rotation.z = THREE.MathUtils.lerp(this.backForearmBone.rotation.z, 0, dt * 6.0);
+          this.frontThighBone.rotation.z = THREE.MathUtils.lerp(this.frontThighBone.rotation.z, 0, dt * 6.0);
+          this.frontShinBone.rotation.z = THREE.MathUtils.lerp(this.frontShinBone.rotation.z, 0, dt * 6.0);
+          this.backThighBone.rotation.z = THREE.MathUtils.lerp(this.backThighBone.rotation.z, 0, dt * 6.0);
+          this.backShinBone.rotation.z = THREE.MathUtils.lerp(this.backShinBone.rotation.z, 0, dt * 6.0);
         }
-
-        const collapseTarget = this.facingRight ? -Math.PI / 2 : Math.PI / 2;
-        this.rigRoot.rotation.z = THREE.MathUtils.lerp(this.rigRoot.rotation.z, collapseTarget, dt * 8.0);
-        this.rigRoot.position.y = THREE.MathUtils.lerp(this.rigRoot.position.y, 0.25, dt * 8.0);
-
-        this.headBone.rotation.z = THREE.MathUtils.lerp(this.headBone.rotation.z, 0, dt * 6.0);
-        this.torsoBone.rotation.z = THREE.MathUtils.lerp(this.torsoBone.rotation.z, 0, dt * 6.0);
-        this.frontArmBone.rotation.z = THREE.MathUtils.lerp(this.frontArmBone.rotation.z, 0.2, dt * 6.0);
-        this.frontForearmBone.rotation.z = THREE.MathUtils.lerp(this.frontForearmBone.rotation.z, 0, dt * 6.0);
-        this.backArmBone.rotation.z = THREE.MathUtils.lerp(this.backArmBone.rotation.z, -0.2, dt * 6.0);
-        this.backForearmBone.rotation.z = THREE.MathUtils.lerp(this.backForearmBone.rotation.z, 0, dt * 6.0);
-        this.frontThighBone.rotation.z = THREE.MathUtils.lerp(this.frontThighBone.rotation.z, 0, dt * 6.0);
-        this.frontShinBone.rotation.z = THREE.MathUtils.lerp(this.frontShinBone.rotation.z, 0, dt * 6.0);
-        this.backThighBone.rotation.z = THREE.MathUtils.lerp(this.backThighBone.rotation.z, 0, dt * 6.0);
-        this.backShinBone.rotation.z = THREE.MathUtils.lerp(this.backShinBone.rotation.z, 0, dt * 6.0);
       }
 
       if (this.deathTimer >= this.maxDeathTime) {

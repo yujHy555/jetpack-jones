@@ -44,6 +44,22 @@ export interface ActivePickup {
   update: (dt: number, time: number) => void;
 }
 
+interface PickupFXParticle {
+  mesh: THREE.Mesh;
+  velocity: THREE.Vector3;
+  age: number;
+  maxLife: number;
+  baseScale: number;
+  active: boolean;
+}
+
+interface PickupFXShockwave {
+  mesh: THREE.Mesh;
+  age: number;
+  maxLife: number;
+  active: boolean;
+}
+
 export class ObstacleManager {
   private scene: THREE.Scene;
   public obstacles: ActiveObstacle[] = [];
@@ -52,6 +68,10 @@ export class ObstacleManager {
   public drones: DroneEnemy[] = [];
   public crates: PhysicsCrate[] = [];
   private nextId = 1;
+
+  // Pickup Particle FX Pools
+  private fxParticles: PickupFXParticle[] = [];
+  private fxShockwaves: PickupFXShockwave[] = [];
 
   // Cached Materials
   private steelMat: THREE.MeshStandardMaterial;
@@ -156,6 +176,50 @@ export class ObstacleManager {
     this.plasmaCoreMat = new THREE.MeshBasicMaterial({
       color: 0xff7700,
     });
+
+    // Initialize Pickup Particle FX Pools
+    const pGeo = new THREE.SphereGeometry(0.12, 8, 8);
+    for (let i = 0; i < 48; i++) {
+      const pMat = new THREE.MeshBasicMaterial({
+        color: 0x00f5ff,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(pGeo, pMat);
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this.fxParticles.push({
+        mesh,
+        velocity: new THREE.Vector3(),
+        age: 0,
+        maxLife: 0.5,
+        baseScale: 1.0,
+        active: false,
+      });
+    }
+
+    const swGeo = new THREE.RingGeometry(0.25, 0.45, 24);
+    for (let i = 0; i < 8; i++) {
+      const swMat = new THREE.MeshBasicMaterial({
+        color: 0x00f5ff,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(swGeo, swMat);
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this.fxShockwaves.push({
+        mesh,
+        age: 0,
+        maxLife: 0.35,
+        active: false,
+      });
+    }
   }
 
   public clear() {
@@ -173,6 +237,14 @@ export class ObstacleManager {
     }
     for (const c of this.crates) {
       c.destroy(this.scene);
+    }
+    for (const p of this.fxParticles) {
+      p.active = false;
+      p.mesh.visible = false;
+    }
+    for (const sw of this.fxShockwaves) {
+      sw.active = false;
+      sw.mesh.visible = false;
     }
     this.obstacles = [];
     this.pickups = [];
@@ -337,64 +409,98 @@ export class ObstacleManager {
   /**
    * Spawns a Heavy Hydraulic Crushing Piston / Mechanical Press
    * Positioned strategically to squash player against the floor or platform!
-   * - Retracted: Leaves generous headroom (2.7m) so player can walk/sprint through when timed right.
-   * - Slam: Downward stroke plunges to (surfaceY + 0.35m), crushing player with full squash physics!
+   * - Retracted: Parked high at the ceiling (headroom 3.2m above surface), player runs through freely.
+   * - Slam: Downward stroke plunges violently to (surfaceY + 0.35m), crushing player with full squash physics!
    */
-  public spawnPiston(x: number, surfaceY: number = -3.70, ceilingY: number = 2.4): ActiveObstacle {
+  public spawnPiston(x: number, surfaceY: number = -3.70, ceilingY?: number): ActiveObstacle {
     const group = new THREE.Group();
-    const topY = ceilingY;
+    const topY = ceilingY !== undefined ? ceilingY : (surfaceY + 6.0);
     group.position.set(x, topY, 0);
 
-    // 1. Heavy Top Industrial Housing & Mounting Bracket
-    const housingGeo = new THREE.BoxGeometry(2.2, 1.4, 1.4);
+    // 1. Heavy Top Industrial Gantry Housing & Mounting Bracket
+    const housingGeo = new THREE.BoxGeometry(2.4, 1.2, 1.5);
     const housing = new THREE.Mesh(housingGeo, this.darkIronMat);
     group.add(housing);
 
-    // Flashing warning beacon on housing
-    const beaconGeo = new THREE.CylinderGeometry(0.18, 0.24, 0.36, 12);
-    const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
-    const beacon = new THREE.Mesh(beaconGeo, beaconMat);
-    beacon.position.set(0, 0.85, 0);
-    group.add(beacon);
+    // Hazard caution plate on housing front
+    const chevronGeo = new THREE.BoxGeometry(2.42, 0.35, 1.52);
+    const chevron = new THREE.Mesh(chevronGeo, this.hazardMat);
+    chevron.position.y = -0.25;
+    group.add(chevron);
 
-    // 2. Moving Piston Assembly
+    // Twin flashing warning beacons on top of housing
+    const beaconGeo = new THREE.CylinderGeometry(0.16, 0.22, 0.32, 12);
+    const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff1100 });
+    const beaconL = new THREE.Mesh(beaconGeo, beaconMat);
+    beaconL.position.set(-0.85, 0.75, 0);
+    group.add(beaconL);
+
+    const beaconR = new THREE.Mesh(beaconGeo, beaconMat);
+    beaconR.position.set(0.85, 0.75, 0);
+    group.add(beaconR);
+
+    // Twin fixed outer hydraulic cylinder barrels (chrome & dark iron)
+    const barrelGeo = new THREE.CylinderGeometry(0.24, 0.24, 2.2, 16);
+    const barrelL = new THREE.Mesh(barrelGeo, this.darkIronMat);
+    barrelL.position.set(-0.65, -1.1, 0);
+    group.add(barrelL);
+
+    const barrelR = new THREE.Mesh(barrelGeo, this.darkIronMat);
+    barrelR.position.set(0.65, -1.1, 0);
+    group.add(barrelR);
+
+    // 2. Moving Piston & Stomper Assembly
     const rodGroup = new THREE.Group();
     group.add(rodGroup);
 
-    // Maximum travel distance from top to floor
-    const totalTravel = (topY - surfaceY) - 0.70;
-    const rodLength = totalTravel + 1.2;
+    // Geometry & Kinematics calculation:
+    // Hammer foot: Height 0.80, half-height 0.40.
+    // Retracted: Bottom of hammer at surfaceY + 3.20 => Center at surfaceY + 3.60.
+    // Slammed:   Bottom of hammer at surfaceY + 0.35 => Center at surfaceY + 0.75.
+    const hammerRestWorldY = surfaceY + 3.60;
+    const hammerSlamWorldY = surfaceY + 0.75;
+    const strokeDistance = hammerRestWorldY - hammerSlamWorldY; // ~2.85m stroke
+    const hammerLocalY = hammerRestWorldY - topY;
 
-    // Central chrome hydraulic ram rod
-    const rodGeo = new THREE.CylinderGeometry(0.32, 0.32, rodLength, 16);
-    const rod = new THREE.Mesh(rodGeo, this.steelMat);
-    rod.position.y = -rodLength / 2;
-    rodGroup.add(rod);
+    // Telescopic chrome ram rods (attached to rodGroup, slide inside barrels)
+    const ramGeo = new THREE.CylinderGeometry(0.16, 0.16, 3.2, 16);
+    const ramL = new THREE.Mesh(ramGeo, this.steelMat);
+    ramL.position.set(-0.65, hammerLocalY + 1.6, 0);
+    rodGroup.add(ramL);
 
-    // Twin auxiliary guide tubes
-    const guideGeo = new THREE.CylinderGeometry(0.08, 0.08, rodLength * 0.85, 8);
-    const guideL = new THREE.Mesh(guideGeo, this.darkIronMat);
-    guideL.position.set(-0.75, -rodLength * 0.42, 0);
-    rodGroup.add(guideL);
-    const guideR = new THREE.Mesh(guideGeo, this.darkIronMat);
-    guideR.position.set(0.75, -rodLength * 0.42, 0);
-    rodGroup.add(guideR);
+    const ramR = new THREE.Mesh(ramGeo, this.steelMat);
+    ramR.position.set(0.65, hammerLocalY + 1.6, 0);
+    rodGroup.add(ramR);
+
+    // Central heavy main drive piston column
+    const mainPistonGeo = new THREE.CylinderGeometry(0.35, 0.35, 2.4, 16);
+    const mainPiston = new THREE.Mesh(mainPistonGeo, this.darkIronMat);
+    mainPiston.position.set(0, hammerLocalY + 1.2, 0);
+    rodGroup.add(mainPiston);
 
     // 3. Heavy Industrial Stomper Hammer with Caution Hazard Stripes
-    const hammerGeo = new THREE.BoxGeometry(2.2, 0.8, 1.3);
+    const hammerGeo = new THREE.BoxGeometry(2.3, 0.80, 1.4);
     const hammer = new THREE.Mesh(hammerGeo, this.hazardMat);
-    hammer.position.y = -totalTravel;
+    hammer.position.set(0, hammerLocalY, 0);
     rodGroup.add(hammer);
 
-    // Steel Impact Baseplate with heavy cleats
-    const plateGeo = new THREE.BoxGeometry(2.24, 0.16, 1.34);
-    const plate = new THREE.Mesh(plateGeo, this.steelMat);
-    plate.position.y = -totalTravel - 0.40;
-    rodGroup.add(plate);
+    // Hardened Steel Cleated Impact Sole Plate on bottom
+    const solePlateGeo = new THREE.BoxGeometry(2.35, 0.14, 1.45);
+    const solePlate = new THREE.Mesh(solePlateGeo, this.steelMat);
+    solePlate.position.set(0, hammerLocalY - 0.40, 0);
+    rodGroup.add(solePlate);
+
+    // Heavy Pressure Rivets along the sole plate
+    const cleatGeo = new THREE.BoxGeometry(0.12, 0.08, 0.12);
+    for (let c = -1.0; c <= 1.0; c += 0.5) {
+      const cleat = new THREE.Mesh(cleatGeo, this.darkIronMat);
+      cleat.position.set(c, hammerLocalY - 0.50, 0.4);
+      rodGroup.add(cleat);
+    }
 
     this.scene.add(group);
 
-    const colliderCenter = new THREE.Vector2(x, topY - totalTravel);
+    const colliderCenter = new THREE.Vector2(x, hammerRestWorldY);
 
     const obs: ActiveObstacle = {
       id: this.nextId++,
@@ -402,7 +508,7 @@ export class ObstacleManager {
       group,
       collider: {
         type: 'box',
-        halfSize: new THREE.Vector2(1.1, 0.48),
+        halfSize: new THREE.Vector2(1.18, 0.46),
         center: colliderCenter,
       },
       destructible: false,
@@ -411,42 +517,41 @@ export class ObstacleManager {
       isCrushing: false,
       update: (dt: number, time: number) => {
         // Press cycle:
-        // Slow anticipation / warning at top -> violent rapid slam -> brief pause -> smooth retract
-        const cyclePeriod = 2.4;
+        // Slow anticipation / warning at top -> violent rapid slam -> brief pause on floor -> smooth hydraulic retract
+        const cyclePeriod = 2.5;
         const phase = (time % cyclePeriod) / cyclePeriod;
 
         let extension = 0;
         let isCrush = false;
 
-        if (phase < 0.48) {
-          // Resting at top: generous headroom (extension = 0)
+        if (phase < 0.45) {
+          // Resting parked high at ceiling: 3.2m open headroom (extension = 0)
           extension = 0;
-        } else if (phase < 0.62) {
-          // Rapid violent slam downward (0.48 to 0.62: 0.14s slam!)
-          const slamT = (phase - 0.48) / 0.14;
-          extension = Math.pow(slamT, 3.0);
+        } else if (phase < 0.60) {
+          // Rapid violent slam downward (0.45 to 0.60: 0.15s violent slam!)
+          const slamT = (phase - 0.45) / 0.15;
+          extension = Math.pow(slamT, 3.2);
           isCrush = true;
-        } else if (phase < 0.74) {
-          // Impact pause on floor (0.62 to 0.74)
+        } else if (phase < 0.72) {
+          // Impact pause on floor (0.60 to 0.72)
           extension = 1.0;
         } else {
-          // Smooth hydraulic retraction back up (0.74 to 1.0)
-          const retractT = (phase - 0.74) / 0.26;
+          // Smooth hydraulic retraction back to ceiling (0.72 to 1.0)
+          const retractT = (phase - 0.72) / 0.28;
           extension = 1.0 - Math.sin(retractT * Math.PI * 0.5);
         }
 
-        // Travel from 0 (headroom 2.7m above floor) to maximum slam (0.35m above floor)
-        const currentExtensionY = -extension * (totalTravel - 1.25);
-        rodGroup.position.y = currentExtensionY;
+        // Move rodGroup downward by (extension * strokeDistance)
+        rodGroup.position.y = -extension * strokeDistance;
 
         // Dynamic world position of crushing hammer center
-        const hammerWorldY = topY + currentExtensionY - totalTravel;
-        colliderCenter.set(x, hammerWorldY);
+        const currentHammerWorldY = hammerRestWorldY + rodGroup.position.y;
+        colliderCenter.set(x, currentHammerWorldY);
 
         obs.isCrushing = isCrush;
 
-        // Flashing beacon flashes rapidly right before slam
-        const isPreSlam = phase > 0.30 && phase < 0.62;
+        // Flashing beacons flash rapidly right before slam
+        const isPreSlam = phase > 0.28 && phase < 0.60;
         const flashRate = isPreSlam ? 24.0 : 4.0;
         const beaconOn = Math.sin(time * flashRate) > 0;
         beaconMat.color.setHex(beaconOn ? 0xff1100 : 0x330000);
@@ -1005,8 +1110,86 @@ export class ObstacleManager {
       }
     }
 
+    // Update Pickup Particle & Shockwave FX
+    for (const p of this.fxParticles) {
+      if (!p.active) continue;
+      p.age += dt;
+      if (p.age >= p.maxLife) {
+        p.active = false;
+        p.mesh.visible = false;
+        continue;
+      }
+      p.velocity.y -= 14.0 * dt; // gravity arc
+      p.mesh.position.addScaledVector(p.velocity, dt);
+      const prog = p.age / p.maxLife;
+      const s = p.baseScale * (1.0 - prog * 0.75);
+      p.mesh.scale.set(s, s, s);
+      (p.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1.0 - prog);
+    }
+
+    for (const sw of this.fxShockwaves) {
+      if (!sw.active) continue;
+      sw.age += dt;
+      if (sw.age >= sw.maxLife) {
+        sw.active = false;
+        sw.mesh.visible = false;
+        continue;
+      }
+      const prog = sw.age / sw.maxLife;
+      const s = 0.35 + Math.sin(prog * Math.PI * 0.5) * 3.6;
+      sw.mesh.scale.set(s, s, s);
+      (sw.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1.0 - prog);
+    }
+
     // Resolve non-intersection collisions between enemies, drones, crates, and obstacles
     this.resolveEntityCollisions();
+  }
+
+  /**
+   * Spawns AAA Particle Burst & Shockwave Ring on Collectible Pickup
+   */
+  public spawnPickupFX(x: number, y: number, type: PickupType) {
+    // 1. Expanding Shockwave Ring
+    const sw = this.fxShockwaves.find(s => !s.active);
+    if (sw) {
+      sw.active = true;
+      sw.age = 0;
+      sw.mesh.position.set(x, y, 0.08);
+      sw.mesh.scale.set(0.2, 0.2, 0.2);
+      (sw.mesh.material as THREE.MeshBasicMaterial).color.setHex(type === PickupType.FUEL ? 0x00f5ff : 0xffbb00);
+      sw.mesh.visible = true;
+    }
+
+    // 2. Bursting Spark Particles
+    const count = type === PickupType.FUEL ? 20 : 26;
+    let spawned = 0;
+    for (const p of this.fxParticles) {
+      if (p.active) continue;
+      p.active = true;
+      p.age = 0;
+      p.maxLife = 0.38 + Math.random() * 0.25;
+      p.baseScale = 0.9 + Math.random() * 0.5;
+      p.mesh.position.set(x + (Math.random() - 0.5) * 0.15, y + (Math.random() - 0.5) * 0.15, 0.08);
+
+      const angle = (spawned / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+      const speed = 2.8 + Math.random() * 4.2;
+      p.velocity.set(
+        Math.cos(angle) * speed,
+        Math.sin(angle) * speed + (type === PickupType.FUEL ? 2.6 : 1.2),
+        0
+      );
+
+      (p.mesh.material as THREE.MeshBasicMaterial).color.setHex(
+        type === PickupType.FUEL
+          ? (spawned % 2 === 0 ? 0x00f5ff : 0x39ff14)
+          : (spawned % 2 === 0 ? 0xffea00 : 0xff8800)
+      );
+      p.mesh.scale.set(p.baseScale, p.baseScale, p.baseScale);
+      p.mesh.visible = true;
+
+      spawned++;
+      if (spawned >= count) break;
+    }
   }
 
   /**
