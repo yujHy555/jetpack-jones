@@ -105,21 +105,26 @@ export class Player {
   public shieldWobbleImpulse: THREE.Vector2 = new THREE.Vector2();
   public onShieldDeflect?: () => void;
   // Bubble Force Field Ball Mode & Bouncy Ball Physics
+  public forcefieldMode: 'ball' | 'shield' = 'ball';
   public isBallMode: boolean = false;
   public ballAngularVelocity: number = 0;
   public ballRotationZ: number = 0;
+  public ballRotationX: number = 0;
+  public ballRotationY: number = 0;
   public ballBounceSquash: number = 1.0;
   public ballInternalOffset: THREE.Vector2 = new THREE.Vector2();
   public onBallBounce?: (strength: number) => void;
   public toggleBallMode(): boolean {
-    this.isBallMode = !this.isBallMode;
-    if (this.isBallMode) {
-      this.shieldActive = true;
-      if (this.shieldGroup) this.shieldGroup.visible = true;
-      this.shieldWobbleTimer = 0.35;
-      this.shieldWobbleImpulse.set(0, 1);
-    }
-    return this.isBallMode;
+    return this.toggleShield();
+  }
+  public toggleForcefieldMode(): 'ball' | 'shield' {
+    this.forcefieldMode = this.forcefieldMode === 'ball' ? 'shield' : 'ball';
+    this.isBallMode = this.shieldActive && (this.forcefieldMode === 'ball');
+    return this.forcefieldMode;
+  }
+  public setForcefieldMode(mode: 'ball' | 'shield'): void {
+    this.forcefieldMode = mode;
+    this.isBallMode = this.shieldActive && (this.forcefieldMode === 'ball');
   }
 
   // Hyper-Ion Quantum Jetpack Upgrade
@@ -1424,12 +1429,12 @@ export class Player {
     const sphereGeo = new THREE.SphereGeometry(1.65, 36, 28);
     this.shieldMat = new THREE.MeshPhysicalMaterial({
       color: 0x00f5ff,
-      emissive: 0x002233,
-      roughness: 0.02,
-      metalness: 0.05,
-      transmission: 0.95,
+      emissive: 0x001525,
+      roughness: 0.01,
+      metalness: 0.02,
+      transmission: 0.98,
       transparent: true,
-      opacity: 0.18,
+      opacity: 0.12,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
@@ -1501,6 +1506,7 @@ export class Player {
 
   public toggleShield(): boolean {
     this.shieldActive = !this.shieldActive;
+    this.isBallMode = this.shieldActive && (this.forcefieldMode === 'ball');
     if (this.shieldGroup) {
       this.shieldGroup.visible = this.shieldActive;
     }
@@ -1829,17 +1835,8 @@ export class Player {
     this.emitSparks(this.position.x, this.position.y + 0.8, 0, 10);
   }
 
-  /**
-   * High-Energy Acrobatic Stunt Ragdoll Tumble
-   * Showcases player's joint flailing, 360° stunt tumble roll, and recovery roll!
-   */
-  public triggerStuntRagdoll(impulseX: number = 7.5, impulseY: number = 6.0) {
-    this.ragdollTimer = 0.65;
-    this.ragdollImpulseX = this.facingRight ? 1 : -1;
-    this.velocity.x = this.ragdollImpulseX * impulseX;
-    this.velocity.y = impulseY;
-    this.isGrounded = false;
-    this.emitDust(this.position.x, this.position.y, 8);
+  public triggerStuntRagdoll() {
+    // Stunt functionality removed per user request
   }
 
   public addFuel(amount: number = 35) {
@@ -1925,32 +1922,33 @@ export class Player {
     let ceilingBlocked = false;
     if (!this.isDying && this.isBallMode) {
       // ----------------------------------------------------
-      // BALL MODE: INTERNAL RAGDOLL PHYSICS INSIDE THE BOUNCY BUBBLE BALL
-      // Player floats and bounces playfully within the hamster-style bubble
+      // BALL MODE: INFLUENCED BY BOUNCE & ROTATION OF THE BALL
+      // Whole body tilts and dips with the ball, while shooting arm
+      // remains steady and aims/shoots cleanly without moving up and down
       // ----------------------------------------------------
-      const time = this.animTimer;
-      const squashDip = (1.0 - this.ballBounceSquash) * 0.65;
+      const squashDip = (1.0 - this.ballBounceSquash) * 0.55;
 
-      this.rigRoot.position.x = THREE.MathUtils.lerp(this.rigRoot.position.x, -this.velocity.x * 0.035, dt * 10.0);
-      this.rigRoot.position.y = THREE.MathUtils.lerp(this.rigRoot.position.y, 0.45 - squashDip, dt * 12.0);
+      this.rigRoot.position.x = THREE.MathUtils.lerp(this.rigRoot.position.x, -this.velocity.x * 0.025, dt * 10.0);
+      this.rigRoot.position.y = THREE.MathUtils.lerp(this.rigRoot.position.y, 0.42 - squashDip, dt * 14.0);
 
-      // Jones tilts dynamically into the roll and centrifugal spin
-      const targetRollTilt = THREE.MathUtils.clamp(-this.velocity.x * 0.08, -0.65, 0.65);
+      // Jones' body tilts with the angular roll and centrifugal spin of the bouncy ball
+      const targetRollTilt = THREE.MathUtils.clamp(-this.ballAngularVelocity * 0.08, -0.60, 0.60);
       this.rigRoot.rotation.z = THREE.MathUtils.lerp(this.rigRoot.rotation.z, targetRollTilt, dt * 8.0);
 
-      // Limbs flail and tumble with inertia inside the bouncy bubble
-      this.headBone.rotation.z = Math.sin(time * 8.0) * 0.25;
-      this.torsoBone.rotation.z = Math.cos(time * 6.0) * 0.18;
+      // Stabilized head and torso orientation
+      this.headBone.rotation.z = -targetRollTilt * 0.20;
+      this.torsoBone.rotation.z = targetRollTilt * 0.15;
 
-      this.frontArmBone.rotation.z = Math.sin(time * 12.0) * 0.85 - 0.45;
-      this.frontForearmBone.rotation.z = 0.55 + Math.cos(time * 10.0) * 0.35;
-      this.backArmBone.rotation.z = -Math.cos(time * 11.0) * 0.75 + 0.45;
-      this.backForearmBone.rotation.z = 0.35;
+      // Natural leg tuck & suspension reaction inside the ball
+      this.frontThighBone.rotation.z = 0.38 + squashDip * 0.4;
+      this.frontShinBone.rotation.z = -0.70 - squashDip * 0.5;
+      this.backThighBone.rotation.z = 0.28 + squashDip * 0.4;
+      this.backShinBone.rotation.z = -0.58 - squashDip * 0.5;
 
-      this.frontThighBone.rotation.z = Math.sin(time * 9.0) * 0.65 + 0.40;
-      this.frontShinBone.rotation.z = -0.75 - Math.sin(time * 9.0) * 0.35;
-      this.backThighBone.rotation.z = -Math.sin(time * 9.0) * 0.55 - 0.25;
-      this.backShinBone.rotation.z = -0.55;
+      // Back arm balances naturally
+      this.backArmBone.rotation.z = -0.35;
+      this.backForearmBone.rotation.z = 0.65;
+      // Front shooting arm is NOT moved up and down; it stays as it was to aim and shoot cleanly
     } else if (!this.isDying) {
       for (const plat of platforms) {
         const platBottom = plat.y - plat.height / 2;
@@ -2049,21 +2047,28 @@ export class Player {
       if (vertOverlap) {
         if (prevX + effHalfWidth <= platLeft && this.position.x + effHalfWidth > platLeft) {
           this.position.x = platLeft - effHalfWidth;
-          if (isBall && Math.abs(this.velocity.x) > 2.0) {
-            this.velocity.x = -this.velocity.x * 0.75; // Bouncy wall rebound!
-            this.ballBounceSquash = 0.72;
+          if (isBall && Math.abs(this.velocity.x) > 0.8) {
+            this.velocity.x = -this.velocity.x * 0.88; // Highly responsive bouncy wall rebound!
+            this.ballBounceSquash = 0.55;
+            // Wall impact imparts vertical rolling spin based on vertical velocity
+            const spinDir = this.velocity.y >= 0 ? -1 : 1;
+            this.ballAngularVelocity = spinDir * (Math.abs(this.velocity.y) * 2.8 + 8.0);
+            this.velocity.y += spinDir * 1.6; // Wall rebound hop
             if (this.onBallBounce) this.onBallBounce(Math.abs(this.velocity.x));
-            this.emitSparks(platLeft, this.position.y + 0.8, -1, 6);
+            this.emitSparks(platLeft, this.position.y + 0.8, -1, 8);
           } else {
             this.velocity.x = 0;
           }
         } else if (prevX - effHalfWidth >= platRight && this.position.x - effHalfWidth < platRight) {
           this.position.x = platRight + effHalfWidth;
-          if (isBall && Math.abs(this.velocity.x) > 2.0) {
-            this.velocity.x = -this.velocity.x * 0.75; // Bouncy wall rebound!
-            this.ballBounceSquash = 0.72;
+          if (isBall && Math.abs(this.velocity.x) > 0.8) {
+            this.velocity.x = -this.velocity.x * 0.88; // Highly responsive bouncy wall rebound!
+            this.ballBounceSquash = 0.55;
+            const spinDir = this.velocity.y >= 0 ? 1 : -1;
+            this.ballAngularVelocity = spinDir * (Math.abs(this.velocity.y) * 2.8 + 8.0);
+            this.velocity.y += spinDir * 1.6;
             if (this.onBallBounce) this.onBallBounce(Math.abs(this.velocity.x));
-            this.emitSparks(platRight, this.position.y + 0.8, 1, 6);
+            this.emitSparks(platRight, this.position.y + 0.8, 1, 8);
           } else {
             this.velocity.x = 0;
           }
@@ -2085,9 +2090,12 @@ export class Player {
     if (isBall) {
       if (this.position.y <= GROUND_Y) {
         this.position.y = GROUND_Y;
-        if (prevVy < -2.2) {
-          this.velocity.y = -prevVy * 0.76; // BOUNCE!
-          this.ballBounceSquash = 0.65;
+        if (prevVy < -1.0) {
+          this.velocity.y = -prevVy * 0.92; // Much bouncier restitution (0.92)!
+          this.ballBounceSquash = 0.50; // Dynamic squash
+          // Ground impact spins the ball based on forward roll speed
+          const targetRoll = -this.velocity.x / ballRadius;
+          this.ballAngularVelocity = THREE.MathUtils.lerp(this.ballAngularVelocity, targetRoll * 1.5, 0.70);
           this.isGrounded = false;
           if (this.onBallBounce) this.onBallBounce(Math.abs(prevVy));
           this.emitDust(this.position.x, GROUND_Y, 8);
@@ -2129,8 +2137,9 @@ export class Player {
           if (this.position.y < platBottom && headY >= platBottom) {
             this.position.y = isBall ? (platBottom - ballRadius * 2) : (platBottom - playerHeight);
             if (isBall) {
-              this.velocity.y = -this.velocity.y * 0.72; // Ceiling bounce!
-              this.ballBounceSquash = 0.70;
+              this.velocity.y = -this.velocity.y * 0.88; // Vigorous ceiling bounce!
+              this.ballBounceSquash = 0.58;
+              this.ballAngularVelocity -= (this.velocity.x / ballRadius) * 0.85;
               if (this.onBallBounce) this.onBallBounce(Math.abs(this.velocity.y));
             } else {
               this.velocity.y = 0;
@@ -2144,9 +2153,11 @@ export class Player {
           if (isBall) {
             if (prevY >= platTop - 0.35 && this.position.y <= platTop + 0.35) {
               this.position.y = platTop;
-              if (prevVy < -2.2) {
-                this.velocity.y = -prevVy * 0.76; // Platform BOUNCE!
-                this.ballBounceSquash = 0.65;
+              if (prevVy < -1.0) {
+                this.velocity.y = -prevVy * 0.92; // High-restitution bouncy platform rebound!
+                this.ballBounceSquash = 0.50;
+                const targetRoll = -this.velocity.x / ballRadius;
+                this.ballAngularVelocity = THREE.MathUtils.lerp(this.ballAngularVelocity, targetRoll * 1.5, 0.70);
                 this.isGrounded = false;
                 if (this.onBallBounce) this.onBallBounce(Math.abs(prevVy));
                 this.emitDust(this.position.x, platTop, 8);
@@ -2211,28 +2222,40 @@ export class Player {
       if (this.shieldWobbleTimer > 0) {
         this.shieldWobbleTimer -= dt;
         this.shieldMat.emissive.setHex(0x55ffff);
-        this.shieldMat.opacity = isBall ? 0.55 : 0.45;
-        this.shieldGridMat.opacity = isBall ? 0.60 : 0.50;
+        this.shieldMat.opacity = isBall ? 0.24 : 0.28;
+        this.shieldGridMat.opacity = isBall ? 0.30 : 0.35;
       } else {
-        this.shieldMat.emissive.setHex(isBall ? 0x004466 : 0x002233);
-        this.shieldMat.opacity = isBall ? 0.32 : 0.18;
-        this.shieldGridMat.opacity = isBall ? 0.38 : 0.22;
+        this.shieldMat.emissive.setHex(isBall ? 0x002233 : 0x001525);
+        this.shieldMat.opacity = isBall ? 0.10 : 0.14; // Crystal clear transparent bubble
+        this.shieldGridMat.opacity = isBall ? 0.15 : 0.18;
       }
 
       // Dynamic Squash and Stretch Bouncy Ball scaling
       if (isBall) {
-        this.ballBounceSquash = THREE.MathUtils.lerp(this.ballBounceSquash, 1.0, dt * 10.0);
+        this.ballBounceSquash = THREE.MathUtils.lerp(this.ballBounceSquash, 1.0, dt * 8.0);
         const sqY = this.ballBounceSquash;
         const stX = 1.0 / Math.sqrt(Math.max(0.2, sqY));
         this.shieldGroup.scale.set(stX * 0.76, sqY * 0.76, stX * 0.76); // Bouncy sphere of 1.25m radius
 
-        // Roll the bubble ball with ground velocity
-        const rollRate = (-this.velocity.x / 1.25);
-        this.ballRotationZ += rollRate * dt;
-        this.shieldSphereMesh.rotation.z = this.ballRotationZ;
-        this.shieldGridMesh.rotation.z = this.ballRotationZ;
+        // Physical 3D ball rotation when rolling and bouncing off surfaces
+        if (this.isGrounded) {
+          const rollRate = (-this.velocity.x / 1.25);
+          this.ballAngularVelocity = THREE.MathUtils.lerp(this.ballAngularVelocity, rollRate, dt * 12.0);
+        } else {
+          this.ballAngularVelocity *= (1.0 - 0.15 * dt);
+        }
+        this.ballRotationZ += this.ballAngularVelocity * dt;
+        this.ballRotationX += Math.abs(this.ballAngularVelocity) * 0.35 * dt;
+        this.ballRotationY += this.ballAngularVelocity * 0.25 * dt;
+
+        // Apply 3D sphere tumble and spin
+        this.shieldSphereMesh.rotation.set(this.ballRotationX, this.ballRotationY, this.ballRotationZ);
+        this.shieldGridMesh.rotation.set(this.ballRotationX * 0.8, this.ballRotationY * 0.8, this.ballRotationZ);
+        this.shieldRingMesh1.rotation.set(this.ballRotationX * 1.2, this.ballRotationY * 1.2, this.ballRotationZ * 1.2);
+        this.shieldRingMesh2.rotation.set(-this.ballRotationX * 0.9, -this.ballRotationY * 0.9, -this.ballRotationZ * 0.9);
       } else {
         this.shieldGroup.scale.set(1.0, 1.0, 1.0);
+        this.shieldSphereMesh.rotation.set(0, 0, 0);
       }
 
       // Rotate geodesic shield grid and counter-rotating rings

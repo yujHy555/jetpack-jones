@@ -59,10 +59,6 @@ export class InputManager {
         this.triggerReticlePulse();
       }
 
-      if ((e.code === 'KeyR') && !wasPressed) {
-        this.ragdollJustPressed = true;
-      }
-
       if ((e.code === 'KeyH') && !wasPressed) {
         this.handheldToggleJustPressed = true;
       }
@@ -234,10 +230,6 @@ export class InputManager {
   }
 
   public consumeRagdollTrigger(): boolean {
-    if (this.ragdollJustPressed) {
-      this.ragdollJustPressed = false;
-      return true;
-    }
     return false;
   }
 

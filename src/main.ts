@@ -101,46 +101,33 @@ class Game {
       });
     }
 
-    const stuntBtn = document.getElementById('btn-stunt');
-    if (stuntBtn) {
-      stuntBtn.addEventListener('click', () => {
-        if (this.state === GameState.PLAYING) {
-          this.player.triggerStuntRagdoll();
-          this.sceneManager.triggerShake(0.12, 0.12);
-          this.audioManager.playHitImpact();
-        }
-      });
-    }
-
-    const toggleBall = () => {
-      const active = this.player.toggleBallMode();
-      this.audioManager.playShieldToggle(active);
-      const shieldBtn = document.getElementById('btn-shield');
-      if (shieldBtn) {
-        shieldBtn.textContent = active ? '⚽ BALL MODE: ON [B]' : '⚽ BALL [B]';
-        shieldBtn.style.color = active ? '#00f5ff' : '#ffaa00';
-        shieldBtn.style.borderColor = active ? '#00f5ff' : '#666';
-      }
-      const touchBall = document.getElementById('btn-touch-ball');
-      if (touchBall) {
-        touchBall.style.background = active
-          ? 'radial-gradient(circle at 35% 35%, rgba(0, 245, 255, 0.8), rgba(0, 50, 100, 0.9))'
-          : '';
-        touchBall.style.borderColor = active ? '#00f5ff' : '';
-      }
-    };
-
     const shieldBtn = document.getElementById('btn-shield');
     if (shieldBtn) {
-      shieldBtn.addEventListener('click', toggleBall);
+      shieldBtn.addEventListener('click', () => this.toggleForcefield());
     }
-    const touchBall = document.getElementById('btn-touch-ball');
-    if (touchBall) {
-      touchBall.addEventListener('pointerdown', (e) => {
+
+    const modeBtn = document.getElementById('btn-forcefield-mode');
+    if (modeBtn) {
+      modeBtn.addEventListener('click', () => this.toggleForcefieldMode());
+    }
+
+    const touchShield = document.getElementById('btn-touch-shield');
+    if (touchShield) {
+      touchShield.addEventListener('pointerdown', (e) => {
         e.preventDefault();
-        toggleBall();
+        this.toggleForcefield();
       });
     }
+
+    const touchMode = document.getElementById('btn-touch-mode');
+    if (touchMode) {
+      touchMode.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        this.toggleForcefieldMode();
+      });
+    }
+
+    this.updateForcefieldUI();
 
     const levelBtn = document.getElementById('btn-level');
     if (levelBtn) {
@@ -223,6 +210,47 @@ class Game {
     this.meteorManager.reset();
   }
 
+  private updateForcefieldUI() {
+    const active = this.player.shieldActive;
+    const mode = this.player.forcefieldMode;
+    const shieldBtn = document.getElementById('btn-shield');
+    if (shieldBtn) {
+      shieldBtn.textContent = active ? '⚡ FORCEFIELD: ON [B]' : '🛡️ FORCEFIELD: OFF [B]';
+      shieldBtn.style.color = active ? '#00f5ff' : '#aaa';
+      shieldBtn.style.borderColor = active ? '#00f5ff' : '#666';
+    }
+    const modeBtn = document.getElementById('btn-forcefield-mode');
+    if (modeBtn) {
+      modeBtn.textContent = mode === 'ball' ? 'MODE: ⚽ BALL' : 'MODE: 🛡️ BUBBLE';
+      modeBtn.style.color = mode === 'ball' ? '#ffaa00' : '#00f5ff';
+      modeBtn.style.borderColor = mode === 'ball' ? '#ffaa00' : '#00f5ff';
+    }
+    const touchShield = document.getElementById('btn-touch-shield');
+    if (touchShield) {
+      touchShield.style.background = active
+        ? 'radial-gradient(circle at 35% 35%, rgba(0, 245, 255, 0.8), rgba(0, 50, 100, 0.9))'
+        : '';
+      touchShield.style.borderColor = active ? '#00f5ff' : '';
+    }
+    const touchMode = document.getElementById('btn-touch-mode');
+    if (touchMode) {
+      const span = touchMode.querySelector('span');
+      if (span) span.textContent = mode === 'ball' ? 'BALL' : 'BUBBLE';
+    }
+  }
+
+  private toggleForcefield() {
+    const active = this.player.toggleShield();
+    this.audioManager.playShieldToggle(active);
+    this.updateForcefieldUI();
+  }
+
+  private toggleForcefieldMode() {
+    this.player.toggleForcefieldMode();
+    this.audioManager.playShieldToggle(this.player.shieldActive);
+    this.updateForcefieldUI();
+  }
+
   private onGameOver() {
     this.state = GameState.GAMEOVER;
     this.audioManager.setJetpackThrust(false);
@@ -262,30 +290,9 @@ class Game {
         if (camBtn) camBtn.textContent = enabled ? '🎥 CAM: ON [H]' : '🎥 CAM: OFF [H]';
       }
 
-      // Ragdoll Stunt Trigger ([R] key)
-      if (this.inputManager.consumeRagdollTrigger()) {
-        this.player.triggerStuntRagdoll();
-        this.sceneManager.triggerShake(0.12, 0.12);
-        this.audioManager.playHitImpact();
-      }
-
-      // Bubble Force Field / Ball Mode Toggle ([B] key or UI button)
+      // Force Field Toggle ([B] key)
       if (this.inputManager.consumeShieldTrigger()) {
-        const active = this.player.toggleBallMode();
-        this.audioManager.playShieldToggle(active);
-        const shieldBtn = document.getElementById('btn-shield');
-        if (shieldBtn) {
-          shieldBtn.textContent = active ? '⚽ BALL MODE: ON [B]' : '⚽ BALL [B]';
-          shieldBtn.style.color = active ? '#00f5ff' : '#ffaa00';
-          shieldBtn.style.borderColor = active ? '#00f5ff' : '#666';
-        }
-        const touchBall = document.getElementById('btn-touch-ball');
-        if (touchBall) {
-          touchBall.style.background = active
-            ? 'radial-gradient(circle at 35% 35%, rgba(0, 245, 255, 0.8), rgba(0, 50, 100, 0.9))'
-            : '';
-          touchBall.style.borderColor = active ? '#00f5ff' : '';
-        }
+        this.toggleForcefield();
       }
 
       // 2. Audio Jetpack Thruster Sound
