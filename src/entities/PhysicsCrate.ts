@@ -63,8 +63,6 @@ export class PhysicsCrate {
       metalness: 0.20,
     });
     this.bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
-    this.bodyMesh.castShadow = true;
-    this.bodyMesh.receiveShadow = true;
     this.crateMesh.add(this.bodyMesh);
 
     // Dark steel corner trim & edge brackets
@@ -101,13 +99,13 @@ export class PhysicsCrate {
 
     scene.add(this.group);
 
-    // 2. Dynamic Soft Ground Contact Shadow
-    const shadowGeo = new THREE.CircleGeometry(0.50, 16);
+    // 2. Simple Round Toon Style Shadow Decal
+    const shadowGeo = new THREE.CircleGeometry(0.50, 24);
     shadowGeo.rotateX(-Math.PI / 2);
     const shadowMat = new THREE.MeshBasicMaterial({
-      color: 0x080a10,
+      color: 0x111622,
       transparent: true,
-      opacity: 0.40,
+      opacity: 0.35,
       depthWrite: false,
     });
     this.shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
@@ -235,6 +233,13 @@ export class PhysicsCrate {
             d.velocity.x *= 0.8;
           }
         }
+
+        if (this.destructionTimer <= 0) {
+          for (const d of this.debrisPool) {
+            d.active = false;
+            d.mesh.visible = false;
+          }
+        }
       }
       return;
     }
@@ -252,6 +257,7 @@ export class PhysicsCrate {
 
     // Horizontal Platform Side Collision
     for (const plat of platforms) {
+      if (Math.abs(plat.x - this.position.x) < 0.05 && Math.abs(plat.y - this.position.y) < 0.05) continue;
       const platHalfW = plat.width / 2;
       const platHalfH = plat.height / 2;
       const platLeft = plat.x - platHalfW;
@@ -279,6 +285,7 @@ export class PhysicsCrate {
     let currentSupportY = groundY;
 
     for (const plat of platforms) {
+      if (Math.abs(plat.x - this.position.x) < 0.05 && Math.abs(plat.y - this.position.y) < 0.05) continue;
       const platHalfW = plat.width / 2;
       const platHalfH = plat.height / 2;
       const platLeft = plat.x - platHalfW;
@@ -347,7 +354,7 @@ export class PhysicsCrate {
       const heightAbove = Math.max(0, (this.position.y - this.halfH) - currentSupportY);
       const sScale = Math.max(0.3, 1.0 - heightAbove * 0.25);
       this.shadowMesh.scale.set(sScale, sScale, sScale);
-      (this.shadowMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0.08, 0.40 - heightAbove * 0.12);
+      (this.shadowMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0.08, 0.35 - heightAbove * 0.12);
     }
   }
 

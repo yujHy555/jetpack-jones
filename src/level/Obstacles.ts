@@ -549,7 +549,7 @@ export class ObstacleManager {
     this.scene.remove(p.mesh);
   }
 
-  public getPlatforms(): { x: number; y: number; width: number; height: number }[] {
+  public getHazardPlatforms(): { x: number; y: number; width: number; height: number }[] {
     const list: { x: number; y: number; width: number; height: number }[] = [];
     for (const obs of this.obstacles) {
       if (obs.active && obs.type === ObstacleType.HAZARD_PLATFORM && obs.collider.halfSize) {
@@ -558,6 +558,22 @@ export class ObstacleManager {
           y: obs.group.position.y,
           width: obs.collider.halfSize.x * 2,
           height: obs.collider.halfSize.y * 2,
+        });
+      }
+    }
+    return list;
+  }
+
+  public getPlatforms(): { x: number; y: number; width: number; height: number }[] {
+    const list = this.getHazardPlatforms();
+    // Crates act as physical solid platforms for player standing & stepping
+    for (const crate of this.crates) {
+      if (crate.active && !crate.isDestroyed) {
+        list.push({
+          x: crate.position.x,
+          y: crate.position.y,
+          width: crate.width,
+          height: crate.height,
         });
       }
     }
@@ -597,13 +613,13 @@ export class ObstacleManager {
     }
 
     // Update and recycle enemies
-    const platforms = this.getPlatforms();
+    const hazardPlatforms = this.getHazardPlatforms();
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
-      e.update(dt, time, playerX, playerY, platforms);
+      e.update(dt, time, playerX, playerY, hazardPlatforms);
 
       if (!e.active || e.position.x < playerX - 25) {
-        if (e.position.x < playerX - 25) {
+        if (e.position.x < playerX - 25 || !e.active) {
           e.destroy(this.scene);
         }
         this.enemies.splice(i, 1);
@@ -616,7 +632,7 @@ export class ObstacleManager {
       d.update(dt, time, playerX, playerY);
 
       if (!d.active || d.position.x < playerX - 35) {
-        if (d.position.x < playerX - 35) {
+        if (d.position.x < playerX - 35 || !d.active) {
           d.destroy(this.scene);
         }
         this.drones.splice(i, 1);
@@ -626,7 +642,7 @@ export class ObstacleManager {
     // Update and recycle physics crates
     for (let i = this.crates.length - 1; i >= 0; i--) {
       const c = this.crates[i];
-      c.update(dt, time, platforms);
+      c.update(dt, time, hazardPlatforms);
 
       if (!c.active && c.isDestroyed && c.position.x < playerX - 30) {
         c.destroy(this.scene);
@@ -634,6 +650,226 @@ export class ObstacleManager {
       } else if (c.position.x < playerX - 35) {
         c.destroy(this.scene);
         this.crates.splice(i, 1);
+      }
+    }
+
+    // Resolve non-intersection collisions between enemies, drones, crates, and obstacles
+    this.resolveEntityCollisions();
+  }
+
+  /**
+   * Complete Non-Intersection System:
+   * Prevents blobs, drones, crates, platforms, and obstacles from intersecting each other
+   */
+  private resolveEntityCollisions() {
+    const rawPlatforms = this.obstacles
+      .filter(o => o.active && o.type === ObstacleType.HAZARD_PLATFORM && o.collider && o.collider.halfSize)
+      .map(o => ({
+        x: o.group.position.x,
+        y: o.group.position.y,
+        width: o.collider.halfSize!.x * 2,
+        height: o.collider.halfSize!.y * 2,
+      }));
+
+    // 1. Blob Enemies vs Blob Enemies (Push apart so blobs never merge)
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e1 = this.enemies[i];
+      if (!e1.active) continue;
+      for (let j = i + 1; j < this.enemies.length; j++) {
+        const e2 = this.enemies[j];
+        if (!e2.active) continue;
+
+        const dx = e1.position.x - e2.position.x;
+        const dy = e1.position.y - e2.position.y;
+        const minDist = e1.radius + e2.radius;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq < minDist * minDist && distSq > 0.0001) {
+          const dist = Math.sqrt(distSq);
+          const push = (minDist - dist) * 0.5;
+          const nx = dx / dist;
+          e1.position.x += nx * push;
+          e2.position.x -= nx * push;
+
+          // If moving towards each other, bounce patrol directions
+          if (e1.patrolDir * (e2.position.x - e1.position.x) > 0) e1.patrolDir *= -1;
+          if (e2.patrolDir * (e1.position.x - e2.position.x) > 0) e2.patrolDir *= -1;
+        }
+      }
+    }
+
+    // 2. Drone Enemies vs Drone Enemies (Push apart to maintain air formation)
+    for (let i = 0; i < this.drones.length; i++) {
+      const d1 = this.drones[i];
+      if (!d1.active) continue;
+      for (let j = i + 1; j < this.drones.length; j++) {
+        const d2 = this.drones[j];
+        if (!d2.active) continue;
+
+        const dx = d1.position.x - d2.position.x;
+        const dy = d1.position.y - d2.position.y;
+        const minDist = d1.radius + d2.radius + 0.20;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq < minDist * minDist && distSq > 0.0001) {
+          const dist = Math.sqrt(distSq);
+          const push = (minDist - dist) * 0.5;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          d1.position.x += nx * push;
+          d1.position.y += ny * push;
+          d2.position.x -= nx * push;
+          d2.position.y -= ny * push;
+        }
+      }
+    }
+
+    // 3. Drone Enemies vs Blob Enemies (Push drone upward/away from blob)
+    for (const d of this.drones) {
+      if (!d.active) continue;
+      for (const e of this.enemies) {
+        if (!e.active) continue;
+        const dx = d.position.x - e.position.x;
+        const dy = d.position.y - (e.position.y + 0.35);
+        const minDist = d.radius + e.radius + 0.15;
+        const distSq = dx * dx + dy * dy;
+        if (distSq < minDist * minDist && distSq > 0.0001) {
+          const dist = Math.sqrt(distSq);
+          const push = minDist - dist;
+          d.position.y += Math.max(0.4, dy / dist) * push;
+        }
+      }
+    }
+
+    // 4. Blobs vs Crates & Solid Obstacles (Cannot walk through crates or machinery)
+    for (const e of this.enemies) {
+      if (!e.active) continue;
+
+      // Crates
+      for (const c of this.crates) {
+        if (!c.active || c.isDestroyed) continue;
+        const distToCenter = e.position.x - c.position.x;
+        const combinedHalfW = c.halfW + e.radius;
+        const vertOverlap = e.position.y < c.position.y + c.halfH - 0.05 && e.position.y + 0.8 > c.position.y - c.halfH;
+
+        if (vertOverlap && Math.abs(distToCenter) < combinedHalfW) {
+          if (distToCenter > 0) {
+            e.position.x = c.position.x + combinedHalfW;
+            e.patrolDir = 1;
+          } else {
+            e.position.x = c.position.x - combinedHalfW;
+            e.patrolDir = -1;
+          }
+          e.velocity.x = e.patrolDir * Math.abs(e.velocity.x);
+        }
+      }
+
+      // Solid Machine Obstacles (e.g. Plasma Tube base, gears)
+      for (const obs of this.obstacles) {
+        if (!obs.active || obs.type === ObstacleType.HAZARD_PLATFORM) continue;
+        const obsPos = obs.collider.center || new THREE.Vector2(obs.group.position.x, obs.group.position.y);
+        if (obs.collider.type === 'box' && obs.collider.halfSize) {
+          const half = obs.collider.halfSize;
+          const dx = e.position.x - obsPos.x;
+          const combinedHalfW = half.x + e.radius;
+          const vertOverlap = e.position.y < obsPos.y + half.y - 0.1 && e.position.y + 0.8 > obsPos.y - half.y;
+          if (vertOverlap && Math.abs(dx) < combinedHalfW) {
+            if (dx > 0) {
+              e.position.x = obsPos.x + combinedHalfW;
+              e.patrolDir = 1;
+            } else {
+              e.position.x = obsPos.x - combinedHalfW;
+              e.patrolDir = -1;
+            }
+            e.velocity.x = e.patrolDir * Math.abs(e.velocity.x);
+          }
+        }
+      }
+    }
+
+    // 5. Drones vs Platforms, Crates, and Machine Obstacles (Never pass through solid surfaces)
+    for (const d of this.drones) {
+      if (!d.active) continue;
+
+      // Check Platforms
+      for (const plat of rawPlatforms) {
+        const platHalfW = plat.width / 2;
+        const platHalfH = plat.height / 2;
+        const cx = THREE.MathUtils.clamp(d.position.x, plat.x - platHalfW, plat.x + platHalfW);
+        const cy = THREE.MathUtils.clamp(d.position.y, plat.y - platHalfH, plat.y + platHalfH);
+        const dx = d.position.x - cx;
+        const dy = d.position.y - cy;
+        const distSq = dx * dx + dy * dy;
+        const combinedR = d.radius + 0.08;
+
+        if (distSq < combinedR * combinedR) {
+          const dist = Math.sqrt(distSq);
+          if (dist > 0.0001) {
+            const push = combinedR - dist;
+            d.position.x += (dx / dist) * push;
+            d.position.y += (dy / dist) * push;
+          } else {
+            d.position.y = plat.y + platHalfH + combinedR;
+          }
+        }
+      }
+
+      // Check Crates
+      for (const c of this.crates) {
+        if (!c.active || c.isDestroyed) continue;
+        const cx = THREE.MathUtils.clamp(d.position.x, c.position.x - c.halfW, c.position.x + c.halfW);
+        const cy = THREE.MathUtils.clamp(d.position.y, c.position.y - c.halfH, c.position.y + c.halfH);
+        const dx = d.position.x - cx;
+        const dy = d.position.y - cy;
+        const distSq = dx * dx + dy * dy;
+        const combinedR = d.radius + 0.08;
+
+        if (distSq < combinedR * combinedR) {
+          const dist = Math.sqrt(distSq);
+          if (dist > 0.0001) {
+            const push = combinedR - dist;
+            d.position.x += (dx / dist) * push;
+            d.position.y += (dy / dist) * push;
+          } else {
+            d.position.y = c.position.y + c.halfH + combinedR;
+          }
+        }
+      }
+
+      // Check Obstacles (Pistons, Plasma Tubes, Gears)
+      for (const obs of this.obstacles) {
+        if (!obs.active || obs.type === ObstacleType.HAZARD_PLATFORM) continue;
+        const obsPos = obs.collider.center || new THREE.Vector2(obs.group.position.x, obs.group.position.y);
+        if (obs.collider.type === 'box' && obs.collider.halfSize) {
+          const half = obs.collider.halfSize;
+          const cx = THREE.MathUtils.clamp(d.position.x, obsPos.x - half.x, obsPos.x + half.x);
+          const cy = THREE.MathUtils.clamp(d.position.y, obsPos.y - half.y, obsPos.y + half.y);
+          const dx = d.position.x - cx;
+          const dy = d.position.y - cy;
+          const distSq = dx * dx + dy * dy;
+          const combinedR = d.radius + 0.08;
+          if (distSq < combinedR * combinedR) {
+            const dist = Math.sqrt(distSq);
+            if (dist > 0.0001) {
+              const push = combinedR - dist;
+              d.position.x += (dx / dist) * push;
+              d.position.y += (dy / dist) * push;
+            } else {
+              d.position.y = obsPos.y + half.y + combinedR;
+            }
+          }
+        } else if (obs.collider.type === 'circle' && obs.collider.radius) {
+          const dx = d.position.x - obsPos.x;
+          const dy = d.position.y - obsPos.y;
+          const minDist = obs.collider.radius + d.radius + 0.08;
+          const distSq = dx * dx + dy * dy;
+          if (distSq < minDist * minDist && distSq > 0.0001) {
+            const dist = Math.sqrt(distSq);
+            const push = minDist - dist;
+            d.position.x += (dx / dist) * push;
+            d.position.y += (dy / dist) * push;
+          }
+        }
       }
     }
   }

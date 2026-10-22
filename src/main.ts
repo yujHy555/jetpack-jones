@@ -157,14 +157,7 @@ class Game {
 
       // 3. Update Player Entity
       const jumpPressed = this.inputManager.consumeJumpTrigger();
-      const platforms = this.obstacleManager.obstacles
-        .filter(o => o.active && o.type === ObstacleType.HAZARD_PLATFORM && o.collider && o.collider.halfSize)
-        .map(o => ({
-          x: o.group.position.x,
-          y: o.group.position.y,
-          width: o.collider.halfSize!.x * 2,
-          height: o.collider.halfSize!.y * 2,
-        }));
+      const platforms = this.obstacleManager.getPlatforms();
 
       this.player.update(
         dt,
@@ -201,14 +194,7 @@ class Game {
       // Idle scene animation on start screen
       this.parallaxLayers.update(0, totalTime);
       this.obstacleManager.update(dt, totalTime, 0, 0);
-      const platforms = this.obstacleManager.obstacles
-        .filter(o => o.active && o.type === ObstacleType.HAZARD_PLATFORM && o.collider && o.collider.halfSize)
-        .map(o => ({
-          x: o.group.position.x,
-          y: o.group.position.y,
-          width: o.collider.halfSize!.x * 2,
-          height: o.collider.halfSize!.y * 2,
-        }));
+      const platforms = this.obstacleManager.getPlatforms();
       this.player.update(
         dt,
         0,
@@ -355,7 +341,6 @@ class Game {
         if (lDistSq < (pRadius + 0.25) ** 2) {
           rLaser.active = false;
           rLaser.mesh.visible = false;
-          rLaser.light.visible = false;
 
           if (this.player.invulnerableTime <= 0) {
             const knockX = rLaser.velocity.x > 0 ? 1 : -1;
@@ -367,27 +352,18 @@ class Game {
       }
     }
 
-    // Interactive Physics Supply Crates vs Player (Push & Step-On Support)
+    // Interactive Physics Supply Crates vs Player (Horizontal Push Momentum)
     for (const crate of this.obstacleManager.crates) {
       if (!crate.active || crate.isDestroyed) continue;
       const dx = pPos.x - crate.position.x;
-      const dy = pCenterY - crate.position.y;
       const overlapX = (pRadius + crate.halfW) - Math.abs(dx);
-      const overlapY = (0.95 + crate.halfH) - Math.abs(dy);
 
-      if (overlapX > 0 && overlapY > 0) {
-        if (overlapX < overlapY && Math.abs(dy) < 0.6) {
-          // Horizontal push: Jones pushes crate across catwalk/floor!
-          const pushDir = Math.sign(dx);
-          pPos.x = crate.position.x + pushDir * (pRadius + crate.halfW);
-          crate.velocity.x -= pushDir * (Math.abs(this.player.velocity.x) * 0.7 + 1.5);
-          this.player.velocity.x *= 0.5;
-        } else if (dy > 0 && this.player.velocity.y <= 0 && pPos.y >= crate.position.y + crate.halfH - 0.25) {
-          // Player lands solidly on top of crate!
-          pPos.y = crate.position.y + crate.halfH;
-          this.player.velocity.y = 0;
-          this.player.isGrounded = true;
-        }
+      // Only push horizontally when beside the crate, never when standing smoothly on top
+      if (overlapX > 0 && pPos.y < crate.position.y + crate.halfH - 0.05) {
+        const pushDir = Math.sign(dx) || 1;
+        pPos.x = crate.position.x + pushDir * (pRadius + crate.halfW);
+        crate.velocity.x -= pushDir * (Math.abs(this.player.velocity.x) * 0.7 + 1.5);
+        this.player.velocity.x *= 0.5;
       }
     }
 

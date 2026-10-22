@@ -475,7 +475,9 @@ export class ParallaxLayers {
     const count = 6;
 
     for (let i = 0; i < count; i++) {
-      const baseX = (i - 2) * spacing;
+      // Offset consoles so none spawn anywhere near start position X=0
+      const baseX = (i - 2) * spacing + 18;
+      if (Math.abs(baseX) < 12) continue; // Guaranteed clear start view for the player!
       const consoleGroup = new THREE.Group();
       consoleGroup.position.set(baseX, -3.70, 2.2);
 
@@ -559,7 +561,8 @@ export class ParallaxLayers {
 
     for (let i = 0; i < cCount; i++) {
       const con = this.foregroundConsoles[i];
-      const relX = (((i - 2) * cSpan - playerX) % cTotal + cTotal) % cTotal - cTotal / 2;
+      // Offset by +18 so consoles never hover in front of player start position at X=0
+      const relX = (((i - 2) * cSpan + 18 - playerX) % cTotal + cTotal) % cTotal - cTotal / 2;
       con.position.x = playerX + relX;
     }
   }

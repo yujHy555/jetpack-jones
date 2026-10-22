@@ -119,6 +119,14 @@ export class Player {
   private frontHandBone: THREE.Group;
   private blasterMesh: THREE.Group;
 
+  // Dropped Blaster Weapon on Death
+  private droppedGunMesh!: THREE.Group;
+  private droppedGunPos: THREE.Vector3 = new THREE.Vector3();
+  private droppedGunVel: THREE.Vector3 = new THREE.Vector3();
+  private droppedGunRotZ: number = 0;
+  private droppedGunRotVel: number = 0;
+  private hasDroppedGun: boolean = false;
+
   private backArmBone: THREE.Group;
   private backForearmBone: THREE.Group;
   private backHandBone: THREE.Group;
@@ -795,6 +803,11 @@ export class Player {
       });
     }
 
+    // Physical World Dropped Blaster for Death Sequence
+    this.droppedGunMesh = this.blasterMesh.clone(true);
+    this.droppedGunMesh.visible = false;
+    scene.add(this.droppedGunMesh);
+
     // BACK ARM (Supports in Two-Handed Tactical Pistol Stance)
     this.backArmBone = new THREE.Group();
     this.backArmBone.position.set(-0.04, 0.48, -0.20);
@@ -1029,6 +1042,9 @@ export class Player {
     this.shootTimer = 0;
     this.bubbleBurstTimer = 0;
     this.headFollowLag = 0;
+    this.hasDroppedGun = false;
+    if (this.droppedGunMesh) this.droppedGunMesh.visible = false;
+    this.blasterMesh.visible = true;
     this.rigRoot.rotation.set(0, 0, 0);
     this.rigRoot.position.set(0, 0, 0);
     this.torsoBone.rotation.set(0, 0, 0);
@@ -1237,6 +1253,20 @@ export class Player {
     this.emitSparks(this.position.x, this.position.y + 0.8, dir * 3.0, 18);
     this.emitSmoke(this.position.x - 0.25, this.position.y + 0.9, 0, 4);
     this.emitSmoke(this.position.x + 0.25, this.position.y + 0.9, 0, 4);
+
+    // Drop blaster gun: pops out of hand and tumbles dynamically onto floor
+    this.hasDroppedGun = true;
+    this.blasterMesh.visible = false;
+    const handWorldPos = new THREE.Vector3();
+    this.frontHandBone.getWorldPosition(handWorldPos);
+    this.droppedGunPos.copy(handWorldPos);
+    this.droppedGunVel.set((this.facingRight ? 2.8 : -2.8) + (Math.random() - 0.5), 4.2 + Math.random(), 0);
+    this.droppedGunRotZ = this.facingRight ? 0.4 : -0.4;
+    this.droppedGunRotVel = this.facingRight ? -12.0 : 12.0;
+    this.droppedGunMesh.position.copy(this.droppedGunPos);
+    this.droppedGunMesh.rotation.z = this.droppedGunRotZ;
+    this.droppedGunMesh.visible = true;
+    this.emitSparks(handWorldPos.x, handWorldPos.y, 0, 6);
   }
 
   /**
@@ -1527,6 +1557,46 @@ export class Player {
     this.updateBubbleBurstVFX(dt);
     this.updateParticles(dt);
     this.updateLasers(dt);
+    this.updateDroppedGun(dt, platforms);
+  }
+
+  private updateDroppedGun(dt: number, platforms: { x: number; y: number; width: number; height: number }[]) {
+    if (!this.hasDroppedGun || !this.droppedGunMesh) return;
+
+    this.droppedGunVel.y -= 22.0 * dt;
+    this.droppedGunPos.addScaledVector(this.droppedGunVel, dt);
+
+    // Surface detection beneath gun
+    let gunSurfaceY = GROUND_Y;
+    for (const plat of platforms) {
+      const platTop = plat.y + plat.height / 2;
+      const platLeft = plat.x - plat.width / 2;
+      const platRight = plat.x + plat.width / 2;
+      if (this.droppedGunPos.x >= platLeft && this.droppedGunPos.x <= platRight) {
+        if (platTop <= this.droppedGunPos.y + 0.35 && platTop > gunSurfaceY) {
+          gunSurfaceY = platTop;
+        }
+      }
+    }
+
+    const gunRestY = gunSurfaceY + 0.08;
+    if (this.droppedGunPos.y <= gunRestY) {
+      this.droppedGunPos.y = gunRestY;
+      if (Math.abs(this.droppedGunVel.y) > 1.0) {
+        this.droppedGunVel.y = -this.droppedGunVel.y * 0.35;
+        this.droppedGunVel.x *= 0.6;
+        this.droppedGunRotVel *= 0.5;
+      } else {
+        this.droppedGunVel.set(0, 0, 0);
+        this.droppedGunRotVel = 0;
+      }
+    } else {
+      this.droppedGunRotZ += this.droppedGunRotVel * dt;
+    }
+
+    this.droppedGunMesh.position.copy(this.droppedGunPos);
+    this.droppedGunMesh.position.z = 0.05; // slightly in front of catwalk
+    this.droppedGunMesh.rotation.z = this.droppedGunRotZ;
   }
 
   /**
@@ -1958,23 +2028,25 @@ export class Player {
 
         this.rigRoot.rotation.z = (this.facingRight ? -1 : 1) * (0.8 * t);
       } else {
-        // Phase 2: Ground impact & collapse onto catwalk floor
+        // Phase 2: Ground impact & collapse flat onto catwalk floor
         if (this.deathTimer - dt < 0.75) {
           this.emitDust(this.position.x, this.position.y, 14);
         }
 
-        const collapseTarget = this.facingRight ? -Math.PI / 2 + 0.15 : Math.PI / 2 - 0.15;
+        const collapseTarget = this.facingRight ? -Math.PI / 2 : Math.PI / 2;
         this.rigRoot.rotation.z = THREE.MathUtils.lerp(this.rigRoot.rotation.z, collapseTarget, dt * 8.0);
-        this.rigRoot.position.y = THREE.MathUtils.lerp(this.rigRoot.position.y, -0.45, dt * 6.0);
+        this.rigRoot.position.y = THREE.MathUtils.lerp(this.rigRoot.position.y, 0.25, dt * 8.0);
 
-        this.headBone.rotation.z = THREE.MathUtils.lerp(this.headBone.rotation.z, -0.2, dt * 5.0);
-        this.torsoBone.rotation.z = THREE.MathUtils.lerp(this.torsoBone.rotation.z, 0.1, dt * 5.0);
-        this.frontArmBone.rotation.z = THREE.MathUtils.lerp(this.frontArmBone.rotation.z, -0.3, dt * 5.0);
-        this.frontForearmBone.rotation.z = THREE.MathUtils.lerp(this.frontForearmBone.rotation.z, 0.2, dt * 5.0);
-        this.backArmBone.rotation.z = THREE.MathUtils.lerp(this.backArmBone.rotation.z, 0.3, dt * 5.0);
-        this.frontThighBone.rotation.z = THREE.MathUtils.lerp(this.frontThighBone.rotation.z, 0.2, dt * 5.0);
-        this.frontShinBone.rotation.z = THREE.MathUtils.lerp(this.frontShinBone.rotation.z, -0.1, dt * 5.0);
-        this.backThighBone.rotation.z = THREE.MathUtils.lerp(this.backThighBone.rotation.z, 0.0, dt * 5.0);
+        this.headBone.rotation.z = THREE.MathUtils.lerp(this.headBone.rotation.z, 0, dt * 6.0);
+        this.torsoBone.rotation.z = THREE.MathUtils.lerp(this.torsoBone.rotation.z, 0, dt * 6.0);
+        this.frontArmBone.rotation.z = THREE.MathUtils.lerp(this.frontArmBone.rotation.z, 0.2, dt * 6.0);
+        this.frontForearmBone.rotation.z = THREE.MathUtils.lerp(this.frontForearmBone.rotation.z, 0, dt * 6.0);
+        this.backArmBone.rotation.z = THREE.MathUtils.lerp(this.backArmBone.rotation.z, -0.2, dt * 6.0);
+        this.backForearmBone.rotation.z = THREE.MathUtils.lerp(this.backForearmBone.rotation.z, 0, dt * 6.0);
+        this.frontThighBone.rotation.z = THREE.MathUtils.lerp(this.frontThighBone.rotation.z, 0, dt * 6.0);
+        this.frontShinBone.rotation.z = THREE.MathUtils.lerp(this.frontShinBone.rotation.z, 0, dt * 6.0);
+        this.backThighBone.rotation.z = THREE.MathUtils.lerp(this.backThighBone.rotation.z, 0, dt * 6.0);
+        this.backShinBone.rotation.z = THREE.MathUtils.lerp(this.backShinBone.rotation.z, 0, dt * 6.0);
       }
 
       if (this.deathTimer >= this.maxDeathTime) {

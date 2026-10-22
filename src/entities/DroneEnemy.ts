@@ -2,7 +2,6 @@ import * as THREE from 'three';
 
 export interface DroneLaser {
   mesh: THREE.Mesh;
-  light: THREE.PointLight;
   position: THREE.Vector3;
   velocity: THREE.Vector3;
   active: boolean;
@@ -37,7 +36,6 @@ export class DroneEnemy {
   // Visual Meshes - Helmet-styled Attack Drone
   private chassisMesh: THREE.Mesh;
   private eyeMesh: THREE.Mesh;
-  private eyeLight: THREE.PointLight;
   private ledMaterials: THREE.MeshBasicMaterial[] = [];
   private antennaBeaconMat: THREE.MeshBasicMaterial;
   private shadowMesh: THREE.Mesh;
@@ -99,7 +97,6 @@ export class DroneEnemy {
     // 1. Aerodynamic Space Helmet Dome Shell
     const helmetGeo = new THREE.SphereGeometry(0.46, 24, 24);
     this.chassisMesh = new THREE.Mesh(helmetGeo, spaceWhiteMat);
-    this.chassisMesh.castShadow = true;
     this.group.add(this.chassisMesh);
 
     // 2. Top Centerline Crest Fin
@@ -127,10 +124,6 @@ export class DroneEnemy {
     this.eyeMesh = new THREE.Mesh(eyeGeo, eyeMat);
     this.eyeMesh.position.set(0.18, 0, 0);
     this.chassisMesh.add(this.eyeMesh);
-
-    this.eyeLight = new THREE.PointLight(0xff002b, 2.8, 4.0);
-    this.eyeLight.position.set(0.25, 0, 0);
-    this.chassisMesh.add(this.eyeLight);
 
     // 6. Dual Side Command Pods with 3 Flashing LED Buttons (Left & Right)
     const buttonColors = [0xff1133, 0x00f5ff, 0xffaa00];
@@ -220,19 +213,19 @@ export class DroneEnemy {
 
     scene.add(this.group);
 
-    // Dynamic ground contact shadow decal
-    const shadowGeo = new THREE.CircleGeometry(0.48, 16);
+    // Simple Round Toon Style Shadow Decal
+    const shadowGeo = new THREE.CircleGeometry(0.46, 24);
     shadowGeo.rotateX(-Math.PI / 2);
     const shadowMat = new THREE.MeshBasicMaterial({
-      color: 0x080a10,
+      color: 0x111622,
       transparent: true,
-      opacity: 0.45,
+      opacity: 0.35,
       depthWrite: false,
     });
     this.shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
     scene.add(this.shadowMesh);
 
-    // 4. Red Laser Bolt Pool
+    // 4. Red Laser Bolt Pool (Lightweight & High-Performance)
     const laserGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.75, 8);
     laserGeo.rotateZ(Math.PI / 2);
     const laserMat = new THREE.MeshBasicMaterial({ color: 0xff0022 });
@@ -242,13 +235,8 @@ export class DroneEnemy {
       mesh.visible = false;
       scene.add(mesh);
 
-      const light = new THREE.PointLight(0xff0022, 2.0, 3.5);
-      scene.add(light);
-      light.visible = false;
-
       this.lasers.push({
         mesh,
-        light,
         position: new THREE.Vector3(),
         velocity: new THREE.Vector3(),
         active: false,
@@ -373,6 +361,12 @@ export class DroneEnemy {
 
         if (this.deathTimer <= 0) {
           this.shockRing.visible = false;
+          for (const sc of this.scrapPool) {
+            sc.active = false;
+            sc.mesh.visible = false;
+          }
+          this.isDying = false;
+          this.active = false;
         }
       }
       this.updateLasers(dt);
@@ -432,8 +426,8 @@ export class DroneEnemy {
     this.antennaBeaconMat.color.setHex(beaconOn ? 0xff0044 : 0x220008);
 
     // Eye pulsing
-    const eyePulse = 1.8 + Math.sin(time * 8.0) * 0.8;
-    this.eyeLight.intensity = eyePulse;
+    const eyePulse = 1.0 + Math.sin(time * 8.0) * 0.15;
+    this.eyeMesh.scale.set(1.2 * eyePulse, 0.85 * eyePulse, 0.85);
 
     // ----------------------------------------------------
     // C. Bullet Hit Jiggle Reaction
@@ -466,7 +460,7 @@ export class DroneEnemy {
       const heightAbove = Math.max(0, this.position.y - groundY);
       const sScale = Math.max(0.25, 1.0 - heightAbove * 0.12);
       this.shadowMesh.scale.set(sScale, sScale, sScale);
-      (this.shadowMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0.08, 0.45 - heightAbove * 0.06);
+      (this.shadowMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0.08, 0.35 - heightAbove * 0.06);
     }
 
     this.updateLasers(dt);
@@ -480,9 +474,7 @@ export class DroneEnemy {
     laser.life = 1.6;
     laser.position.set(this.position.x, this.position.y - 0.25, 0);
     laser.mesh.position.copy(laser.position);
-    laser.light.position.copy(laser.position);
     laser.mesh.visible = true;
-    laser.light.visible = true;
 
     const angle = Math.atan2(targetY - laser.position.y, targetX - laser.position.x);
     const speed = 16.0;
@@ -497,24 +489,22 @@ export class DroneEnemy {
       if (l.life <= 0) {
         l.active = false;
         l.mesh.visible = false;
-        l.light.visible = false;
         continue;
       }
 
       l.position.addScaledVector(l.velocity, dt);
       l.mesh.position.copy(l.position);
-      l.light.position.copy(l.position);
     }
   }
 
   public destroy(scene: THREE.Scene) {
     this.active = false;
+    this.isDying = false;
     scene.remove(this.group);
     if (this.shadowMesh) scene.remove(this.shadowMesh);
     scene.remove(this.shockRing);
     for (const l of this.lasers) {
       scene.remove(l.mesh);
-      scene.remove(l.light);
     }
     for (const sc of this.scrapPool) scene.remove(sc.mesh);
   }

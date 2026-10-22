@@ -79,7 +79,7 @@ export class EnemyBlob {
   // AI & Physics
   private hopTimer: number = 0;
   private hopCooldown: number = 1.35;
-  private patrolDir: number = 1;
+  public patrolDir: number = 1;
   private minX: number;
   private maxX: number;
   public baseY: number;
@@ -123,16 +123,15 @@ export class EnemyBlob {
       opacity: 0.90,
     });
     this.bodyMesh = new THREE.Mesh(bodyGeo, slimeMat);
-    this.bodyMesh.castShadow = true;
     this.group.add(this.bodyMesh);
 
-    // Dynamic Contact Shadow Decal
-    const shadowGeo = new THREE.CircleGeometry(0.55, 16);
+    // Simple Round Toon Style Shadow Decal
+    const shadowGeo = new THREE.CircleGeometry(0.50, 24);
     shadowGeo.rotateX(-Math.PI / 2);
     const shadowMat = new THREE.MeshBasicMaterial({
-      color: 0x0a0d14,
+      color: 0x111622,
       transparent: true,
-      opacity: 0.45,
+      opacity: 0.35,
       depthWrite: false,
     });
     this.shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
@@ -703,7 +702,7 @@ export class EnemyBlob {
       const heightAbove = Math.max(0, this.position.y - surfaceY);
       const shadowScale = Math.max(0.3, 1.0 - heightAbove * 0.15);
       this.shadowMesh.scale.set(shadowScale, shadowScale, shadowScale);
-      (this.shadowMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0.08, 0.45 - heightAbove * 0.08);
+      (this.shadowMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0.08, 0.35 - heightAbove * 0.08);
       this.shadowMesh.visible = this.active && !this.isDying;
     }
 
@@ -869,6 +868,18 @@ export class EnemyBlob {
         this.comicShockRing1.visible = false;
         this.comicShockRing2.visible = false;
       }
+    }
+
+    // Complete death cycle when all burst particles have faded away
+    const anyParticleActive =
+      this.dropletPool.some(d => d.active) ||
+      this.puffPool.some(p => p.active) ||
+      this.sparklePool.some(s => s.active) ||
+      this.comicStarburstMesh.visible;
+
+    if (!anyParticleActive && this.deathFreezeTimer <= 0) {
+      this.isDying = false;
+      this.active = false;
     }
   }
 

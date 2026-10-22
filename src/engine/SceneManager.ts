@@ -45,34 +45,23 @@ export class SceneManager {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.35;
 
-    // Lightweight ultra-soft simple shadows
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Cel-Shading & Flat Vibrant Lighting: disabled heavy 3D shadow maps in favor of clean round toon shadows
+    this.renderer.shadowMap.enabled = false;
 
-    // Environment Lighting
-    this.ambientLight = new THREE.AmbientLight(0x353240, 2.4);
+    // Bright Flat Cel-Shading Environment Lighting
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 3.4);
     this.scene.add(this.ambientLight);
 
-    // High-angle key directional light for simple, short, soft shadows
-    this.keyLight = new THREE.DirectionalLight(0xffeedd, 3.0);
-    this.keyLight.position.set(0.5, 22, 6);
-    this.keyLight.castShadow = true;
-    this.keyLight.shadow.mapSize.width = 1024;
-    this.keyLight.shadow.mapSize.height = 1024;
-    this.keyLight.shadow.camera.near = 1.0;
-    this.keyLight.shadow.camera.far = 35;
-    this.keyLight.shadow.camera.left = -14;
-    this.keyLight.shadow.camera.right = 14;
-    this.keyLight.shadow.camera.top = 14;
-    this.keyLight.shadow.camera.bottom = -8;
-    this.keyLight.shadow.bias = -0.001;
-    this.keyLight.shadow.radius = 4.5; // Soft diffused shadow edges
+    // Gentle front-top fill wash for vivid cartoon colors without harsh dark shading
+    this.keyLight = new THREE.DirectionalLight(0xfff8ee, 1.4);
+    this.keyLight.position.set(0.5, 20, 10);
+    this.keyLight.castShadow = false;
     this.scene.add(this.keyLight);
     this.scene.add(this.keyLight.target);
 
-    // Cyan-blue fill rim light
-    this.rimLight = new THREE.DirectionalLight(0x00ccff, 2.2);
-    this.rimLight.position.set(-8, -4, -4);
+    // Crisp cartoon cyan rim accent
+    this.rimLight = new THREE.DirectionalLight(0x88eeff, 1.0);
+    this.rimLight.position.set(-6, -2, -2);
     this.scene.add(this.rimLight);
 
     window.addEventListener('resize', () => this.onWindowResize());
