@@ -476,51 +476,76 @@
 
     /* Start / Game Over Modal */
     #overlay-screen {
-      position: absolute;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0, 0, 0, 0.8);
-      backdrop-filter: blur(4px);
-      z-index: 30;
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      height: 100dvh;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+      z-index: 100;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 18px;
-      text-align: center;
-      padding: 20px;
+      box-sizing: border-box;
+      padding: 12px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       pointer-events: auto;
     }
 
     #overlay-screen.hidden {
-      display: none;
+      display: none !important;
+    }
+
+    .overlay-card-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      text-align: center;
+      max-width: 620px;
+      width: 100%;
+      margin: auto;
+      box-sizing: border-box;
+      padding: 6px;
     }
 
     .overlay-title {
-      font-size: clamp(20px, 4.5vw, 42px);
+      font-size: clamp(20px, 4vw, 36px);
       color: #ffaa00;
       text-shadow: 3px 3px 0px #b33900, 0 0 20px rgba(255, 170, 0, 0.8);
-      line-height: 1.3;
+      line-height: 1.2;
+      margin: 0;
     }
 
     .overlay-subtitle {
-      font-size: clamp(10px, 1.6vw, 15px);
+      font-size: clamp(10px, 1.4vw, 13px);
       color: #ddd;
-      line-height: 1.6;
-      max-width: 620px;
+      line-height: 1.5;
+      max-width: 580px;
       font-family: 'Share Tech Mono', monospace;
+      margin: 0;
     }
 
     .controls-card {
-      background: rgba(20, 20, 24, 0.85);
+      background: rgba(20, 20, 24, 0.90);
       border: 2px solid #555;
       border-radius: 8px;
-      padding: 12px 18px;
-      font-size: clamp(10px, 1.4vw, 13px);
+      padding: 8px 14px;
+      font-size: clamp(9px, 1.2vw, 12px);
       color: #ffcc66;
       font-family: 'Share Tech Mono', monospace;
-      line-height: 1.8;
-      max-width: 600px;
-      text-align: left;
+      line-height: 1.6;
+      max-width: 540px;
+      width: 95%;
+      box-sizing: border-box;
+      text-align: center;
+    }
+
+    .mobile-controls-info {
+      display: none;
     }
 
     .btn-action {
@@ -528,18 +553,59 @@
       border: 3px solid #ffcc66;
       color: #fff;
       font-family: 'Press Start 2P', monospace;
-      font-size: clamp(11px, 2vw, 16px);
-      padding: 14px 28px;
+      font-size: clamp(12px, 2.2vw, 16px);
+      padding: 12px 28px;
       border-radius: 8px;
       cursor: pointer;
-      box-shadow: 0 6px 0 #882200, 0 10px 20px rgba(0,0,0,0.5);
+      box-shadow: 0 4px 0 #882200, 0 8px 16px rgba(0,0,0,0.6);
       transition: transform 0.08s ease, box-shadow 0.08s ease;
       touch-action: manipulation;
+      flex-shrink: 0;
+      letter-spacing: 1px;
     }
 
     .btn-action:active {
-      transform: translateY(4px);
-      box-shadow: 0 2px 0 #882200;
+      transform: translateY(3px);
+      box-shadow: 0 1px 0 #882200;
+    }
+
+    /* Mobile Landscape Height Adaptation (e.g. mobile phones with height <= 480px) */
+    @media (max-height: 480px) {
+      #overlay-screen {
+        padding: 6px;
+        justify-content: center;
+      }
+      .overlay-card-container {
+        gap: 6px;
+        max-width: 94vw;
+      }
+      .overlay-title {
+        font-size: clamp(16px, 3.5vw, 22px);
+      }
+      .overlay-subtitle {
+        display: none; /* Hide backstory on compact mobile screens so start button is always 100% visible */
+      }
+      .controls-card {
+        padding: 5px 10px;
+        font-size: 10px;
+        line-height: 1.35;
+        max-height: 110px;
+      }
+      .btn-action {
+        padding: 8px 22px;
+        font-size: 11px;
+        box-shadow: 0 3px 0 #882200, 0 4px 10px rgba(0,0,0,0.5);
+      }
+    }
+
+    /* Touch screen adaptation */
+    @media (pointer: coarse) {
+      .desktop-controls {
+        display: none;
+      }
+      .mobile-controls-info {
+        display: block;
+      }
     }
 
     @media (hover: hover) and (pointer: fine) {
@@ -642,25 +708,26 @@
 
       <!-- Start / Game Over Modal -->
       <div id="overlay-screen">
-        <h1 id="overlay-title" class="overlay-title">JETPACK JONES</h1>
-        <p id="overlay-subtitle" class="overlay-subtitle">
-          Explore the industrial complex on foot, sprint across catwalks, leap over rotating cogs, and fire your jetpack to soar across high-voltage hazards!
-        </p>
-        <div class="controls-card">
-          🎮 <b>KEYBOARD CONTROLS:</b><br>
-          • <b>[A] / [D]</b> or <b>[Left] / [Right]</b> : Walk Left / Right<br>
-          • <b>[S] / [Down Arrow]</b> : Crouch & Crouch Walk<br>
-          • <b>[Shift] (Hold)</b> : Sprint / Run<br>
-          • <b>[W] / [Up Arrow]</b> : Jump<br>
-          • <b>[Space] (Hold)</b> or in mid-air : 🔥 Fire Jetpack Flight<br>
-          • <b>[B]</b> : 🛡️ Toggle Force Field On / Off<br>
-          • <b>[J] / [Enter] / [Click]</b> : 🔫 Shoot Blaster<br>
-          • <b>[H]</b> : 🎥 Toggle Handheld Camera Effect<br>
-          • <b>[F]</b> : ⛶ Toggle Fullscreen Mode<br><br>
-          📱 <b>MOBILE TOUCH CONTROLS:</b><br>
-          • <b>[◀] / [▶]</b> Walk &nbsp;|&nbsp; <b>[⬇]</b> Duck &nbsp;|&nbsp; <b>[⚡]</b> Run &nbsp;|&nbsp; <b>[⬆]</b> Jump &nbsp;|&nbsp; <b>[🔥]</b> Jetpack Fly &nbsp;|&nbsp; <b>[🛡️]</b> Forcefield &nbsp;|&nbsp; <b>[⚽]</b> Mode
+        <div id="overlay-card" class="overlay-card-container">
+          <h1 id="overlay-title" class="overlay-title">JETPACK JONES</h1>
+          <p id="overlay-subtitle" class="overlay-subtitle">
+            Explore the industrial complex on foot, sprint across catwalks, leap over rotating cogs, and fire your jetpack to soar across high-voltage hazards!
+          </p>
+          <div id="controls-card" class="controls-card">
+            <div class="desktop-controls">
+              🎮 <b>KEYBOARD CONTROLS:</b><br>
+              • <b>[A] / [D]</b> Walk &nbsp;|&nbsp; <b>[S]</b> Crouch &nbsp;|&nbsp; <b>[Shift]</b> Run<br>
+              • <b>[W]</b> Jump &nbsp;|&nbsp; <b>[Space]</b> Jetpack Fly &nbsp;|&nbsp; <b>[B]</b> Forcefield<br>
+              • <b>[Click / J]</b> Shoot Blaster &nbsp;|&nbsp; <b>[F]</b> Fullscreen
+            </div>
+            <div class="mobile-controls-info">
+              📱 <b>TOUCH CONTROLS:</b><br>
+              <b>[◀] [▶]</b> Walk &nbsp;|&nbsp; <b>[⬇]</b> Duck &nbsp;|&nbsp; <b>[⚡]</b> Run &nbsp;|&nbsp; <b>[⬆]</b> Jump<br>
+              <b>[🔥]</b> Jetpack &nbsp;|&nbsp; <b>[🔫]</b> Blast &nbsp;|&nbsp; <b>[🛡️]</b> Forcefield &nbsp;|&nbsp; <b>[⚽]</b> Mode
+            </div>
+          </div>
+          <button id="btn-start" class="btn-action">START MISSION</button>
         </div>
-        <button id="btn-start" class="btn-action">START MISSION</button>
       </div>
       <!-- Sci-Fi Targeting Reticle Cursor -->
       <div id="reticle">

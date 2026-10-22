@@ -99,26 +99,38 @@ export class HUD {
         </span>
       `;
       this.btnStart.textContent = 'RETRY MISSION';
+      const controlsCard = document.getElementById('controls-card');
+      if (controlsCard) controlsCard.style.display = 'none';
+
       this.overlayScreen.classList.remove('hidden');
 
-      const clickHandler = () => {
+      const clickHandler = (e: Event) => {
+        e.preventDefault();
         this.btnStart?.removeEventListener('click', clickHandler);
+        this.btnStart?.removeEventListener('touchstart', clickHandler);
         this.hideOverlay();
         onRestart();
       };
       this.btnStart.addEventListener('click', clickHandler);
+      this.btnStart.addEventListener('touchstart', clickHandler, { passive: false });
     }
   }
 
   public showStartScreen(onStart: () => void) {
     if (this.overlayScreen && this.btnStart) {
+      const controlsCard = document.getElementById('controls-card');
+      if (controlsCard) controlsCard.style.display = '';
+
       this.overlayScreen.classList.remove('hidden');
-      const clickHandler = () => {
+      const clickHandler = (e: Event) => {
+        e.preventDefault();
         this.btnStart?.removeEventListener('click', clickHandler);
+        this.btnStart?.removeEventListener('touchstart', clickHandler);
         this.hideOverlay();
         onStart();
       };
       this.btnStart.addEventListener('click', clickHandler);
+      this.btnStart.addEventListener('touchstart', clickHandler, { passive: false });
     }
   }
 
