@@ -72,6 +72,17 @@ class Game {
       });
     }
 
+    const fsBtn = document.getElementById('btn-fullscreen');
+    if (fsBtn) {
+      fsBtn.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
+      });
+    }
+
     const audioBtn = document.getElementById('btn-audio');
     if (audioBtn) {
       audioBtn.addEventListener('click', () => {
@@ -173,7 +184,7 @@ class Game {
       // 4. Update Level & Obstacles & Alien Blobs
       this.levelGenerator.update(this.player.position.x);
       this.obstacleManager.update(dt, totalTime, this.player.position.x, this.player.position.y);
-      this.parallaxLayers.update(this.player.position.x, totalTime);
+      this.parallaxLayers.update(this.player.position.x, this.player.position.y, totalTime);
 
       // 5. Collision Checks
       this.checkCollisions();
@@ -192,7 +203,7 @@ class Game {
       }
     } else {
       // Idle scene animation on start screen
-      this.parallaxLayers.update(0, totalTime);
+      this.parallaxLayers.update(0, -3.70, totalTime);
       this.obstacleManager.update(dt, totalTime, 0, 0);
       const platforms = this.obstacleManager.getPlatforms();
       this.player.update(
@@ -228,7 +239,41 @@ class Game {
       let hit = false;
       const obsPos = obs.group.position;
 
-      if (obs.type === ObstacleType.PISTON) {
+      if (obs.type === ObstacleType.LASER_GATE) {
+        const half = obs.collider.halfSize || new THREE.Vector2(1.3, 1.2);
+        const center = obs.collider.center || new THREE.Vector2(obsPos.x, obsPos.y + 1.2);
+
+        const gateMinX = center.x - half.x;
+        const gateMaxX = center.x + half.x;
+        const gateMinY = center.y - half.y;
+        const gateMaxY = center.y + half.y;
+
+        const playerMinX = pPos.x - 0.30;
+        const playerMaxX = pPos.x + 0.30;
+        const playerMinY = pPos.y;
+        const playerMaxY = pPos.y + 1.85;
+
+        const overlapX = playerMinX <= gateMaxX && playerMaxX >= gateMinX;
+        const overlapY = playerMinY <= gateMaxY && playerMaxY >= gateMinY;
+
+        if (overlapX && overlapY) {
+          if (this.player.invulnerableTime <= 0) {
+            const knockX = pPos.x < center.x ? -1 : 1;
+            this.player.takeDamage(20, knockX);
+            this.audioManager.playHitImpact();
+            this.sceneManager.triggerShake(0.35, 0.20);
+          }
+          // Wall barrier blocks horizontal walking - force player to fly over!
+          if (pPos.x < center.x) {
+            pPos.x = gateMinX - 0.32;
+            this.player.velocity.x = Math.min(0, this.player.velocity.x);
+          } else {
+            pPos.x = gateMaxX + 0.32;
+            this.player.velocity.x = Math.max(0, this.player.velocity.x);
+          }
+          continue;
+        }
+      } else if (obs.type === ObstacleType.PISTON) {
         // ACCURATE PISTON / MECHANICAL PRESS COLLISION TAKING PLAYER'S FULL SIZE INTO ACCOUNT:
         // Player Bounding Box: Width [pPos.x - 0.35, pPos.x + 0.35], Height [pPos.y, pPos.y + 1.85] (boots to helmet)
         const half = obs.collider.halfSize || new THREE.Vector2(0.9, 0.45);

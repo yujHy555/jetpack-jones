@@ -5,6 +5,7 @@ export const GROUND_Y = -3.70;
 interface ParallaxObject {
   group: THREE.Group;
   baseX: number;
+  baseY: number;
   parallaxFactor: number;
 }
 
@@ -62,6 +63,7 @@ export class ParallaxLayers {
 
   // Background layers with parallax
   private skyBackdrop!: THREE.Mesh;
+  private atmosphereClouds!: THREE.Group;
   private ringedPlanetGroup!: THREE.Group;
   private moonsGroup!: THREE.Group;
   private distantCubeModules: ParallaxObject[] = [];
@@ -91,6 +93,7 @@ export class ParallaxLayers {
 
     this.initAestheticMaterials();
     this.createSunsetSky();
+    this.createAtmosphericClouds();
     this.createCelestialRingedPlanet();
     this.createSatelliteMoons();
     this.createRoundedCubeBackground();
@@ -210,31 +213,80 @@ export class ParallaxLayers {
   }
 
   /**
-   * 1. Stylized Sunset / Dusk Sky with horizontal pastel bands
+   * 1. Multi-Tier Atmosphere Strata: From Desert Horizon to Cosmic Exosphere
+   * Supports unlimited high-altitude vertical jetpack flight!
    */
   private createSunsetSky() {
     const canvas = document.createElement('canvas');
-    canvas.width = 128;
-    canvas.height = 512;
+    canvas.width = 256;
+    canvas.height = 1024;
     const ctx = canvas.getContext('2d')!;
 
-    const grad = ctx.createLinearGradient(0, 0, 0, 512);
-    grad.addColorStop(0.00, '#d96c5b'); // Coral rose zenith
-    grad.addColorStop(0.25, '#eb826e'); // Soft salmon
-    grad.addColorStop(0.50, '#f79a7a'); // Warm peach
-    grad.addColorStop(0.75, '#feb88e'); // Golden apricot
-    grad.addColorStop(1.00, '#fedab1'); // Warm buff cream horizon
+    // Multi-tier atmospheric strata:
+    // Bottom: Warm buff peach/apricot horizon
+    // Middle: Sunset salmon, coral, dusk violet, midnight purple
+    // Top: Cosmic deep space navy with star clusters
+    const grad = ctx.createLinearGradient(0, 1024, 0, 0); // Bottom = 1024, Top = 0
+    grad.addColorStop(0.00, '#fedab1'); // Warm buff cream horizon
+    grad.addColorStop(0.08, '#feb88e'); // Golden apricot
+    grad.addColorStop(0.18, '#f79a7a'); // Warm peach
+    grad.addColorStop(0.28, '#eb826e'); // Soft salmon
+    grad.addColorStop(0.38, '#d96c5b'); // Coral rose
+    grad.addColorStop(0.50, '#8e4b6e'); // Sunset violet mauve
+    grad.addColorStop(0.65, '#462b53'); // Deep twilight purple
+    grad.addColorStop(0.78, '#221b3d'); // Midnight indigo
+    grad.addColorStop(0.90, '#0f1224'); // Cosmic deep space
+    grad.addColorStop(1.00, '#06070f'); // Obsidian starfield
 
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 128, 512);
+    ctx.fillRect(0, 0, 256, 1024);
+
+    // Paint twinkling stars and cosmic clusters in upper atmosphere (top 50% of canvas)
+    for (let s = 0; s < 360; s++) {
+      const sx = ((s * 97) % 256);
+      const sy = ((s * 311) % 520); // top half (0 to 520)
+      const r = (s % 3 === 0) ? 1.4 : (s % 2 === 0 ? 0.9 : 0.6);
+      const alpha = 0.45 + (s % 5) * 0.12;
+      ctx.fillStyle = (s % 4 === 0) ? `rgba(180, 240, 255, ${alpha})` : `rgba(255, 255, 255, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     const skyTex = new THREE.CanvasTexture(canvas);
-    const skyGeo = new THREE.PlaneGeometry(180, 95);
+    const skyGeo = new THREE.PlaneGeometry(280, 280);
     const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, depthWrite: false });
 
     this.skyBackdrop = new THREE.Mesh(skyGeo, skyMat);
-    this.skyBackdrop.position.set(0, 12, -42);
+    this.skyBackdrop.position.set(0, 75, -42);
     this.group.add(this.skyBackdrop);
+  }
+
+  /**
+   * Drifting Stratosphere Clouds & Atmospheric Wisps
+   */
+  private createAtmosphericClouds() {
+    this.atmosphereClouds = new THREE.Group();
+    this.atmosphereClouds.position.set(0, 24, -28);
+
+    const cloudMat = new THREE.MeshBasicMaterial({
+      color: 0xffe0cc,
+      transparent: true,
+      opacity: 0.32,
+      depthWrite: false,
+    });
+
+    for (let c = 0; c < 8; c++) {
+      const cx = (c - 4) * 26;
+      const cy = (c % 2 === 0 ? 3 : -3) + Math.sin(c * 1.5) * 2.5;
+      const puffGeo = new THREE.SphereGeometry(4.0 + (c % 3) * 1.5, 12, 8);
+      puffGeo.scale(2.6, 0.45, 1.0); // Flattened wide stratospheric cloud
+      const cloud = new THREE.Mesh(puffGeo, cloudMat);
+      cloud.position.set(cx, cy, 0);
+      this.atmosphereClouds.add(cloud);
+    }
+
+    this.group.add(this.atmosphereClouds);
   }
 
   /**
@@ -339,7 +391,7 @@ export class ParallaxLayers {
       group.add(meshTopCube);
 
       this.group.add(group);
-      this.distantCubeModules.push({ group, baseX, parallaxFactor: 0.12 });
+      this.distantCubeModules.push({ group, baseX, baseY: -3.7, parallaxFactor: 0.12 });
     }
 
     // Midground Layer (Parallax Factor 0.32, Z = -13)
@@ -402,7 +454,7 @@ export class ParallaxLayers {
       group.add(mAccent2);
 
       this.group.add(group);
-      this.midCubeModules.push({ group, baseX, parallaxFactor: 0.32 });
+      this.midCubeModules.push({ group, baseX, baseY: -3.7, parallaxFactor: 0.32 });
     }
   }
 
@@ -514,11 +566,24 @@ export class ParallaxLayers {
     }
   }
 
-  public update(playerX: number, time: number) {
-    // 1. Follow player with celestial backdrop & moons
+  public update(playerX: number, playerY: number = GROUND_Y, time: number = 0) {
+    const alt = Math.max(0, playerY - GROUND_Y);
+
+    // 1. Follow player with celestial backdrop & moons with vertical atmospheric scrolling
     this.skyBackdrop.position.x = playerX;
+    this.skyBackdrop.position.y = 75 + alt * 0.35; // As player ascends, sky scrolls smoothly through strata
+
     this.ringedPlanetGroup.position.x = 24 + playerX * 0.025;
+    this.ringedPlanetGroup.position.y = 28 + alt * 0.22;
+
     this.moonsGroup.position.x = playerX * 0.015;
+    this.moonsGroup.position.y = 18 + alt * 0.20;
+
+    // Drifting stratosphere clouds
+    if (this.atmosphereClouds) {
+      this.atmosphereClouds.position.x = playerX * 0.15 + ((time * 0.8) % 160) - 80;
+      this.atmosphereClouds.position.y = 24 - alt * 0.15;
+    }
 
     // 2. Parallax Distant Rounded Cubes Leapfrogging (Factor 0.12)
     const mSpan = 40;
@@ -528,6 +593,7 @@ export class ParallaxLayers {
     for (const m of this.distantCubeModules) {
       const relX = ((m.baseX - playerX * (1.0 - m.parallaxFactor)) % mTotal + mTotal) % mTotal - mTotal / 2;
       m.group.position.x = playerX + relX;
+      m.group.position.y = m.baseY - alt * 0.08;
     }
 
     // 3. Parallax Midground Rounded Cubes Leapfrogging (Factor 0.32)
@@ -538,6 +604,7 @@ export class ParallaxLayers {
     for (const o of this.midCubeModules) {
       const relX = ((o.baseX - playerX * (1.0 - o.parallaxFactor)) % oTotal + oTotal) % oTotal - oTotal / 2;
       o.group.position.x = playerX + relX;
+      o.group.position.y = o.baseY - alt * 0.16;
     }
 
     // 4. Foreground Seamless Catwalk Bridge Leapfrogging (Infinite Ground at Y = -3.70)

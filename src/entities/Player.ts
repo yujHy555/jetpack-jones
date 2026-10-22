@@ -1074,30 +1074,14 @@ export class Player {
   }
 
   private initSmokeSystem() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 128;
-    canvas.height = 128;
-    const ctx = canvas.getContext('2d')!;
-
-    const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    grad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
-    grad.addColorStop(0.25, 'rgba(255, 170, 70, 0.85)');
-    grad.addColorStop(0.65, 'rgba(160, 100, 70, 0.5)');
-    grad.addColorStop(1.0, 'rgba(30, 25, 22, 0.0)');
-
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(64, 64, 64, 0, Math.PI * 2);
-    ctx.fill();
-
-    const smokeTex = new THREE.CanvasTexture(canvas);
-    const smokeGeo = new THREE.PlaneGeometry(1, 1);
+    const smokeGeo = new THREE.SphereGeometry(0.18, 8, 8);
 
     for (let i = 0; i < this.maxSmoke; i++) {
       const mat = new THREE.MeshBasicMaterial({
-        map: smokeTex,
+        color: 0xff8833,
         transparent: true,
-        opacity: 0.85,
+        opacity: 0.70,
+        blending: THREE.AdditiveBlending,
         depthWrite: false,
       });
 
@@ -1544,7 +1528,7 @@ export class Player {
           }
         }
       }
-      this.shadowMesh.position.set(this.position.x, surfaceY + 0.015, 0);
+      this.shadowMesh.position.set(this.position.x, surfaceY + 0.015, -0.05);
       const heightAbove = Math.max(0, this.position.y - surfaceY);
       const sScale = Math.max(0.25, 1.0 - heightAbove * 0.14);
       this.shadowMesh.scale.set(sScale, sScale, sScale);

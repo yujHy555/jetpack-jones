@@ -63,6 +63,14 @@ export class InputManager {
       if ((e.code === 'KeyH') && !wasPressed) {
         this.handheldToggleJustPressed = true;
       }
+
+      if ((e.code === 'KeyF') && !wasPressed) {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
     });
 
     window.addEventListener('keyup', (e) => {

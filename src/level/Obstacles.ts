@@ -7,7 +7,8 @@ export enum ObstacleType {
   GEAR = 'gear',
   PISTON = 'piston',
   PLASMA_TUBE = 'plasma_tube',
-  HAZARD_PLATFORM = 'hazard_platform'
+  HAZARD_PLATFORM = 'hazard_platform',
+  LASER_GATE = 'laser_gate'
 }
 
 export enum PickupType {
@@ -201,42 +202,109 @@ export class ObstacleManager {
   /**
    * Spawns a Giant Steel Cog/Gear (from Image 2)
    */
+  /**
+   * Spawns a Triple-AAA Quality Heavy Industrial Hazard Saw / Spinning Wheel
+   * Features:
+   * - Razor-sharp beveled teeth with glowing molten thermal cutting edges
+   * - Heavy chrome perimeter rim with industrial bolt rivets
+   * - Perforated dark titanium drive disc with circular cooling vents
+   * - High-speed counter-rotating inner turbine rotor for mechanical depth
+   * - Glowing molten axle core and massive brass locking hub
+   */
   public spawnGear(x: number, y: number, radius: number = 2.2, speed: number = 1.0): ActiveObstacle {
     const group = new THREE.Group();
     group.position.set(x, y, 0);
 
-    const teethCount = Math.floor(radius * 5);
-    const toothAngle = (Math.PI * 2) / teethCount;
+    // 1. Heavy Polished Steel Perimeter Rim with Chamfered Bevel
+    const rimGeo = new THREE.TorusGeometry(radius * 0.88, radius * 0.11, 16, 40);
+    const rimMesh = new THREE.Mesh(rimGeo, this.steelMat);
+    group.add(rimMesh);
 
-    // Center rim & hub
-    const hubGeo = new THREE.CylinderGeometry(radius * 0.35, radius * 0.35, 0.45, 24);
-    hubGeo.rotateX(Math.PI / 2);
-    const hub = new THREE.Mesh(hubGeo, this.bronzeMat);
-    group.add(hub);
-
-    const rimGeo = new THREE.TorusGeometry(radius * 0.82, radius * 0.14, 12, 32);
-    const rim = new THREE.Mesh(rimGeo, this.steelMat);
-    group.add(rim);
-
-    // Spokes
-    for (let s = 0; s < 5; s++) {
-      const angle = (s / 5) * Math.PI * 2;
-      const spokeGeo = new THREE.BoxGeometry(0.22, radius * 0.8, 0.3);
-      const spoke = new THREE.Mesh(spokeGeo, this.darkIronMat);
-      spoke.position.set(Math.cos(angle) * (radius * 0.4), Math.sin(angle) * (radius * 0.4), 0);
-      spoke.rotation.z = angle + Math.PI / 2;
-      group.add(spoke);
+    // 2. Heavy Industrial Bolt Rivets around the rim
+    const rivetGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.35, 10);
+    rivetGeo.rotateX(Math.PI / 2);
+    for (let r = 0; r < 8; r++) {
+      const angle = (r / 8) * Math.PI * 2;
+      const rivet = new THREE.Mesh(rivetGeo, this.darkIronMat);
+      rivet.position.set(Math.cos(angle) * (radius * 0.88), Math.sin(angle) * (radius * 0.88), 0.06);
+      group.add(rivet);
     }
 
-    // Outer gear teeth
+    // 3. Dark Titanium Drive Disc with Circular Ventilation Ports
+    const discGeo = new THREE.CylinderGeometry(radius * 0.82, radius * 0.82, 0.18, 32);
+    discGeo.rotateX(Math.PI / 2);
+    const discMesh = new THREE.Mesh(discGeo, this.darkIronMat);
+    group.add(discMesh);
+
+    // Circular cooling ports cut into disc
+    const portGeo = new THREE.CylinderGeometry(radius * 0.16, radius * 0.16, 0.22, 16);
+    portGeo.rotateX(Math.PI / 2);
+    const portCavityMat = new THREE.MeshBasicMaterial({ color: 0x111215 });
+    for (let p = 0; p < 4; p++) {
+      const angle = (p / 4) * Math.PI * 2 + Math.PI / 4;
+      const port = new THREE.Mesh(portGeo, portCavityMat);
+      port.position.set(Math.cos(angle) * (radius * 0.48), Math.sin(angle) * (radius * 0.48), 0);
+      group.add(port);
+    }
+
+    // 4. Razor-Sharp Beveled Saw Teeth with Glowing Molten Amber/Orange Cutting Edges
+    const teethCount = Math.floor(radius * 6);
+    const toothAngle = (Math.PI * 2) / teethCount;
+    const toothBodyGeo = new THREE.BoxGeometry(0.32, 0.42, 0.32);
+    const toothEdgeGeo = new THREE.ConeGeometry(0.14, 0.32, 4);
+    toothEdgeGeo.rotateZ(-Math.PI / 2);
+    const thermalMat = new THREE.MeshBasicMaterial({ color: 0xff5500 });
+
     for (let i = 0; i < teethCount; i++) {
       const angle = i * toothAngle;
-      const toothGeo = new THREE.BoxGeometry(0.35, 0.4, 0.4);
-      const tooth = new THREE.Mesh(toothGeo, this.steelMat);
-      tooth.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
-      tooth.rotation.z = angle;
-      group.add(tooth);
+      const toothGroup = new THREE.Group();
+      toothGroup.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
+      toothGroup.rotation.z = angle;
+
+      const body = new THREE.Mesh(toothBodyGeo, this.steelMat);
+      toothGroup.add(body);
+
+      // Glowing thermal saw tip
+      const tip = new THREE.Mesh(toothEdgeGeo, thermalMat);
+      tip.position.set(0.20, 0, 0);
+      toothGroup.add(tip);
+
+      group.add(toothGroup);
     }
+
+    // 5. High-Speed Counter-Rotating Inner Turbine Rotor (Creates stunning mechanical motion!)
+    const innerTurbine = new THREE.Group();
+    group.add(innerTurbine);
+
+    const turbineBladeGeo = new THREE.BoxGeometry(0.12, radius * 0.42, 0.18);
+    for (let b = 0; b < 6; b++) {
+      const angle = (b / 6) * Math.PI * 2;
+      const blade = new THREE.Mesh(turbineBladeGeo, this.bronzeMat);
+      blade.position.set(Math.cos(angle) * (radius * 0.24), Math.sin(angle) * (radius * 0.24), 0.05);
+      blade.rotation.z = angle + 0.35; // Angled turbine pitch
+      innerTurbine.add(blade);
+    }
+
+    // 6. Central Hydraulic Axle Bearing with Glowing Molten Core
+    const hubHousingGeo = new THREE.CylinderGeometry(radius * 0.24, radius * 0.24, 0.38, 24);
+    hubHousingGeo.rotateX(Math.PI / 2);
+    const hubHousing = new THREE.Mesh(hubHousingGeo, this.steelMat);
+    group.add(hubHousing);
+
+    const coreLightGeo = new THREE.CircleGeometry(radius * 0.14, 16);
+    const coreMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+    const coreLightF = new THREE.Mesh(coreLightGeo, coreMat);
+    coreLightF.position.z = 0.20;
+    group.add(coreLightF);
+    const coreLightB = new THREE.Mesh(coreLightGeo, coreMat);
+    coreLightB.position.z = -0.20;
+    group.add(coreLightB);
+
+    // Massive Hexagonal Lock Nut on Center Axle
+    const nutGeo = new THREE.CylinderGeometry(radius * 0.09, radius * 0.09, 0.44, 6);
+    nutGeo.rotateX(Math.PI / 2);
+    const nut = new THREE.Mesh(nutGeo, this.darkIronMat);
+    group.add(nut);
 
     this.scene.add(group);
 
@@ -246,13 +314,19 @@ export class ObstacleManager {
       group,
       collider: {
         type: 'circle',
-        radius: radius * 0.95,
+        radius: radius * 1.05,
       },
       destructible: false,
       health: 9999,
       active: true,
-      update: (dt: number) => {
+      update: (dt: number, time: number) => {
+        // Main saw body rotation
         group.rotation.z += speed * dt;
+        // Inner turbine counter-rotates in reverse at 2.4x speed
+        innerTurbine.rotation.z -= speed * 2.4 * dt;
+        // Core molten heat pulse
+        const pulse = 0.8 + Math.sin(time * 8.0) * 0.2;
+        coreMat.color.setRGB(1.0 * pulse, 0.65 * pulse, 0.1 * pulse);
       },
     };
 
@@ -261,52 +335,66 @@ export class ObstacleManager {
   }
 
   /**
-   * Spawns a Hydraulic Crushing Piston / Mechanical Press
+   * Spawns a Heavy Hydraulic Crushing Piston / Mechanical Press
+   * Positioned strategically to squash player against the floor or platform!
+   * - Retracted: Leaves generous headroom (2.7m) so player can walk/sprint through when timed right.
+   * - Slam: Downward stroke plunges to (surfaceY + 0.35m), crushing player with full squash physics!
    */
-  public spawnPiston(x: number, topY: number = 4.5, strokeLength: number = 4.5): ActiveObstacle {
+  public spawnPiston(x: number, surfaceY: number = -3.70, ceilingY: number = 2.4): ActiveObstacle {
     const group = new THREE.Group();
+    const topY = ceilingY;
     group.position.set(x, topY, 0);
 
-    // Fixed Top Housing with heavy industrial brackets
-    const housingGeo = new THREE.BoxGeometry(1.7, 1.8, 1.3);
+    // 1. Heavy Top Industrial Housing & Mounting Bracket
+    const housingGeo = new THREE.BoxGeometry(2.2, 1.4, 1.4);
     const housing = new THREE.Mesh(housingGeo, this.darkIronMat);
     group.add(housing);
 
     // Flashing warning beacon on housing
-    const beaconGeo = new THREE.CylinderGeometry(0.18, 0.22, 0.35, 12);
-    const beaconMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+    const beaconGeo = new THREE.CylinderGeometry(0.18, 0.24, 0.36, 12);
+    const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
     const beacon = new THREE.Mesh(beaconGeo, beaconMat);
-    beacon.position.set(0, 1.05, 0);
+    beacon.position.set(0, 0.85, 0);
     group.add(beacon);
 
-    // Moving Piston Rod & Heavy Hammer Foot
+    // 2. Moving Piston Assembly
     const rodGroup = new THREE.Group();
     group.add(rodGroup);
 
-    const rodGeo = new THREE.CylinderGeometry(0.28, 0.28, strokeLength, 16);
+    // Maximum travel distance from top to floor
+    const totalTravel = (topY - surfaceY) - 0.70;
+    const rodLength = totalTravel + 1.2;
+
+    // Central chrome hydraulic ram rod
+    const rodGeo = new THREE.CylinderGeometry(0.32, 0.32, rodLength, 16);
     const rod = new THREE.Mesh(rodGeo, this.steelMat);
-    rod.position.y = -strokeLength / 2;
+    rod.position.y = -rodLength / 2;
     rodGroup.add(rod);
 
-    // Heavy Industrial Stomper Hammer
-    const hammerGeo = new THREE.BoxGeometry(1.8, 0.8, 1.2);
+    // Twin auxiliary guide tubes
+    const guideGeo = new THREE.CylinderGeometry(0.08, 0.08, rodLength * 0.85, 8);
+    const guideL = new THREE.Mesh(guideGeo, this.darkIronMat);
+    guideL.position.set(-0.75, -rodLength * 0.42, 0);
+    rodGroup.add(guideL);
+    const guideR = new THREE.Mesh(guideGeo, this.darkIronMat);
+    guideR.position.set(0.75, -rodLength * 0.42, 0);
+    rodGroup.add(guideR);
+
+    // 3. Heavy Industrial Stomper Hammer with Caution Hazard Stripes
+    const hammerGeo = new THREE.BoxGeometry(2.2, 0.8, 1.3);
     const hammer = new THREE.Mesh(hammerGeo, this.hazardMat);
-    hammer.position.y = -strokeLength;
+    hammer.position.y = -totalTravel;
     rodGroup.add(hammer);
 
-    // Dual auxiliary hydraulic guide tubes
-    const guideGeo = new THREE.CylinderGeometry(0.09, 0.09, strokeLength * 0.7, 8);
-    const guideL = new THREE.Mesh(guideGeo, this.steelMat);
-    guideL.position.set(-0.6, -strokeLength * 0.35, 0);
-    rodGroup.add(guideL);
-
-    const guideR = new THREE.Mesh(guideGeo, this.steelMat);
-    guideR.position.set(0.6, -strokeLength * 0.35, 0);
-    rodGroup.add(guideR);
+    // Steel Impact Baseplate with heavy cleats
+    const plateGeo = new THREE.BoxGeometry(2.24, 0.16, 1.34);
+    const plate = new THREE.Mesh(plateGeo, this.steelMat);
+    plate.position.y = -totalTravel - 0.40;
+    rodGroup.add(plate);
 
     this.scene.add(group);
 
-    const colliderCenter = new THREE.Vector2(x, topY - strokeLength);
+    const colliderCenter = new THREE.Vector2(x, topY - totalTravel);
 
     const obs: ActiveObstacle = {
       id: this.nextId++,
@@ -314,7 +402,7 @@ export class ObstacleManager {
       group,
       collider: {
         type: 'box',
-        halfSize: new THREE.Vector2(0.9, 0.45),
+        halfSize: new THREE.Vector2(1.1, 0.48),
         center: colliderCenter,
       },
       destructible: false,
@@ -322,23 +410,154 @@ export class ObstacleManager {
       active: true,
       isCrushing: false,
       update: (dt: number, time: number) => {
-        // Slam down fast, pause briefly, retract smoothly
-        const cycle = (time * 1.8) % Math.PI;
-        const extension = Math.pow(Math.sin(cycle), 4.0);
-        const currentExtensionY = -extension * (strokeLength - 1.2);
+        // Press cycle:
+        // Slow anticipation / warning at top -> violent rapid slam -> brief pause -> smooth retract
+        const cyclePeriod = 2.4;
+        const phase = (time % cyclePeriod) / cyclePeriod;
+
+        let extension = 0;
+        let isCrush = false;
+
+        if (phase < 0.48) {
+          // Resting at top: generous headroom (extension = 0)
+          extension = 0;
+        } else if (phase < 0.62) {
+          // Rapid violent slam downward (0.48 to 0.62: 0.14s slam!)
+          const slamT = (phase - 0.48) / 0.14;
+          extension = Math.pow(slamT, 3.0);
+          isCrush = true;
+        } else if (phase < 0.74) {
+          // Impact pause on floor (0.62 to 0.74)
+          extension = 1.0;
+        } else {
+          // Smooth hydraulic retraction back up (0.74 to 1.0)
+          const retractT = (phase - 0.74) / 0.26;
+          extension = 1.0 - Math.sin(retractT * Math.PI * 0.5);
+        }
+
+        // Travel from 0 (headroom 2.7m above floor) to maximum slam (0.35m above floor)
+        const currentExtensionY = -extension * (totalTravel - 1.25);
         rodGroup.position.y = currentExtensionY;
 
-        // Dynamic world Y position of the crushing hammer
-        const hammerWorldY = topY + currentExtensionY - strokeLength;
+        // Dynamic world position of crushing hammer center
+        const hammerWorldY = topY + currentExtensionY - totalTravel;
         colliderCenter.set(x, hammerWorldY);
 
-        // Crushing state: moving downwards with speed
-        obs.isCrushing = extension > 0.25 && Math.cos(cycle) > 0;
+        obs.isCrushing = isCrush;
 
-        // Warning beacon flashes faster as press readies to slam
-        const flashRate = 8.0 + extension * 16.0;
+        // Flashing beacon flashes rapidly right before slam
+        const isPreSlam = phase > 0.30 && phase < 0.62;
+        const flashRate = isPreSlam ? 24.0 : 4.0;
         const beaconOn = Math.sin(time * flashRate) > 0;
-        beaconMat.color.setHex(beaconOn ? 0xff2200 : 0x441100);
+        beaconMat.color.setHex(beaconOn ? 0xff1100 : 0x330000);
+      },
+    };
+
+    this.obstacles.push(obs);
+    return obs;
+  }
+
+  /**
+   * Spawns a High-Voltage Laser Barrier Forcefield Gate
+   * Mandates jetpack flight: blocks the ground corridor, requiring player to soar over!
+   */
+  public spawnLaserGate(x: number, y: number = -3.70): ActiveObstacle {
+    const group = new THREE.Group();
+    group.position.set(x, y, 0);
+
+    const gateHeight = 2.4;
+    const gateWidth = 2.6;
+
+    // Left and Right Industrial Emitter Pylons
+    const pylonGeo = new THREE.BoxGeometry(0.40, gateHeight, 0.6);
+    const pylonL = new THREE.Mesh(pylonGeo, this.darkIronMat);
+    pylonL.position.set(-gateWidth / 2, gateHeight / 2, 0);
+    group.add(pylonL);
+
+    const pylonR = new THREE.Mesh(pylonGeo, this.darkIronMat);
+    pylonR.position.set(gateWidth / 2, gateHeight / 2, 0);
+    group.add(pylonR);
+
+    // Hazard Stripes on Pylon Front
+    const stripeGeo = new THREE.BoxGeometry(0.42, 0.35, 0.62);
+    const stripeL = new THREE.Mesh(stripeGeo, this.hazardMat);
+    stripeL.position.set(-gateWidth / 2, gateHeight * 0.3, 0);
+    group.add(stripeL);
+
+    const stripeR = new THREE.Mesh(stripeGeo, this.hazardMat);
+    stripeR.position.set(gateWidth / 2, gateHeight * 0.3, 0);
+    group.add(stripeR);
+
+    // Flashing Strobe Beacons on top of Pylons
+    const beaconGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.22, 10);
+    const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff0022 });
+    const beaconL = new THREE.Mesh(beaconGeo, beaconMat);
+    beaconL.position.set(-gateWidth / 2, gateHeight + 0.12, 0);
+    group.add(beaconL);
+
+    const beaconR = new THREE.Mesh(beaconGeo, beaconMat);
+    beaconR.position.set(gateWidth / 2, gateHeight + 0.12, 0);
+    group.add(beaconR);
+
+    // Crackling Horizontal High-Voltage Laser Beams
+    const beamCount = 4;
+    const beamMeshes: THREE.Mesh[] = [];
+    const beamGeo = new THREE.CylinderGeometry(0.045, 0.045, gateWidth - 0.4, 8);
+    beamGeo.rotateZ(Math.PI / 2);
+    const beamMat = new THREE.MeshBasicMaterial({
+      color: 0xff1144,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+    });
+
+    for (let b = 0; b < beamCount; b++) {
+      const beam = new THREE.Mesh(beamGeo, beamMat);
+      beam.position.set(0, 0.45 + b * 0.50, 0);
+      group.add(beam);
+      beamMeshes.push(beam);
+    }
+
+    // Holographic Floating Arrow Prompting Upward Flight
+    const signGroup = new THREE.Group();
+    signGroup.position.set(0, gateHeight + 0.65, 0);
+    group.add(signGroup);
+
+    const arrowGeo = new THREE.ConeGeometry(0.25, 0.4, 3);
+    const arrowMat = new THREE.MeshBasicMaterial({ color: 0x00f5ff, blending: THREE.AdditiveBlending });
+    const arrow = new THREE.Mesh(arrowGeo, arrowMat);
+    signGroup.add(arrow);
+
+    this.scene.add(group);
+
+    const colliderCenter = new THREE.Vector2(x, y + gateHeight / 2);
+
+    const obs: ActiveObstacle = {
+      id: this.nextId++,
+      type: ObstacleType.LASER_GATE,
+      group,
+      collider: {
+        type: 'box',
+        halfSize: new THREE.Vector2(gateWidth / 2 + 0.1, gateHeight / 2),
+        center: colliderCenter,
+      },
+      destructible: false,
+      health: 9999,
+      active: true,
+      update: (dt: number, time: number) => {
+        // Crackling beam flicker
+        const flicker = 0.85 + Math.sin(time * 28.0) * 0.15;
+        beamMat.opacity = flicker;
+        for (let b = 0; b < beamMeshes.length; b++) {
+          beamMeshes[b].scale.y = 1.0 + Math.sin(time * 35.0 + b) * 0.08;
+        }
+
+        // Flashing beacons
+        const beaconOn = Math.sin(time * 12.0) > 0;
+        beaconMat.color.setHex(beaconOn ? 0xff1133 : 0x330008);
+
+        // Bobbing floating flight arrow
+        arrow.position.y = Math.sin(time * 6.0) * 0.12;
       },
     };
 
@@ -424,23 +643,6 @@ export class ObstacleManager {
     bumperBack.position.set(0, -0.05, -0.65);
     group.add(bumperBack);
 
-    // Support strut beams underneath
-    const strutGeo = new THREE.BoxGeometry(0.22, 1.2, 0.9);
-    const strut1 = new THREE.Mesh(strutGeo, this.darkIronMat);
-    strut1.position.set(-width * 0.35, -0.7, 0);
-    group.add(strut1);
-
-    const strut2 = new THREE.Mesh(strutGeo, this.darkIronMat);
-    strut2.position.set(width * 0.35, -0.7, 0);
-    group.add(strut2);
-
-    // Under-chassis conduit cable bundle
-    const cableGeo = new THREE.CylinderGeometry(0.04, 0.04, width * 0.8, 8);
-    cableGeo.rotateZ(Math.PI / 2);
-    const cable = new THREE.Mesh(cableGeo, this.steelMat);
-    cable.position.set(0, -height / 2 - 0.12, 0.3);
-    group.add(cable);
-
     this.scene.add(group);
 
     const obs: ActiveObstacle = {
@@ -464,24 +666,96 @@ export class ObstacleManager {
   /**
    * Spawns a Floating Fuel Canister Pickup
    */
+  /**
+   * Spawns a High-Tech Sci-Fi Plasma Fuel Battery Cell
+   * Features:
+   * - Glowing cyan/emerald plasma containment core
+   * - Ribbed industrial chrome & copper heat-sink end caps
+   * - 3-bar LED energy status gauge
+   * - Counter-rotating tilted atomic energy rings
+   */
   public spawnFuelPickup(x: number, y: number): ActivePickup {
     const group = new THREE.Group();
     group.position.set(x, y, 0);
 
-    const canGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.6, 16);
-    const canMat = new THREE.MeshStandardMaterial({
-      color: 0x39ff14,
-      emissive: 0x116605,
-      roughness: 0.2,
+    // 1. Glowing Plasma Core Cylinder
+    const coreGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.58, 16);
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: 0x00f5ff,
+      transparent: true,
+      opacity: 0.92,
+      blending: THREE.AdditiveBlending,
+    });
+    const plasmaCore = new THREE.Mesh(coreGeo, coreMat);
+    group.add(plasmaCore);
+
+    // Outer Translucent Crystalline Containment Tube
+    const tubeGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.64, 16);
+    const tubeMat = new THREE.MeshStandardMaterial({
+      color: 0x60d5ff,
+      transparent: true,
+      opacity: 0.45,
+      roughness: 0.1,
       metalness: 0.3,
     });
-    const can = new THREE.Mesh(canGeo, canMat);
-    group.add(can);
+    const tube = new THREE.Mesh(tubeGeo, tubeMat);
+    group.add(tube);
 
-    const capGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.15, 12);
-    const cap = new THREE.Mesh(capGeo, this.steelMat);
-    cap.position.y = 0.35;
-    group.add(cap);
+    // 2. Heavy Industrial Top & Bottom Heat-Sink End Caps
+    const capGeo = new THREE.CylinderGeometry(0.26, 0.26, 0.12, 12);
+    const topCap = new THREE.Mesh(capGeo, this.steelMat);
+    topCap.position.y = 0.36;
+    group.add(topCap);
+
+    const botCap = new THREE.Mesh(capGeo, this.steelMat);
+    botCap.position.y = -0.36;
+    group.add(botCap);
+
+    // Copper Heat Sinks
+    const finGeo = new THREE.CylinderGeometry(0.27, 0.27, 0.04, 12);
+    const fin1 = new THREE.Mesh(finGeo, this.bronzeMat);
+    fin1.position.y = 0.31;
+    group.add(fin1);
+    const fin2 = new THREE.Mesh(finGeo, this.bronzeMat);
+    fin2.position.y = -0.31;
+    group.add(fin2);
+
+    // Top Terminal Electrode / Spark Tip
+    const tipGeo = new THREE.ConeGeometry(0.08, 0.16, 8);
+    const tip = new THREE.Mesh(tipGeo, this.steelMat);
+    tip.position.y = 0.48;
+    group.add(tip);
+
+    // 3. 3-Bar Glowing LED Charge Status Gauge
+    const barGeo = new THREE.BoxGeometry(0.04, 0.08, 0.03);
+    const barMaterials: THREE.MeshBasicMaterial[] = [];
+    for (let b = 0; b < 3; b++) {
+      const bMat = new THREE.MeshBasicMaterial({ color: 0x00ff88 });
+      barMaterials.push(bMat);
+      const bar = new THREE.Mesh(barGeo, bMat);
+      bar.position.set(0, -0.14 + b * 0.14, 0.25);
+      group.add(bar);
+    }
+
+    // 4. Orbiting Atomic Energy Rings
+    const ringGroup = new THREE.Group();
+    group.add(ringGroup);
+
+    const ringGeo = new THREE.TorusGeometry(0.42, 0.022, 8, 28);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0x39ff14,
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+    });
+
+    const ring1 = new THREE.Mesh(ringGeo, ringMat);
+    ring1.rotation.x = Math.PI / 3;
+    ringGroup.add(ring1);
+
+    const ring2 = new THREE.Mesh(ringGeo, ringMat);
+    ring2.rotation.y = Math.PI / 3;
+    ringGroup.add(ring2);
 
     this.scene.add(group);
 
@@ -490,11 +764,26 @@ export class ObstacleManager {
       type: PickupType.FUEL,
       mesh: group,
       position: group.position,
-      radius: 0.55,
+      radius: 0.65,
       active: true,
       update: (dt: number, time: number) => {
-        group.rotation.y += 2.5 * dt;
-        group.position.y = y + Math.sin(time * 4) * 0.15;
+        // Continuous axial rotation and hovering bob
+        group.rotation.y += 2.2 * dt;
+        group.position.y = y + Math.sin(time * 3.8 + x) * 0.18;
+
+        // Counter-rotating atomic electron rings
+        ring1.rotation.z += 3.2 * dt;
+        ring2.rotation.x -= 2.8 * dt;
+
+        // Pulsing plasma core luminosity
+        const pulse = 0.8 + Math.sin(time * 8.0) * 0.2;
+        coreMat.opacity = pulse * 0.95;
+
+        // Cascading LED charge bar sequence
+        const cycle = (time * 6.0) % 3;
+        for (let b = 0; b < 3; b++) {
+          barMaterials[b].color.setHex(cycle >= b ? 0x00ff88 : 0x003318);
+        }
       },
     };
 
@@ -503,22 +792,76 @@ export class ObstacleManager {
   }
 
   /**
-   * Spawns a Golden Bonus Coin / JJ Action Token
+   * Spawns a High-Tech Sci-Fi Quantum Credit Holo-Token
+   * Features:
+   * - Outer beveled gold coin medallion with sci-fi edge notches
+   * - Counter-spinning glowing amber energy core
+   * - Embossed holographic "JJ" insignia
+   * - Pulsing translucent holographic energy halo
    */
   public spawnCoinPickup(x: number, y: number): ActivePickup {
     const group = new THREE.Group();
     group.position.set(x, y, 0);
 
-    const coinGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.08, 20);
-    coinGeo.rotateX(Math.PI / 2);
-    const coinMat = new THREE.MeshStandardMaterial({
-      color: 0xffbb00,
-      emissive: 0x553300,
-      metalness: 0.9,
-      roughness: 0.2,
+    // 1. Outer Beveled Metallic Gold Ring with Tech Notches
+    const outerGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.08, 24);
+    outerGeo.rotateX(Math.PI / 2);
+    const goldMat = new THREE.MeshStandardMaterial({
+      color: 0xffbb22,
+      emissive: 0x442200,
+      metalness: 0.95,
+      roughness: 0.18,
     });
-    const coin = new THREE.Mesh(coinGeo, coinMat);
-    group.add(coin);
+    const outerMedallion = new THREE.Mesh(outerGeo, goldMat);
+    group.add(outerMedallion);
+
+    // Outer edge tech notches
+    const notchGeo = new THREE.BoxGeometry(0.08, 0.10, 0.10);
+    for (let n = 0; n < 8; n++) {
+      const angle = (n / 8) * Math.PI * 2;
+      const notch = new THREE.Mesh(notchGeo, this.darkIronMat);
+      notch.position.set(Math.cos(angle) * 0.38, Math.sin(angle) * 0.38, 0);
+      notch.rotation.z = angle;
+      group.add(notch);
+    }
+
+    // 2. Counter-Rotating Inner Holographic Core
+    const coreGroup = new THREE.Group();
+    group.add(coreGroup);
+
+    const innerGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.09, 16);
+    innerGeo.rotateX(Math.PI / 2);
+    const innerMat = new THREE.MeshBasicMaterial({
+      color: 0xffd200,
+      transparent: true,
+      opacity: 0.90,
+      blending: THREE.AdditiveBlending,
+    });
+    const innerCore = new THREE.Mesh(innerGeo, innerMat);
+    coreGroup.add(innerCore);
+
+    // Embossed Central "JJ" Insignia Bars
+    const jjBarGeo = new THREE.BoxGeometry(0.06, 0.22, 0.11);
+    const jjBar1 = new THREE.Mesh(jjBarGeo, this.steelMat);
+    jjBar1.position.set(-0.06, 0, 0);
+    coreGroup.add(jjBar1);
+
+    const jjBar2 = new THREE.Mesh(jjBarGeo, this.steelMat);
+    jjBar2.position.set(0.06, 0, 0);
+    coreGroup.add(jjBar2);
+
+    // 3. Pulsing Holographic Energy Halo Ring
+    const haloGeo = new THREE.RingGeometry(0.44, 0.54, 28);
+    const haloMat = new THREE.MeshBasicMaterial({
+      color: 0xffaa00,
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const halo = new THREE.Mesh(haloGeo, haloMat);
+    group.add(halo);
 
     this.scene.add(group);
 
@@ -527,11 +870,20 @@ export class ObstacleManager {
       type: PickupType.COIN,
       mesh: group,
       position: group.position,
-      radius: 0.5,
+      radius: 0.55,
       active: true,
       update: (dt: number, time: number) => {
-        group.rotation.y += 3.8 * dt;
-        group.position.y = y + Math.sin(time * 5 + x) * 0.12;
+        // Outer medallion spins clockwise
+        group.rotation.y += 3.4 * dt;
+        group.position.y = y + Math.sin(time * 4.5 + x) * 0.14;
+
+        // Inner core counter-rotates in reverse
+        coreGroup.rotation.z -= 4.2 * dt;
+
+        // Pulsing halo scale & shimmer
+        const haloScale = 1.0 + Math.sin(time * 7.0) * 0.12;
+        halo.scale.set(haloScale, haloScale, 1.0);
+        haloMat.opacity = 0.40 + Math.sin(time * 8.0) * 0.25;
       },
     };
 
