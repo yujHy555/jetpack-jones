@@ -147,6 +147,9 @@ export class Player {
   public deathTimer: number = 0;
   public groundedDeathTimer: number = 0;
   public maxDeathTime: number = 3.5;
+  public deathHasLanded: boolean = false;
+  public deathLandingSurfaceY: number = GROUND_Y;
+  public deathTumbleAngle: number = 0;
 
   // Ragdoll Physics Hit Reaction
   public ragdollTimer: number = 0;
@@ -1531,6 +1534,9 @@ export class Player {
     this.isDead = false;
     this.deathTimer = 0;
     this.groundedDeathTimer = 0;
+    this.deathHasLanded = false;
+    this.deathLandingSurfaceY = GROUND_Y;
+    this.deathTumbleAngle = 0;
     this.animTimer = 0;
     this.shootTimer = 0;
     this.bubbleBurstTimer = 0;
@@ -1732,7 +1738,12 @@ export class Player {
     this.isDead = false;
     this.deathTimer = 0;
     this.groundedDeathTimer = 0;
+    this.deathHasLanded = false;
+    this.deathLandingSurfaceY = GROUND_Y;
+    this.deathTumbleAngle = this.rigRoot.rotation.z;
     this.invulnerableTime = 999;
+    this.shieldActive = false;
+    if (this.shieldGroup) this.shieldGroup.visible = false;
     // Dramatic death impulse: Jones reels backward
     const dir = knockbackDirX !== 0 ? knockbackDirX : (this.facingRight ? -1 : 1);
     if (!this.isGrounded) {
@@ -1866,14 +1877,10 @@ export class Player {
     // ALWAYS visible — NO FLASHING!
     this.mesh.visible = true;
 
-    // Freeze inputs during death animation
+    // Dedicated Death Physics & Ragdoll Execution (Bypasses living player controls & collision fighting)
     if (this.isDying) {
-      moveX = 0;
-      runPressed = false;
-      jumpPressed = false;
-      jetpackPressed = false;
-      hasMouseTarget = false;
-      crouchPressed = false;
+      this.updateDeath(dt, platforms);
+      return;
     }
 
     // 1. Aim Tracking with Arc Limits (clears helmet dome cleanly)
@@ -2329,6 +2336,129 @@ export class Player {
     this.updateLasers(dt);
     this.updateDroppedGun(dt, platforms);
     this.updateRadioWaves(dt, underPressure);
+  }
+
+  /**
+   * Dedicated Full-Ragdoll Death Physics & Surface Collapse
+   * Ensures realistic in-air center-of-mass tumbling, single-trigger surface impact,
+   * elevated head clearance above ground (zero head penetration!), and smooth Game Over transition.
+   */
+  private updateDeath(dt: number, platforms: { x: number; y: number; width: number; height: number }[]) {
+    this.deathTimer += dt;
+    this.invulnerableTime = 999;
+    this.mesh.visible = true;
+    if (this.shadowMesh) this.shadowMesh.visible = false;
+    if (this.flameConeLeft) this.flameConeLeft.visible = false;
+    if (this.flameConeRight) this.flameConeRight.visible = false;
+    if (this.thrusterLight) this.thrusterLight.intensity = 0;
+    if (this.shieldGroup) this.shieldGroup.visible = false;
+
+    // Electrical sparks & smoke early during jetpack blowout
+    if (this.deathTimer < 1.0) {
+      if (Math.random() < 0.35) {
+        const sparkDir = (Math.random() - 0.5) * 4.0;
+        this.emitSparks(this.position.x, this.position.y + 0.8, sparkDir, 2);
+      }
+      if (Math.random() < 0.20) {
+        this.emitSmoke(this.position.x - 0.15, this.position.y + 0.85, 0, 1);
+      }
+    }
+
+    const H = 0.95; // Waist / Center of mass height above feet
+
+    if (!this.deathHasLanded) {
+      // 1. FREE-FALL & CENTER-OF-MASS TUMBLE IN AIR
+      this.velocity.y -= 22.0 * dt;
+      this.velocity.x *= 0.985;
+      this.position.x += this.velocity.x * dt;
+      this.position.y += this.velocity.y * dt;
+
+      // Continuous angular tumble in mid-air
+      const tumbleDir = this.facingRight ? -1 : 1;
+      this.deathTumbleAngle += tumbleDir * 4.2 * dt;
+      this.rigRoot.rotation.z = this.deathTumbleAngle;
+
+      // Center-of-mass anchor so hips remain at rotation pivot
+      const theta = this.deathTumbleAngle;
+      this.rigRoot.position.x = H * Math.sin(theta);
+      this.rigRoot.position.y = H * (1.0 - Math.cos(theta));
+
+      // Limbs flail and drag naturally in the air with loose ragdoll physics
+      this.headBone.rotation.z = Math.sin(this.deathTimer * 8.0) * 0.35 - 0.20;
+      this.torsoBone.rotation.z = Math.cos(this.deathTimer * 6.0) * 0.25;
+
+      this.frontArmBone.rotation.z = -1.2 + Math.sin(this.deathTimer * 9.0) * 0.5;
+      this.frontForearmBone.rotation.z = 0.7 + Math.cos(this.deathTimer * 8.0) * 0.3;
+      this.backArmBone.rotation.z = 1.0 + Math.cos(this.deathTimer * 8.0) * 0.4;
+      this.backForearmBone.rotation.z = 0.4;
+
+      this.frontThighBone.rotation.z = 0.5 + Math.sin(this.deathTimer * 7.0) * 0.4;
+      this.frontShinBone.rotation.z = -0.7 + Math.cos(this.deathTimer * 7.0) * 0.3;
+      this.backThighBone.rotation.z = -0.4 + Math.sin(this.deathTimer * 6.5) * 0.3;
+      this.backShinBone.rotation.z = -0.4;
+
+      // Check collision with solid ground and elevated platforms
+      let highestSurfaceBelow = GROUND_Y;
+      const pLeft = this.position.x - 0.32;
+      const pRight = this.position.x + 0.32;
+      for (const plat of platforms) {
+        const platTop = plat.y + plat.height / 2;
+        const platLeft = plat.x - plat.width / 2;
+        const platRight = plat.x + plat.width / 2;
+        if (pRight > platLeft && pLeft < platRight) {
+          if (platTop <= this.position.y + 0.45 && platTop > highestSurfaceBelow) {
+            highestSurfaceBelow = platTop;
+          }
+        }
+      }
+
+      // Detect landing
+      if (this.position.y <= highestSurfaceBelow + 0.15 && this.velocity.y <= 0) {
+        this.deathHasLanded = true;
+        this.deathLandingSurfaceY = highestSurfaceBelow;
+        this.position.y = highestSurfaceBelow;
+        this.velocity.set(0, 0, 0);
+        this.isGrounded = true;
+
+        // Emit landing impact dust and sparks EXACTLY ONCE
+        this.emitDust(this.position.x, highestSurfaceBelow, 14);
+        this.emitSparks(this.position.x, highestSurfaceBelow + 0.1, 0, 8);
+      }
+    } else {
+      // 2. RESTING ON SURFACE: ZERO PENETRATION & NATURAL LIMP RAGDOLL COLLAPSE
+      this.position.y = this.deathLandingSurfaceY;
+      this.velocity.set(0, 0, 0);
+      this.isGrounded = true;
+      this.groundedDeathTimer += dt;
+
+      // Rotate body flat onto back or front on the ground
+      const targetCollapse = this.facingRight ? -Math.PI / 2 : Math.PI / 2;
+      this.rigRoot.rotation.z = THREE.MathUtils.lerp(this.rigRoot.rotation.z, targetCollapse, dt * 10.0);
+
+      // Resting offset: Elevates body pivot so helmet and torso rest safely +0.22m above ground (ZERO ground penetration!)
+      this.rigRoot.position.set(0, 0.22, 0);
+
+      // Limbs rest limp on the floor
+      this.headBone.rotation.z = THREE.MathUtils.lerp(this.headBone.rotation.z, (this.facingRight ? 0.08 : -0.08), dt * 8.0);
+      this.torsoBone.rotation.z = THREE.MathUtils.lerp(this.torsoBone.rotation.z, 0, dt * 8.0);
+      this.frontArmBone.rotation.z = THREE.MathUtils.lerp(this.frontArmBone.rotation.z, -0.35, dt * 8.0);
+      this.frontForearmBone.rotation.z = THREE.MathUtils.lerp(this.frontForearmBone.rotation.z, 0.15, dt * 8.0);
+      this.backArmBone.rotation.z = THREE.MathUtils.lerp(this.backArmBone.rotation.z, 0.25, dt * 8.0);
+      this.backForearmBone.rotation.z = THREE.MathUtils.lerp(this.backForearmBone.rotation.z, 0.05, dt * 8.0);
+      this.frontThighBone.rotation.z = THREE.MathUtils.lerp(this.frontThighBone.rotation.z, 0.10, dt * 8.0);
+      this.frontShinBone.rotation.z = THREE.MathUtils.lerp(this.frontShinBone.rotation.z, 0.05, dt * 8.0);
+      this.backThighBone.rotation.z = THREE.MathUtils.lerp(this.backThighBone.rotation.z, -0.08, dt * 8.0);
+      this.backShinBone.rotation.z = THREE.MathUtils.lerp(this.backShinBone.rotation.z, 0.05, dt * 8.0);
+
+      // Trigger Game Over after full rest
+      if (this.groundedDeathTimer >= 1.2 || this.deathTimer >= 3.5) {
+        this.isDead = true;
+      }
+    }
+
+    this.mesh.position.copy(this.position);
+    this.updateDroppedGun(dt, platforms);
+    this.updateParticles(dt);
   }
 
   private updateDroppedGun(dt: number, platforms: { x: number; y: number; width: number; height: number }[]) {
@@ -2842,91 +2972,6 @@ export class Player {
         this.frontThighBone.rotation.z += 0.65 * prog;
         this.frontShinBone.rotation.z -= 0.55 * prog;
         this.backThighBone.rotation.z += -0.45 * prog;
-      }
-    } else {
-      // ------------------------------------------------------
-      // DRAMATIC DEATH ANIMATION
-      // Jetpack meltdown, slow-motion reel back, and collapse onto catwalk floor
-      // ------------------------------------------------------
-      this.deathTimer += dt;
-
-      // Jetpack blowouts & electrical short-circuit sparks
-      if (this.deathTimer < 1.4) {
-        if (Math.random() < 0.65) {
-          const sparkDir = (Math.random() - 0.5) * 4.0;
-          this.emitSparks(this.position.x, this.position.y + 0.8, sparkDir, 2);
-        }
-        if (Math.random() < 0.35) {
-          this.emitSmoke(this.position.x - 0.15, this.position.y + 0.85, 0, 1);
-        }
-      }
-
-      const H = 0.95; // Center of mass height (hips/waist) above feet
-
-      if (!this.isGrounded) {
-        // ----------------------------------------------------
-        // AIR DEATH: CENTER-OF-MASS RAGDOLL TUMBLING
-        // Tumbles around center of mass (H = 0.95), NOT pivoting from feet!
-        // ----------------------------------------------------
-        const tumbleDir = this.facingRight ? -1 : 1;
-        const tumbleSpeed = tumbleDir * 5.2;
-        this.rigRoot.rotation.z += tumbleSpeed * dt;
-
-        // Mathematical Center-of-Mass Orbit:
-        // Ensures hips/waist remain stationary in mesh space while head & boots tumble symmetrically
-        const theta = this.rigRoot.rotation.z;
-        this.rigRoot.position.x = H * Math.sin(theta);
-        this.rigRoot.position.y = H * (1.0 - Math.cos(theta));
-
-        // Limbs flail naturally under aerodynamic air resistance
-        this.headBone.rotation.z = Math.sin(this.deathTimer * 8.0) * 0.25 - 0.25;
-        this.torsoBone.rotation.z = Math.cos(this.deathTimer * 6.0) * 0.18;
-
-        this.frontArmBone.rotation.z = -1.4 + Math.sin(this.deathTimer * 10.0) * 0.35;
-        this.frontForearmBone.rotation.z = 0.6 + Math.cos(this.deathTimer * 9.0) * 0.25;
-        this.backArmBone.rotation.z = 1.2 + Math.cos(this.deathTimer * 9.0) * 0.30;
-        this.backForearmBone.rotation.z = 0.35;
-
-        this.frontThighBone.rotation.z = 0.5 + Math.sin(this.deathTimer * 7.0) * 0.25;
-        this.frontShinBone.rotation.z = -0.6 + Math.cos(this.deathTimer * 8.0) * 0.20;
-        this.backThighBone.rotation.z = -0.4 + Math.sin(this.deathTimer * 7.5) * 0.20;
-        this.backShinBone.rotation.z = 0.3;
-      } else {
-        // ----------------------------------------------------
-        // SURFACE IMPACT & COLLAPSE FLAT ON LANDING
-        // Lands on catwalk ground, platform, crate, or maze wall
-        // ----------------------------------------------------
-        this.groundedDeathTimer += dt;
-
-        if (this.groundedDeathTimer - dt <= 0) {
-          // Impact dust & sparks on contact
-          this.emitDust(this.position.x, this.position.y, 16);
-          this.emitSparks(this.position.x, this.position.y + 0.1, 0, 8);
-        }
-
-        // Settle flat onto surface strictly pivoting around CENTER OF MASS (y = H = 0.95)
-        const collapseTarget = this.facingRight ? -Math.PI / 2 : Math.PI / 2;
-        this.rigRoot.rotation.z = THREE.MathUtils.lerp(this.rigRoot.rotation.z, collapseTarget, dt * 9.0);
-        const thetaG = this.rigRoot.rotation.z;
-        this.rigRoot.position.x = H * Math.sin(thetaG);
-        this.rigRoot.position.y = H * (1.0 - Math.cos(thetaG));
-
-        // Limbs collapse limp onto surface
-        this.headBone.rotation.z = THREE.MathUtils.lerp(this.headBone.rotation.z, 0, dt * 8.0);
-        this.torsoBone.rotation.z = THREE.MathUtils.lerp(this.torsoBone.rotation.z, 0, dt * 8.0);
-        this.frontArmBone.rotation.z = THREE.MathUtils.lerp(this.frontArmBone.rotation.z, 0.2, dt * 8.0);
-        this.frontForearmBone.rotation.z = THREE.MathUtils.lerp(this.frontForearmBone.rotation.z, 0.1, dt * 8.0);
-        this.backArmBone.rotation.z = THREE.MathUtils.lerp(this.backArmBone.rotation.z, -0.2, dt * 8.0);
-        this.backForearmBone.rotation.z = THREE.MathUtils.lerp(this.backForearmBone.rotation.z, 0, dt * 8.0);
-        this.frontThighBone.rotation.z = THREE.MathUtils.lerp(this.frontThighBone.rotation.z, 0, dt * 8.0);
-        this.frontShinBone.rotation.z = THREE.MathUtils.lerp(this.frontShinBone.rotation.z, 0, dt * 8.0);
-        this.backThighBone.rotation.z = THREE.MathUtils.lerp(this.backThighBone.rotation.z, 0, dt * 8.0);
-        this.backShinBone.rotation.z = THREE.MathUtils.lerp(this.backShinBone.rotation.z, 0, dt * 8.0);
-      }
-
-      // Ensure death respawn only triggers after player has hit ground/surface and rested!
-      if (this.groundedDeathTimer >= 1.2 || this.deathTimer >= 4.5) {
-        this.isDead = true;
       }
     }
   }
