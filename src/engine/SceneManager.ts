@@ -91,94 +91,44 @@ export class SceneManager {
 
   public setLevel(lvl: number) {
     this.currentLevel = lvl;
+    this.isIsometric = false;
+    this.camera.rotation.set(0, 0, 0);
+
     if (lvl === 3) {
-      this.isIsometric = true;
-      // Mars Twilight Atmosphere
+      // Mars Twilight Atmosphere (2.5D Side-Scroller)
       this.scene.background = new THREE.Color(0x943825);
       this.scene.fog = new THREE.FogExp2(0x822d1c, 0.009);
-      this.ambientLight.color.setHex(0x6a382c);
+      this.ambientLight.color.setHex(0xffeedd);
       this.ambientLight.intensity = 2.8;
       this.keyLight.color.setHex(0xffaa85);
-      this.keyLight.intensity = 2.8;
+      this.keyLight.intensity = 1.8;
       this.rimLight.color.setHex(0x44ccff);
-      this.rimLight.intensity = 1.4;
+      this.rimLight.intensity = 1.2;
+    } else if (lvl === 2) {
+      this.scene.background = new THREE.Color(0x1a0d24);
+      this.scene.fog = new THREE.FogExp2(0x1a0d24, 0.012);
+      this.ambientLight.color.setHex(0xffffff);
+      this.ambientLight.intensity = 3.2;
+      this.keyLight.color.setHex(0xfff8ee);
+      this.keyLight.intensity = 1.4;
+      this.rimLight.color.setHex(0x88eeff);
+      this.rimLight.intensity = 1.0;
     } else {
-      this.isIsometric = false;
-      this.camera.rotation.set(0, 0, 0);
-      if (lvl === 2) {
-        this.scene.background = new THREE.Color(0x1a0d24);
-        this.scene.fog = new THREE.FogExp2(0x1a0d24, 0.012);
-        this.ambientLight.color.setHex(0xffffff);
-        this.ambientLight.intensity = 3.2;
-        this.keyLight.color.setHex(0xfff8ee);
-        this.keyLight.intensity = 1.4;
-      } else {
-        this.scene.background = new THREE.Color(0xff99cc);
-        this.scene.fog = new THREE.FogExp2(0x28192b, 0.012);
-        this.ambientLight.color.setHex(0xffffff);
-        this.ambientLight.intensity = 3.4;
-        this.keyLight.color.setHex(0xfff8ee);
-        this.keyLight.intensity = 1.4;
-      }
+      this.scene.background = new THREE.Color(0xff99cc);
+      this.scene.fog = new THREE.FogExp2(0x28192b, 0.012);
+      this.ambientLight.color.setHex(0xffffff);
+      this.ambientLight.intensity = 3.4;
+      this.keyLight.color.setHex(0xfff8ee);
+      this.keyLight.intensity = 1.4;
+      this.rimLight.color.setHex(0x88eeff);
+      this.rimLight.intensity = 1.0;
     }
   }
 
   /**
-   * Unrestricted Camera Tracking
-   * - Level 1 & 2: 2.5D panoramic side-scrolling perspective (Z = 17.5)
-   * - Level 3: Triple AAA True Isometric Perspective with smooth damped lookAt & 3D drone breathing
+   * Unified 2.5D Panoramic Side-scrolling Camera Tracking (Levels 1, 2, and 3)
    */
-  public updateCamera(targetX: number, targetY: number, dt: number, targetZ: number = 0) {
-    if (this.isIsometric) {
-      // ========================================================
-      // TRIPLE AAA ISOMETRIC CAMERA SYSTEM
-      // Intimate, high-action 45° azimuth / 38° elevation diamond isometric view
-      // Moved closer for crisp character animations, terrain slopes, and Outpost architecture
-      // ========================================================
-      const isoDistX = -12.5;
-      const isoDistY = 15.5;
-      const isoDistZ = 12.5;
-
-      const targetCamX = targetX + isoDistX;
-      const targetCamY = targetY + isoDistY;
-      const targetCamZ = targetZ + isoDistZ;
-
-      this.camera.position.x = THREE.MathUtils.lerp(this.camera.position.x, targetCamX, dt * 5.5);
-      this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, targetCamY, dt * 5.5);
-      this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, targetCamZ, dt * 5.5);
-
-      const lookTarget = new THREE.Vector3(targetX, targetY + 1.2, targetZ);
-      this.camera.lookAt(lookTarget);
-
-      // Organic Handheld Isometric Drone Cam Sway
-      if (this.handheldEnabled && this.handheldIntensity > 0) {
-        this.handheldTime += dt;
-        const mult = this.handheldIntensity;
-        const hx = Math.sin(this.handheldTime * 1.1) * 0.08 * mult;
-        const hy = Math.cos(this.handheldTime * 0.9) * 0.08 * mult;
-        const hz = Math.sin(this.handheldTime * 1.4) * 0.08 * mult;
-        this.camera.position.x += hx;
-        this.camera.position.y += hy;
-        this.camera.position.z += hz;
-      }
-
-      // 3D Screen Shake in Isometric Space
-      if (this.shakeDuration > 0) {
-        this.shakeDuration -= dt;
-        const shakeAmt = this.shakeIntensity * (this.shakeDuration / 0.18);
-        this.camera.position.x += (Math.random() - 0.5) * shakeAmt;
-        this.camera.position.y += (Math.random() - 0.5) * shakeAmt;
-        this.camera.position.z += (Math.random() - 0.5) * shakeAmt;
-        if (this.shakeDuration <= 0) this.shakeIntensity = 0;
-      }
-
-      // High-angle directional Mars twilight sun tracking the player
-      this.keyLight.position.set(this.camera.position.x + 8, this.camera.position.y + 26, this.camera.position.z + 10);
-      this.keyLight.target.position.set(targetX, targetY, targetZ);
-      return;
-    }
-
-    // 2.5D Side-scrolling Camera Tracking (Levels 1 & 2)
+  public updateCamera(targetX: number, targetY: number, dt: number) {
     const targetCamX = targetX + 1.8;
     const targetCamY = Math.max(-1.5, targetY + 1.2); // Never cuts off top in air!
 

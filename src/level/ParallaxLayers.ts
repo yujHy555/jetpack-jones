@@ -65,6 +65,7 @@ export class ParallaxLayers {
   private skyBackdrop!: THREE.Mesh;
   private normalSkyTex!: THREE.CanvasTexture;
   private alienSkyTex!: THREE.CanvasTexture;
+  private marsSkyTex!: THREE.CanvasTexture;
   private atmosphereClouds!: THREE.Group;
   private ringedPlanetGroup!: THREE.Group;
   private moonsGroup!: THREE.Group;
@@ -282,6 +283,44 @@ export class ParallaxLayers {
     }
     this.alienSkyTex = new THREE.CanvasTexture(alienCanvas);
 
+    // Planet Mars - Desolate Terracotta Dusk Sky Canvas
+    const marsCanvas = document.createElement('canvas');
+    marsCanvas.width = 256;
+    marsCanvas.height = 1024;
+    const mCtx = marsCanvas.getContext('2d')!;
+    const mGrad = mCtx.createLinearGradient(0, 1024, 0, 0);
+    mGrad.addColorStop(0.00, '#e27b58'); // Warm ochre-peach Martian horizon glow
+    mGrad.addColorStop(0.20, '#b8492c'); // Burnt terracotta
+    mGrad.addColorStop(0.42, '#852b1b'); // Deep crimson rust
+    mGrad.addColorStop(0.68, '#591a14'); // Dark Martian dusk
+    mGrad.addColorStop(0.85, '#3b120f'); // Nightfall crimson
+    mGrad.addColorStop(1.00, '#150606'); // Deep cosmic Martian night
+    mCtx.fillStyle = mGrad;
+    mCtx.fillRect(0, 0, 256, 1024);
+
+    // Distant Martian moons (Phobos & Deimos) and cosmic dust
+    mCtx.fillStyle = 'rgba(255, 230, 200, 0.85)';
+    mCtx.beginPath();
+    mCtx.arc(80, 280, 7.5, 0, Math.PI * 2); // Phobos
+    mCtx.fill();
+
+    mCtx.fillStyle = 'rgba(230, 200, 180, 0.65)';
+    mCtx.beginPath();
+    mCtx.arc(180, 210, 4.0, 0, Math.PI * 2); // Deimos
+    mCtx.fill();
+
+    for (let s = 0; s < 380; s++) {
+      const sx = ((s * 107) % 256);
+      const sy = ((s * 277) % 650);
+      const r = (s % 3 === 0) ? 1.5 : (s % 2 === 0 ? 0.9 : 0.5);
+      const alpha = 0.4 + (s % 5) * 0.12;
+      mCtx.fillStyle = (s % 4 === 0) ? `rgba(255, 210, 160, ${alpha})` : `rgba(255, 255, 255, ${alpha})`;
+      mCtx.beginPath();
+      mCtx.arc(sx, sy, r, 0, Math.PI * 2);
+      mCtx.fill();
+    }
+    this.marsSkyTex = new THREE.CanvasTexture(marsCanvas);
+
     const skyGeo = new THREE.PlaneGeometry(280, 280);
     const skyMat = new THREE.MeshBasicMaterial({ map: this.normalSkyTex, depthWrite: false });
 
@@ -291,13 +330,15 @@ export class ParallaxLayers {
   }
 
   public setLevel(lvl: number) {
-    if (lvl === 3) {
-      this.group.visible = false;
-      return;
-    }
     this.group.visible = true;
     if (this.skyBackdrop && (this.skyBackdrop.material as THREE.MeshBasicMaterial)) {
-      (this.skyBackdrop.material as THREE.MeshBasicMaterial).map = lvl === 2 ? this.alienSkyTex : this.normalSkyTex;
+      if (lvl === 3) {
+        (this.skyBackdrop.material as THREE.MeshBasicMaterial).map = this.marsSkyTex;
+      } else if (lvl === 2) {
+        (this.skyBackdrop.material as THREE.MeshBasicMaterial).map = this.alienSkyTex;
+      } else {
+        (this.skyBackdrop.material as THREE.MeshBasicMaterial).map = this.normalSkyTex;
+      }
       (this.skyBackdrop.material as THREE.MeshBasicMaterial).needsUpdate = true;
     }
   }

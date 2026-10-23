@@ -1,49 +1,24 @@
 import * as THREE from 'three';
 import { ObstacleManager } from './Obstacles';
-import { MarsOutpost } from './MarsOutpost';
 
 export class LevelGenerator {
   private obstacleManager: ObstacleManager;
-  public marsOutpost!: MarsOutpost;
   public currentLevel: number = 1;
   private nextSpawnX: number = 18;
   private spawnInterval: number = 16;
 
   constructor(obstacleManager: ObstacleManager, scene?: THREE.Scene) {
     this.obstacleManager = obstacleManager;
-    if (scene) {
-      this.marsOutpost = new MarsOutpost();
-      scene.add(this.marsOutpost.group);
-      this.marsOutpost.setVisible(false);
-    }
   }
 
   public setLevel(lvl: number) {
     this.currentLevel = lvl;
-    if (this.marsOutpost) {
-      this.marsOutpost.setVisible(lvl === 3);
-    }
     this.reset();
   }
 
   public reset(startX: number = 0) {
     this.obstacleManager.clear();
     this.nextSpawnX = startX + 18;
-
-    if (this.currentLevel === 3) {
-      // ----------------------------------------------------
-      // LEVEL 3: DESOLATE MARS OUTPOST (AAA ISOMETRIC)
-      // Dedicated 3D Martian sentry drones, automated defense turrets,
-      // and canyon traversal are natively managed by MarsOutpost
-      // ----------------------------------------------------
-      if (this.marsOutpost) this.marsOutpost.setVisible(true);
-      this.obstacleManager.spawnFuelPickup(14.0, 1.2);
-      this.obstacleManager.spawnFuelPickup(-8.0, 20.5); // High reward on skyscraper tower crown!
-      this.obstacleManager.spawnHyperJetpackPickup(8.5, -0.2); // On the canyon bridge
-      return;
-    }
-
-    if (this.marsOutpost) this.marsOutpost.setVisible(false);
 
     if (this.currentLevel === 1) {
       // ----------------------------------------------------
@@ -70,7 +45,7 @@ export class LevelGenerator {
 
       // Hyper-Ion Jetpack Upgrade placed early so player can experience high-thrust flight
       this.obstacleManager.spawnHyperJetpackPickup(20.0, 0.5);
-    } else {
+    } else if (this.currentLevel === 2) {
       // ----------------------------------------------------
       // LEVEL 2: PLANET XYLOS - BIOLUMINESCENT ALIEN PLANET
       // ----------------------------------------------------
@@ -95,16 +70,42 @@ export class LevelGenerator {
       // HIGH-ALTITUDE ALIEN SKY MAZE: Lethal Bio-Plasma Walls & Rich Collectibles!
       // Touching any wall of the maze instantly kills the player!
       this.obstacleManager.spawnSkyMaze(23.0, 4.5);
+    } else {
+      // ----------------------------------------------------
+      // LEVEL 3: DESOLATE MARS (2.5D SIDESCROLLER)
+      // ----------------------------------------------------
+      // Initial Mars Outpost landing pad & catwalk skyway
+      this.obstacleManager.spawnPlatform(6.0, -1.8, 6.5, 0.5);
+      this.obstacleManager.spawnFuelPickup(8.5, -0.6);
+      this.spawnCoinLine(5.0, -0.6, 3);
+
+      // Early Metallic Retro Jetpack Upgrade Pickup on elevated canyon ledge!
+      this.obstacleManager.spawnHyperJetpackPickup(11.0, 1.2);
+      this.obstacleManager.spawnPlatform(11.0, 0.8, 4.5, 0.5);
+
+      // High Sky Fuel Canister over canyon chasm
+      this.obstacleManager.spawnFuelPickup(14.0, 7.5);
+
+      // Martian Cyber Sentinel patrolling ground runway
+      this.obstacleManager.spawnAlienCyberSentinel(17.5, -3.70);
+      this.obstacleManager.spawnCoverBarrier(15.0, -3.70);
+
+      // Aerial Martian Sentry Drone with tentacles
+      this.obstacleManager.spawnDrone(18.0, 2.2, 4.0, true);
+
+      // Supply Crate
+      this.obstacleManager.spawnCrate(7.0, -1.3);
     }
   }
 
   public update(playerX: number) {
-    if (this.currentLevel === 3) return;
     while (this.nextSpawnX < playerX + 65) {
       if (this.currentLevel === 1) {
         this.generateChunkLevel1(this.nextSpawnX);
-      } else {
+      } else if (this.currentLevel === 2) {
         this.generateChunkLevel2(this.nextSpawnX);
+      } else {
+        this.generateChunkLevel3(this.nextSpawnX);
       }
       this.nextSpawnX += this.spawnInterval;
     }
@@ -288,6 +289,88 @@ export class LevelGenerator {
         this.obstacleManager.spawnAlienCyberSentinel(x + 7.5, -3.70);
         this.obstacleManager.spawnFuelPickup(x + 4.0, -3.2);
         this.spawnCoinLine(x, -3.2, 3);
+        break;
+    }
+  }
+
+  // --------------------------------------------------------
+  // LEVEL 3: DESOLATE MARS (2.5D SIDESCROLLER)
+  // --------------------------------------------------------
+  private generateChunkLevel3(x: number) {
+    const pattern = Math.floor(Math.random() * 6);
+
+    switch (pattern) {
+      case 0:
+        // MARTIAN OUTPOST RIDGE & CYBER SENTINEL PATROL
+        this.obstacleManager.spawnCoverBarrier(x - 4.5, -3.70);
+        this.obstacleManager.spawnPlatform(x + 1.0, -1.2, 6.0, 0.5);
+        this.obstacleManager.spawnAlienCyberSentinel(x + 1.5, -0.95);
+        this.obstacleManager.spawnDrone(x + 1.0, 2.5, 4.0, true);
+        this.obstacleManager.spawnFuelPickup(x + 3.5, 0.5);
+        this.obstacleManager.spawnCrate(x - 1.0, -0.7);
+        this.spawnCoinLine(x - 2.5, -3.2, 3);
+        this.obstacleManager.spawnFuelPickup(x + 6.0, 8.0);
+        break;
+
+      case 1:
+        // CANYON CHASM & HIGH-VOLTAGE LASER BARRIER
+        this.obstacleManager.spawnCoverBarrier(x - 4.0, -3.70);
+        this.obstacleManager.spawnLaserGate(x, -3.70);
+        this.obstacleManager.spawnAlienCyberSentinel(x - 2.0, -3.70);
+        this.obstacleManager.spawnFuelPickup(x, 2.5);
+        this.obstacleManager.spawnFuelPickup(x + 4.5, 6.0);
+        this.obstacleManager.spawnFuelPickup(x + 8.5, 2.8);
+        this.obstacleManager.spawnDrone(x + 4.5, 3.8, 4.5, true);
+        this.spawnCoinLine(x + 1.5, 4.0, 4);
+        this.obstacleManager.spawnPlatform(x + 10.0, -0.5, 5.0, 0.5);
+        break;
+
+      case 2:
+        // HEAVY MARTIAN HYDRAULIC PISTON & RECON RUN
+        this.obstacleManager.spawnCoverBarrier(x - 4.0, -3.70);
+        this.obstacleManager.spawnPiston(x, -3.70);
+        this.obstacleManager.spawnCrate(x + 3.0, -3.2);
+        this.obstacleManager.spawnCoinPickup(x - 1.2, -3.2);
+        this.obstacleManager.spawnCoinPickup(x + 1.2, -3.2);
+        this.obstacleManager.spawnFuelPickup(x + 4.5, -3.2);
+        this.obstacleManager.spawnDrone(x - 2.0, 1.8, 3.5, true);
+        this.obstacleManager.spawnPlatform(x + 8.0, 0.8, 5.0, 0.5);
+        this.obstacleManager.spawnFuelPickup(x + 8.0, 2.2);
+        break;
+
+      case 3:
+        // HIGH-ALTITUDE MARTIAN SKY MAZE & GRAV ROTORS
+        this.obstacleManager.spawnGear(x - 2.0, -2.5, 2.0, -1.2);
+        this.obstacleManager.spawnGear(x + 4.0, -2.5, 2.0, 1.2);
+        this.obstacleManager.spawnPlatform(x + 1.0, 1.0, 5.5, 0.5);
+        this.obstacleManager.spawnFuelPickup(x + 1.0, 2.5);
+        this.obstacleManager.spawnSkyMaze(x + 4.0, 4.5);
+        this.spawnCoinLine(x - 1.0, 2.0, 3);
+        break;
+
+      case 4:
+        // HYPER JETPACK RETRO UPGRADE & CANYON CATWALKS
+        this.obstacleManager.spawnCoverBarrier(x - 4.5, -3.70);
+        this.obstacleManager.spawnPlatform(x, -0.8, 5.5, 0.5);
+        this.obstacleManager.spawnHyperJetpackPickup(x, 0.5);
+        this.obstacleManager.spawnAlienCyberSentinel(x + 6.0, -3.70);
+        this.obstacleManager.spawnDrone(x + 2.0, 2.6, 4.0, true);
+        this.spawnCoinLine(x - 2.0, -0.2, 4);
+        this.obstacleManager.spawnPlatform(x + 8.0, 1.8, 5.0, 0.5);
+        this.obstacleManager.spawnFuelPickup(x + 8.0, 3.2);
+        break;
+
+      case 5:
+      default:
+        // TACTICAL MARTIAN COMBAT RUNWAY & PLASMA TUBE
+        this.obstacleManager.spawnCoverBarrier(x - 3.5, -3.70);
+        this.obstacleManager.spawnPlasmaTube(x - 1.0, -2.5);
+        this.obstacleManager.spawnLaserGate(x + 4.5, -3.70);
+        this.obstacleManager.spawnDrone(x + 1.5, 2.0, 4.0, true);
+        this.obstacleManager.spawnAlienCyberSentinel(x + 8.5, -3.70);
+        this.spawnSkyFuelChain(x + 4.5, 2.5, 4, 6.0);
+        this.spawnCoinLine(x + 1.0, -3.2, 3);
+        this.obstacleManager.spawnPlatform(x + 11.0, -1.0, 5.0, 0.5);
         break;
     }
   }

@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { IsometricPlayerRig } from './IsometricPlayerRig';
 
 export const GROUND_Y = -3.70;
 
@@ -107,7 +106,9 @@ export class Player {
   public onShieldDeflect?: () => void;
   // Bubble Force Field Ball Mode & Bouncy Ball Physics
   public forcefieldMode: 'ball' | 'shield' = 'ball';
-  public isBallMode: boolean = false;
+  public get isBallMode(): boolean {
+    return this.shieldActive && (this.forcefieldMode === 'ball');
+  }
   public ballAngularVelocity: number = 0;
   public ballRotationZ: number = 0;
   public ballRotationX: number = 0;
@@ -120,12 +121,10 @@ export class Player {
   }
   public toggleForcefieldMode(): 'ball' | 'shield' {
     this.forcefieldMode = this.forcefieldMode === 'ball' ? 'shield' : 'ball';
-    this.isBallMode = this.shieldActive && (this.forcefieldMode === 'ball');
     return this.forcefieldMode;
   }
   public setForcefieldMode(mode: 'ball' | 'shield'): void {
     this.forcefieldMode = mode;
-    this.isBallMode = this.shieldActive && (this.forcefieldMode === 'ball');
   }
 
   // Hyper-Ion Quantum Jetpack Upgrade
@@ -257,11 +256,6 @@ export class Player {
 
   // Dynamic Contact Shadow
   private shadowMesh!: THREE.Mesh;
-  public isoShadowMesh!: THREE.Mesh;
-  private isoShadowMat!: THREE.MeshBasicMaterial;
-
-  // Tailor-Made AAA 3D Isometric Character Rig (Level 3)
-  public isoPlayerRig!: IsometricPlayerRig;
 
   // Enhanced Procedural Landing Suspension & Knee Flexion Physics
   private landingSuspension: number = 0;
@@ -1293,25 +1287,6 @@ export class Player {
     this.shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
     scene.add(this.shadowMesh);
 
-    // Dedicated AAA 3D Contact Shadow Decal for Level 3
-    const isoShadowGeo = new THREE.CircleGeometry(0.70, 24);
-    isoShadowGeo.rotateX(-Math.PI / 2);
-    this.isoShadowMat = new THREE.MeshBasicMaterial({
-      color: 0x110502,
-      transparent: true,
-      opacity: 0.55,
-      depthWrite: false,
-    });
-    this.isoShadowMesh = new THREE.Mesh(isoShadowGeo, this.isoShadowMat);
-    this.isoShadowMesh.visible = false;
-    scene.add(this.isoShadowMesh);
-
-    // Tailor-Made AAA 3D Character Rig for Level 3 (Space white suit, non-crossing legs, 360° aiming)
-    this.isoPlayerRig = new IsometricPlayerRig();
-    this.isoPlayerRig.onFootstep = () => this.onFootstep?.();
-    this.mesh.add(this.isoPlayerRig.group);
-    this.isoPlayerRig.group.visible = false;
-
     // Cast shadows on player meshes
     this.mesh.traverse(obj => {
       if ((obj as THREE.Mesh).isMesh) {
@@ -1541,7 +1516,6 @@ export class Player {
 
   public toggleShield(): boolean {
     this.shieldActive = !this.shieldActive;
-    this.isBallMode = this.shieldActive && (this.forcefieldMode === 'ball');
     if (this.shieldGroup) {
       this.shieldGroup.visible = this.shieldActive;
     }
@@ -1579,12 +1553,8 @@ export class Player {
     this.shieldActive = false;
     if (this.shieldGroup) this.shieldGroup.visible = false;
     if (this.droppedGunMesh) this.droppedGunMesh.visible = false;
-    if (this.shadowMesh) this.shadowMesh.visible = !this.isIsometric;
-    if (this.isoShadowMesh) this.isoShadowMesh.visible = this.isIsometric;
-    if (this.isoPlayerRig) {
-      this.isoPlayerRig.group.visible = this.isIsometric;
-      this.rigRoot.visible = !this.isIsometric;
-    }
+    if (this.shadowMesh) this.shadowMesh.visible = true;
+    this.rigRoot.visible = true;
     this.blasterMesh.visible = true;
     this.rigRoot.rotation.set(0, 0, 0);
     this.rigRoot.position.set(0, 0, 0);
@@ -1739,25 +1709,7 @@ export class Player {
     const muzzlePos = new THREE.Vector3();
     this.bubbleBurstGroup.getWorldPosition(muzzlePos);
 
-    // Dedicated 3D Isometric Blaster Fire (Line of sight along 3D ray)
-    if (this.isIsometric && this.isoPlayerRig) {
-      const muzzlePos = this.isoPlayerRig.getMuzzleWorldPosition();
-      laser.position.copy(muzzlePos);
-      let dir: THREE.Vector3;
-      if (aimTargetWorld) {
-        dir = new THREE.Vector3().subVectors(aimTargetWorld, muzzlePos).normalize();
-      } else {
-        const yaw = this.isoPlayerRig.rigRoot.rotation.y;
-        dir = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).normalize();
-      }
-      laser.velocity.copy(dir).multiplyScalar(42);
-      laser.active = true;
-      laser.life = 1.4;
-      laser.mesh.position.copy(laser.position);
-      laser.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
-      laser.mesh.visible = true;
-      return true;
-    }
+    laser.position.copy(muzzlePos);
     laser.velocity.set(Math.cos(aimAngle) * 34, Math.sin(aimAngle) * 34, 0);
     laser.active = true;
     laser.life = 1.3;
@@ -1923,11 +1875,7 @@ export class Player {
     mouseWorldTarget?: THREE.Vector3,
     hasMouseTarget: boolean = false,
     crouchPressed: boolean = false,
-    underPressure: boolean = false,
-    moveZ: number = 0,
-    marsSurfaceHeight?: (x: number, z: number) => number,
-    marsSurfaceNormal?: (x: number, z: number) => THREE.Vector3,
-    marsCollisionResolver?: (currPos: THREE.Vector3, nextPos: THREE.Vector3, radius?: number) => THREE.Vector3
+    underPressure: boolean = false
   ) {
     this.animTimer += dt;
     if (this.invulnerableTime > 0) {
@@ -1939,25 +1887,6 @@ export class Player {
     // Dedicated Death Physics & Ragdoll Execution (Bypasses living player controls & collision fighting)
     if (this.isDying) {
       this.updateDeath(dt, platforms);
-      return;
-    }
-
-    // Dedicated AAA 3D Isometric Navigation for Level 3
-    if (this.isIsometric) {
-      this.updateIsometric(
-        dt,
-        moveX,
-        moveZ,
-        runPressed,
-        jumpPressed,
-        jetpackPressed,
-        mouseWorldTarget,
-        hasMouseTarget,
-        underPressure,
-        marsSurfaceHeight,
-        marsSurfaceNormal,
-        marsCollisionResolver
-      );
       return;
     }
 
@@ -2317,23 +2246,11 @@ export class Player {
       // CRITICAL: Shadow is strictly visible on solid ground or platform surface only, NEVER when flying or in the air
       // Completely prevents any plane intersection when flying or turning around left/right!
       const isTurning = Math.abs(this.rigRoot.rotation.y - targetTurn) > 0.08;
-      if (
-        this.isGrounded &&
-        !isActuallyJetpacking &&
-        this.state !== PlayerState.JETPACK &&
-        this.state !== PlayerState.JUMP &&
-        this.state !== PlayerState.FALL &&
-        !isTurning &&
-        Math.abs(this.velocity.y) < 0.02 &&
-        heightAbove < 0.08
-      ) {
-        this.shadowMesh.visible = true;
-        this.shadowMesh.position.set(this.position.x, surfaceY + 0.015, 0);
-        this.shadowMesh.scale.set(1.0, 1.0, 1.0);
-        (this.shadowMesh.material as THREE.MeshBasicMaterial).opacity = 0.38;
-      } else {
-        this.shadowMesh.visible = false;
-      }
+      this.shadowMesh.visible = !this.isDying;
+      this.shadowMesh.position.set(this.position.x, surfaceY + 0.015, 0);
+      const s = 1.0 + Math.min(1.2, heightAbove * 0.15);
+      this.shadowMesh.scale.set(s, s, s);
+      (this.shadowMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0.12, 0.45 - heightAbove * 0.04);
     }
     this.animateSkeletalRig(dt, hasMouseTarget);
     this.updateJetpackVFX(dt, isActuallyJetpacking);
@@ -2427,159 +2344,6 @@ export class Player {
   }
 
   /**
-   * Triple AAA 3D Isometric Navigation & Low Martian Gravity Traversal
-   * Powered by tailor-made IsometricPlayerRig (space white suit, independent non-crossing legs,
-   * 360° aiming, dynamic contact shadow decal, terrain slope climbing, and 3D forcefield ball mode).
-   */
-  private updateIsometric(
-    dt: number,
-    moveX: number,
-    moveZ: number,
-    runPressed: boolean,
-    jumpPressed: boolean,
-    jetpackPressed: boolean,
-    mouseWorldTarget?: THREE.Vector3,
-    hasMouseTarget: boolean = false,
-    underPressure: boolean = false,
-    marsSurfaceHeight?: (x: number, z: number) => number,
-    marsSurfaceNormal?: (x: number, z: number) => THREE.Vector3,
-    marsCollisionResolver?: (currPos: THREE.Vector3, nextPos: THREE.Vector3, radius?: number) => THREE.Vector3
-  ) {
-    // 1. Rig & Shadow Visibility
-    this.rigRoot.visible = false;
-    this.isoPlayerRig.group.visible = true;
-    if (this.shadowMesh) this.shadowMesh.visible = false;
-    this.isoShadowMesh.visible = true;
-
-    // 2. 8-Directional Screen-Relative Isometric Axes
-    const inputDirX = (moveX - moveZ) * 0.7071;
-    const inputDirZ = (moveZ + moveX) * 0.7071;
-
-    const walkSpeed = this.hasHyperJetpack ? 8.5 : 6.8;
-    const runSpeed = this.hasHyperJetpack ? 14.5 : 11.2;
-    const targetSpeed = runPressed ? runSpeed : walkSpeed;
-
-    const desiredVx = inputDirX * targetSpeed;
-    const desiredVz = inputDirZ * targetSpeed;
-
-    this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, desiredVx, dt * 12.0);
-    this.velocity.z = THREE.MathUtils.lerp(this.velocity.z, desiredVz, dt * 12.0);
-
-    // 3. Next Position & Solid Structure Collision Resolution
-    let nextPos = new THREE.Vector3(
-      this.position.x + this.velocity.x * dt,
-      this.position.y,
-      this.position.z + this.velocity.z * dt
-    );
-
-    if (marsCollisionResolver) {
-      nextPos = marsCollisionResolver(this.position, nextPos, 0.45);
-    }
-
-    this.position.x = nextPos.x;
-    this.position.z = nextPos.z;
-
-    // 4. Sample Surface Elevation & Normal for Slope Traversal
-    const surfaceY = marsSurfaceHeight ? marsSurfaceHeight(this.position.x, this.position.z) : -3.70;
-    const normal = marsSurfaceNormal ? marsSurfaceNormal(this.position.x, this.position.z) : new THREE.Vector3(0, 1, 0);
-
-    const slopePitch = Math.atan2(-normal.z, normal.y);
-    const slopeRoll = Math.atan2(normal.x, normal.y);
-
-    // 5. Mars Low Gravity & Vertical Jetpack Traversal
-    const marsGravity = -14.0;
-    const marsJumpVel = 10.5;
-    const marsJetpackLift = this.hasHyperJetpack ? 46.0 : 34.0;
-    const isActuallyJetpacking = jetpackPressed && this.fuel > 0;
-
-    if (jumpPressed && this.isGrounded) {
-      this.velocity.y = marsJumpVel;
-      this.isGrounded = false;
-      this.emitDust(this.position.x, this.position.y, 6);
-    }
-
-    if (isActuallyJetpacking) {
-      this.velocity.y += marsJetpackLift * dt;
-      this.fuel = Math.max(0, this.fuel - 12.0 * dt);
-      this.isGrounded = false;
-    } else {
-      this.fuel = Math.min(this.maxFuel, this.fuel + 14.0 * dt);
-    }
-
-    this.velocity.y += marsGravity * dt;
-    this.velocity.y = THREE.MathUtils.clamp(this.velocity.y, -14.0, 14.0);
-    this.position.y += this.velocity.y * dt;
-
-    // 6. Slope Traversal & Ground Attachment
-    if (this.isGrounded) {
-      const heightDiff = surfaceY - this.position.y;
-      if (heightDiff > -0.65 && heightDiff < 0.65) {
-        this.position.y = surfaceY;
-        this.velocity.y = 0;
-      } else if (this.position.y < surfaceY) {
-        this.position.y = surfaceY;
-        this.velocity.y = 0;
-      } else {
-        this.isGrounded = false;
-      }
-    } else if (this.position.y <= surfaceY) {
-      this.position.y = surfaceY;
-      this.velocity.y = 0;
-      this.isGrounded = true;
-
-      if (this.isBallMode) {
-        const inSpeed = Math.abs(this.velocity.y);
-        if (inSpeed > 1.5) {
-          this.onBallBounce?.(inSpeed);
-          this.ballBounceSquash = 0.55;
-          const dot = this.velocity.dot(normal);
-          this.velocity.addScaledVector(normal, -1.85 * dot);
-          this.isGrounded = false;
-        }
-      }
-    }
-
-    // 7. Dynamic Contact Shadow Beneath Player (Rotated to match terrain slope)
-    this.isoShadowMesh.position.set(this.position.x, surfaceY + 0.02, this.position.z);
-    this.isoShadowMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
-
-    const heightAbove = Math.max(0, this.position.y - surfaceY);
-    const shadowScale = 1.0 + Math.min(1.5, heightAbove * 0.15);
-    this.isoShadowMesh.scale.set(shadowScale, shadowScale, shadowScale);
-    this.isoShadowMat.opacity = Math.max(0.12, 0.60 - heightAbove * 0.045);
-
-    // 8. Update Multi-Layer Bubble Forcefield (Z correctly set!)
-    this.updateForcefieldSystem(dt, false);
-
-    // 9. Update Tailor-Made 3D Isometric Character Rig & Animations
-    this.mesh.position.copy(this.position);
-    this.isoPlayerRig.update(dt, {
-      velocity: this.velocity,
-      isGrounded: this.isGrounded,
-      isJetpacking: isActuallyJetpacking,
-      isBallMode: this.isBallMode,
-      aimTarget: mouseWorldTarget,
-      hasAimTarget: hasMouseTarget,
-      underPressure,
-      groundSlopePitch: slopePitch,
-      groundSlopeRoll: slopeRoll,
-    });
-
-    // 10. Smoke VFX from Jetpack Nozzles
-    if (isActuallyJetpacking) {
-      const thrusters = this.isoPlayerRig.getThrusterWorldPositions();
-      this.emitSmoke(thrusters.left.x, thrusters.left.y, thrusters.left.z, 1);
-      this.emitSmoke(thrusters.right.x, thrusters.right.y, thrusters.right.z, 1);
-    }
-
-    // 11. Generic Particle & Weapon VFX
-    this.updateParticles(dt);
-    this.updateBubbleBurstVFX(dt);
-    this.updateLasers(dt);
-    this.updateRadioWaves(dt, underPressure);
-  }
-
-  /**
    * Dedicated Full-Ragdoll Death Physics & Surface Collapse
    * Ensures realistic in-air center-of-mass tumbling, single-trigger surface impact,
    * elevated head clearance above ground (zero head penetration!), and smooth Game Over transition.
@@ -2588,12 +2352,8 @@ export class Player {
     this.deathTimer += dt;
     this.invulnerableTime = 999;
     this.mesh.visible = true;
-    if (this.shadowMesh) this.shadowMesh.visible = !this.isIsometric;
-    if (this.isoShadowMesh) this.isoShadowMesh.visible = this.isIsometric;
-    if (this.isoPlayerRig) {
-      this.isoPlayerRig.group.visible = this.isIsometric;
-      this.rigRoot.visible = !this.isIsometric;
-    }
+    if (this.shadowMesh) this.shadowMesh.visible = true;
+    this.rigRoot.visible = true;
     if (this.flameConeLeft) this.flameConeLeft.visible = false;
     if (this.flameConeRight) this.flameConeRight.visible = false;
     if (this.thrusterLight) this.thrusterLight.intensity = 0;
