@@ -4,6 +4,8 @@
  */
 export class AudioManager {
   private ctx: AudioContext | null = null;
+  private masterGain: GainNode | null = null;
+  public masterVolume: number = 0.8;
   public enabled: boolean = true;
   private jetpackGain: GainNode | null = null;
   private jetpackNoiseNode: AudioBufferSourceNode | null = null;
@@ -18,6 +20,25 @@ export class AudioManager {
     }
     if (this.ctx.state === 'suspended') {
       this.ctx.resume();
+    }
+    if (!this.masterGain && this.ctx) {
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.gain.setValueAtTime(this.masterVolume, this.ctx.currentTime);
+      this.masterGain.connect(this.outputNode);
+    }
+  }
+
+  public get outputNode(): AudioNode {
+    if (!this.ctx || !this.masterGain) {
+      this.initCtx();
+    }
+    return this.masterGain || this.ctx!.destination;
+  }
+
+  public setVolume(vol: number) {
+    this.masterVolume = Math.max(0, Math.min(1, vol));
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setValueAtTime(this.masterVolume, this.ctx.currentTime);
     }
   }
 
@@ -68,7 +89,7 @@ export class AudioManager {
 
         noise.connect(filter);
         filter.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this.outputNode);
         noise.start(t);
 
         this.jetpackGain = gain;
@@ -112,7 +133,7 @@ export class AudioManager {
     gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
 
     osc1.connect(gain1);
-    gain1.connect(this.ctx.destination);
+    gain1.connect(this.outputNode);
     osc1.start(t);
     osc1.stop(t + 0.17);
 
@@ -128,7 +149,7 @@ export class AudioManager {
     gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
 
     osc2.connect(gain2);
-    gain2.connect(this.ctx.destination);
+    gain2.connect(this.outputNode);
     osc2.start(t);
     osc2.stop(t + 0.13);
   }
@@ -155,7 +176,7 @@ export class AudioManager {
     clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
 
     clickOsc.connect(clickGain);
-    clickGain.connect(this.ctx.destination);
+    clickGain.connect(this.outputNode);
     clickOsc.start(t);
     clickOsc.stop(t + 0.05);
 
@@ -170,7 +191,7 @@ export class AudioManager {
     thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
 
     thudOsc.connect(thudGain);
-    thudGain.connect(this.ctx.destination);
+    thudGain.connect(this.outputNode);
     thudOsc.start(t);
     thudOsc.stop(t + 0.08);
   }
@@ -196,7 +217,7 @@ export class AudioManager {
     popGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
 
     popOsc.connect(popGain);
-    popGain.connect(this.ctx.destination);
+    popGain.connect(this.outputNode);
     popOsc.start(t);
     popOsc.stop(t + 0.13);
 
@@ -212,7 +233,7 @@ export class AudioManager {
     squelchGain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
 
     squelchOsc.connect(squelchGain);
-    squelchGain.connect(this.ctx.destination);
+    squelchGain.connect(this.outputNode);
     squelchOsc.start(t);
     squelchOsc.stop(t + 0.23);
 
@@ -227,7 +248,7 @@ export class AudioManager {
     subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
 
     subOsc.connect(subGain);
-    subGain.connect(this.ctx.destination);
+    subGain.connect(this.outputNode);
     subOsc.start(t);
     subOsc.stop(t + 0.19);
 
@@ -242,7 +263,7 @@ export class AudioManager {
     zapGain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
 
     zapOsc.connect(zapGain);
-    zapGain.connect(this.ctx.destination);
+    zapGain.connect(this.outputNode);
     zapOsc.start(t);
     zapOsc.stop(t + 0.26);
   }
@@ -268,7 +289,7 @@ export class AudioManager {
     zapGain.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
 
     zapOsc.connect(zapGain);
-    zapGain.connect(this.ctx.destination);
+    zapGain.connect(this.outputNode);
     zapOsc.start(t);
     zapOsc.stop(t + 0.05);
 
@@ -283,7 +304,7 @@ export class AudioManager {
     slapGain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
 
     slapOsc.connect(slapGain);
-    slapGain.connect(this.ctx.destination);
+    slapGain.connect(this.outputNode);
     slapOsc.start(t);
     slapOsc.stop(t + 0.075);
   }
@@ -308,7 +329,7 @@ export class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.outputNode);
     osc.start(t);
     osc.stop(t + 0.23);
   }
@@ -333,7 +354,7 @@ export class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.outputNode);
     osc.start(t);
     osc.stop(t + 0.36);
 
@@ -348,7 +369,7 @@ export class AudioManager {
     clangGain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
 
     clang.connect(clangGain);
-    clangGain.connect(this.ctx.destination);
+    clangGain.connect(this.outputNode);
     clang.start(t);
     clang.stop(t + 0.16);
   }
@@ -370,7 +391,7 @@ export class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.outputNode);
     osc.start(t);
     osc.stop(t + 0.42);
   }
@@ -393,7 +414,7 @@ export class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.outputNode);
     osc.start(t);
     osc.stop(t + 0.36);
   }
@@ -419,7 +440,7 @@ export class AudioManager {
 
     osc.connect(gain);
     osc2.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.outputNode);
     osc.start(t);
     osc2.start(t);
     osc.stop(t + 0.46);
@@ -448,7 +469,7 @@ export class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.outputNode);
     osc.start(t);
     osc.stop(t + 0.26);
   }
@@ -481,7 +502,7 @@ export class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.30);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.outputNode);
     osc.start(t);
     osc.stop(t + 0.31);
   }
@@ -502,7 +523,7 @@ export class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.outputNode);
     osc.start(t);
     osc.stop(t + 0.1);
   }
@@ -527,7 +548,7 @@ export class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.outputNode);
     osc.start(t);
     osc.stop(t + 0.16);
   }
@@ -551,7 +572,7 @@ export class AudioManager {
     subGain.gain.setValueAtTime(0.35, t);
     subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.40);
     subOsc.connect(subGain);
-    subGain.connect(this.ctx.destination);
+    subGain.connect(this.outputNode);
     subOsc.start(t);
     subOsc.stop(t + 0.42);
 
@@ -565,7 +586,7 @@ export class AudioManager {
     highGain.gain.setValueAtTime(0.22, t);
     highGain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
     highOsc.connect(highGain);
-    highGain.connect(this.ctx.destination);
+    highGain.connect(this.outputNode);
     highOsc.start(t);
     highOsc.stop(t + 0.30);
   }
@@ -605,7 +626,7 @@ export class AudioManager {
 
     whiteNoise.connect(bandpass);
     bandpass.connect(noiseGain);
-    noiseGain.connect(this.ctx.destination);
+    noiseGain.connect(this.outputNode);
     whiteNoise.start(t);
     whiteNoise.stop(t + 1.8);
 
@@ -618,7 +639,7 @@ export class AudioManager {
     chirpGain.gain.setValueAtTime(0.05, t + 0.05);
     chirpGain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
     chirp.connect(chirpGain);
-    chirpGain.connect(this.ctx.destination);
+    chirpGain.connect(this.outputNode);
     chirp.start(t + 0.05);
     chirp.stop(t + 0.36);
 
@@ -658,7 +679,7 @@ export class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.outputNode);
     osc.start(t);
     osc.stop(t + 0.25);
   }

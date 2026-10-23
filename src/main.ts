@@ -30,6 +30,12 @@ class Game {
   private score: number = 0;
   private clock: THREE.Clock;
 
+  // Settings & Customization
+  private autoAimEnabled: boolean = true;
+  private crtOverlayEnabled: boolean = true;
+  private touchSize: 'compact' | 'normal' | 'large' = 'normal';
+  private touchOpacity: number = 85;
+
   // Lock-on Target Tracking System
   private lockedEnemy: any = null;
   private lockOnMesh!: THREE.Group;
@@ -57,8 +63,12 @@ class Game {
 
     this.setupLockOnSystem();
     this.setupUIEvents();
+    this.setupMainMenu();
+    this.setupSettingsModal();
+    this.setupControlsModal();
+    this.showMainMenu();
+
     (window as any).__JETPACK_GAME__ = this;
-    this.hud.showStartScreen(() => this.startGame());
 
     requestAnimationFrame((t) => this.loop(t));
   }
@@ -147,6 +157,319 @@ class Game {
     (window as any).__game = this;
   }
 
+  public showMainMenu() {
+    this.state = GameState.START;
+    const menuEl = document.getElementById('main-menu-overlay');
+    if (menuEl) menuEl.classList.remove('hidden');
+    const hudEl = document.getElementById('hud');
+    if (hudEl) hudEl.style.display = 'none';
+    const topCtrl = document.querySelector('.top-controls') as HTMLElement;
+    if (topCtrl) topCtrl.style.display = 'none';
+    const touchEl = document.getElementById('touch-controls');
+    if (touchEl) touchEl.style.display = 'none';
+    const reticleEl = document.getElementById('reticle');
+    if (reticleEl) reticleEl.style.display = 'none';
+    this.hud.hideOverlay();
+
+    this.player.reset(0, -3.70);
+    this.sceneManager.camera.position.set(0, -1.8, 12);
+  }
+
+  public hideMainMenu() {
+    const menuEl = document.getElementById('main-menu-overlay');
+    if (menuEl) menuEl.classList.add('hidden');
+    const hudEl = document.getElementById('hud');
+    if (hudEl) hudEl.style.display = '';
+    const topCtrl = document.querySelector('.top-controls') as HTMLElement;
+    if (topCtrl) topCtrl.style.display = '';
+    const touchEl = document.getElementById('touch-controls');
+    if (touchEl) touchEl.style.display = '';
+    const reticleEl = document.getElementById('reticle');
+    if (reticleEl) reticleEl.style.display = '';
+  }
+
+  public returnToMainMenu() {
+    this.closeSettingsModal();
+    this.closeControlsModal();
+    this.hud.hideOverlay();
+    this.showMainMenu();
+  }
+
+  private setupMainMenu() {
+    const btnPlay = document.getElementById('menu-btn-play');
+    if (btnPlay) {
+      const startHandler = (e: Event) => {
+        e.preventDefault();
+        this.audioManager.playLaser();
+        this.startGame();
+      };
+      btnPlay.addEventListener('click', startHandler);
+      btnPlay.addEventListener('touchstart', startHandler, { passive: false });
+    }
+
+    const btnOptions = document.getElementById('menu-btn-options');
+    if (btnOptions) {
+      btnOptions.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.openSettingsModal();
+      });
+    }
+
+    const btnControls = document.getElementById('menu-btn-controls');
+    if (btnControls) {
+      btnControls.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.openControlsModal();
+      });
+    }
+
+    const btnExit = document.getElementById('menu-btn-exit');
+    if (btnExit) {
+      btnExit.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (confirm('Reboot Jones Navigation System?')) {
+          window.location.reload();
+        }
+      });
+    }
+  }
+
+  public openSettingsModal() {
+    const modal = document.getElementById('settings-modal');
+    if (modal) modal.classList.remove('hidden');
+    this.updateSettingsUI();
+  }
+
+  public closeSettingsModal() {
+    const modal = document.getElementById('settings-modal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  public openControlsModal() {
+    const modal = document.getElementById('controls-modal');
+    if (modal) modal.classList.remove('hidden');
+  }
+
+  public closeControlsModal() {
+    const modal = document.getElementById('controls-modal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  private updateSettingsUI() {
+    // 1. Audio
+    const optAudioToggle = document.getElementById('opt-audio-toggle');
+    if (optAudioToggle) {
+      optAudioToggle.textContent = this.audioManager.enabled ? '🔊 ENABLED' : '🔇 MUTED';
+      optAudioToggle.classList.toggle('active', this.audioManager.enabled);
+    }
+    const optAudioVol = document.getElementById('opt-audio-volume') as HTMLInputElement;
+    const optAudioVolBadge = document.getElementById('opt-audio-volume-badge');
+    if (optAudioVol && optAudioVolBadge) {
+      const pct = Math.round(this.audioManager.masterVolume * 100);
+      optAudioVol.value = pct.toString();
+      optAudioVolBadge.textContent = `${pct}%`;
+    }
+
+    // 2. Targeting Assist
+    const optAutoaim = document.getElementById('opt-autoaim-toggle');
+    if (optAutoaim) {
+      optAutoaim.textContent = this.autoAimEnabled ? '🎯 ON' : '⭕ OFF';
+      optAutoaim.classList.toggle('active', this.autoAimEnabled);
+    }
+
+    // 3. Touch Size
+    const btnCompact = document.getElementById('opt-touch-size-compact');
+    const btnNormal = document.getElementById('opt-touch-size-normal');
+    const btnLarge = document.getElementById('opt-touch-size-large');
+    if (btnCompact && btnNormal && btnLarge) {
+      btnCompact.classList.toggle('active', this.touchSize === 'compact');
+      btnNormal.classList.toggle('active', this.touchSize === 'normal');
+      btnLarge.classList.toggle('active', this.touchSize === 'large');
+    }
+
+    // Touch Opacity
+    const optTouchOp = document.getElementById('opt-touch-opacity') as HTMLInputElement;
+    const optTouchOpBadge = document.getElementById('opt-touch-opacity-badge');
+    if (optTouchOp && optTouchOpBadge) {
+      optTouchOp.value = this.touchOpacity.toString();
+      optTouchOpBadge.textContent = `${this.touchOpacity}%`;
+    }
+
+    // 4. Graphics & Cam
+    const optCamToggle = document.getElementById('opt-cam-toggle');
+    if (optCamToggle) {
+      optCamToggle.textContent = this.sceneManager.handheldEnabled ? '🎥 ON' : '🎥 OFF';
+      optCamToggle.classList.toggle('active', this.sceneManager.handheldEnabled);
+    }
+    const optCamIntensity = document.getElementById('opt-cam-intensity') as HTMLInputElement;
+    const optCamIntensityBadge = document.getElementById('opt-cam-intensity-badge');
+    if (optCamIntensity && optCamIntensityBadge) {
+      const pct = Math.round(this.sceneManager.handheldIntensity * 100);
+      optCamIntensity.value = pct.toString();
+      optCamIntensityBadge.textContent = `${pct}%`;
+    }
+
+    const optCrtToggle = document.getElementById('opt-crt-toggle');
+    if (optCrtToggle) {
+      optCrtToggle.textContent = this.crtOverlayEnabled ? '📺 ON' : '📺 OFF';
+      optCrtToggle.classList.toggle('active', this.crtOverlayEnabled);
+    }
+
+    // 5. Level
+    const optLevelBtn = document.getElementById('opt-level-btn');
+    if (optLevelBtn) {
+      const lvl = this.levelGenerator.currentLevel;
+      optLevelBtn.textContent = lvl === 2 ? '🪐 LEVEL 2: ALIEN WORLD' : '🏭 LEVEL 1: INDUSTRIAL';
+    }
+  }
+
+  private setupSettingsModal() {
+    // Top Bar Settings Button
+    const btnTopSettings = document.getElementById('btn-top-settings');
+    if (btnTopSettings) {
+      btnTopSettings.addEventListener('click', () => this.openSettingsModal());
+    }
+
+    // Close buttons
+    const btnClose = document.getElementById('btn-close-settings');
+    if (btnClose) btnClose.addEventListener('click', () => this.closeSettingsModal());
+    const btnSaveClose = document.getElementById('opt-btn-save-close');
+    if (btnSaveClose) btnSaveClose.addEventListener('click', () => this.closeSettingsModal());
+
+    // Return to main menu
+    const btnMainMenu = document.getElementById('opt-btn-main-menu');
+    if (btnMainMenu) {
+      btnMainMenu.addEventListener('click', () => this.returnToMainMenu());
+    }
+
+    // Audio SFX toggle
+    const optAudioToggle = document.getElementById('opt-audio-toggle');
+    if (optAudioToggle) {
+      optAudioToggle.addEventListener('click', () => {
+        const enabled = this.audioManager.toggle();
+        const topAudio = document.getElementById('btn-audio');
+        if (topAudio) topAudio.textContent = enabled ? '🔊 SFX ON' : '🔇 SFX OFF';
+        this.updateSettingsUI();
+      });
+    }
+
+    // Audio volume slider
+    const optAudioVol = document.getElementById('opt-audio-volume') as HTMLInputElement;
+    if (optAudioVol) {
+      optAudioVol.addEventListener('input', () => {
+        const val = parseInt(optAudioVol.value, 10);
+        this.audioManager.setVolume(val / 100);
+        const badge = document.getElementById('opt-audio-volume-badge');
+        if (badge) badge.textContent = `${val}%`;
+      });
+    }
+
+    // Auto-Aim Assist Toggle
+    const optAutoaim = document.getElementById('opt-autoaim-toggle');
+    if (optAutoaim) {
+      optAutoaim.addEventListener('click', () => {
+        this.autoAimEnabled = !this.autoAimEnabled;
+        this.updateSettingsUI();
+      });
+    }
+
+    // Touch Button Sizes
+    const touchControls = document.getElementById('touch-controls');
+    const setTouchSize = (size: 'compact' | 'normal' | 'large') => {
+      this.touchSize = size;
+      if (touchControls) {
+        touchControls.classList.remove('touch-size-compact', 'touch-size-large');
+        if (size === 'compact') touchControls.classList.add('touch-size-compact');
+        if (size === 'large') touchControls.classList.add('touch-size-large');
+      }
+      this.updateSettingsUI();
+    };
+
+    document.getElementById('opt-touch-size-compact')?.addEventListener('click', () => setTouchSize('compact'));
+    document.getElementById('opt-touch-size-normal')?.addEventListener('click', () => setTouchSize('normal'));
+    document.getElementById('opt-touch-size-large')?.addEventListener('click', () => setTouchSize('large'));
+
+    // Touch Opacity Slider
+    const optTouchOp = document.getElementById('opt-touch-opacity') as HTMLInputElement;
+    if (optTouchOp) {
+      optTouchOp.addEventListener('input', () => {
+        const val = parseInt(optTouchOp.value, 10);
+        this.touchOpacity = val;
+        if (touchControls) {
+          touchControls.style.opacity = (val / 100).toString();
+        }
+        const badge = document.getElementById('opt-touch-opacity-badge');
+        if (badge) badge.textContent = `${val}%`;
+      });
+    }
+
+    // Handheld Cam Sway Toggle
+    const optCamToggle = document.getElementById('opt-cam-toggle');
+    if (optCamToggle) {
+      optCamToggle.addEventListener('click', () => {
+        const enabled = this.sceneManager.toggleHandheld();
+        const topCam = document.getElementById('btn-handheld');
+        if (topCam) topCam.textContent = enabled ? '🎥 ON [H]' : '🎥 OFF [H]';
+        this.updateSettingsUI();
+      });
+    }
+
+    // Handheld Cam Intensity Slider
+    const optCamIntensity = document.getElementById('opt-cam-intensity') as HTMLInputElement;
+    if (optCamIntensity) {
+      optCamIntensity.addEventListener('input', () => {
+        const val = parseInt(optCamIntensity.value, 10);
+        this.sceneManager.handheldIntensity = val / 100;
+        const badge = document.getElementById('opt-cam-intensity-badge');
+        if (badge) badge.textContent = `${val}%`;
+        const topSlider = document.getElementById('slider-handheld') as HTMLInputElement;
+        const topLabel = document.getElementById('label-handheld');
+        if (topSlider) topSlider.value = val.toString();
+        if (topLabel) topLabel.textContent = `${val}%`;
+      });
+    }
+
+    // CRT Scanlines Toggle
+    const optCrtToggle = document.getElementById('opt-crt-toggle');
+    if (optCrtToggle) {
+      optCrtToggle.addEventListener('click', () => {
+        this.crtOverlayEnabled = !this.crtOverlayEnabled;
+        const crt = document.querySelector('.crt-overlay') as HTMLElement;
+        if (crt) crt.style.display = this.crtOverlayEnabled ? 'block' : 'none';
+        this.updateSettingsUI();
+      });
+    }
+
+    // Fullscreen Toggle
+    const optFsBtn = document.getElementById('opt-fullscreen-btn');
+    if (optFsBtn) {
+      optFsBtn.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
+      });
+    }
+
+    // Level Select in Settings
+    const optLevelBtn = document.getElementById('opt-level-btn');
+    if (optLevelBtn) {
+      optLevelBtn.addEventListener('click', () => {
+        const next = this.levelGenerator.currentLevel === 1 ? 2 : 1;
+        this.switchLevel(next);
+        this.updateSettingsUI();
+      });
+    }
+  }
+
+  private setupControlsModal() {
+    const btnClose = document.getElementById('btn-close-controls');
+    if (btnClose) btnClose.addEventListener('click', () => this.closeControlsModal());
+    const btnOk = document.getElementById('btn-controls-ok');
+    if (btnOk) btnOk.addEventListener('click', () => this.closeControlsModal());
+  }
+
   public switchLevel(lvl: number) {
     this.levelGenerator.setLevel(lvl);
     this.parallaxLayers.setLevel(lvl);
@@ -203,6 +526,7 @@ class Game {
   }
 
   private startGame() {
+    this.hideMainMenu();
     this.state = GameState.PLAYING;
     this.score = 0;
     this.player.reset(0, -3.70); // Start in idle on solid ground
@@ -256,7 +580,11 @@ class Game {
     this.audioManager.setJetpackThrust(false);
     this.audioManager.playExplosion();
     this.sceneManager.triggerShake(0.5, 0.4);
-    this.hud.showGameOver(this.score, () => this.startGame());
+    this.hud.showGameOver(
+      this.score,
+      () => this.startGame(),
+      () => this.returnToMainMenu()
+    );
   }
 
   private loop(currentTime: number) {
@@ -275,7 +603,9 @@ class Game {
       // 1. Process 360° Shoot Trigger
       if (this.inputManager.consumeShootTrigger()) {
         const fired = this.player.shoot(
-          this.inputManager.hasMouse ? this.inputManager.mouseWorldTarget : undefined
+          this.autoAimEnabled && this.lockedEnemy
+            ? this.inputManager.mouseWorldTarget
+            : (this.inputManager.hasMouse ? this.inputManager.mouseWorldTarget : undefined)
         );
         if (fired) {
           this.audioManager.playLaser();
@@ -1017,21 +1347,32 @@ class Game {
    * Smart Lock-On Targeting Detection & Position Snapping
    */
   private updateLockOnSystem(dt: number, totalTime: number) {
-    if (this.state !== GameState.PLAYING || !this.inputManager.hasMouse) {
+    if (!this.autoAimEnabled || this.state !== GameState.PLAYING) {
       if (this.lockOnMesh) this.lockOnMesh.visible = false;
       this.lockedEnemy = null;
       document.getElementById('reticle')?.classList.remove('locked');
       return;
     }
 
-    const mousePos = this.inputManager.mouseWorldTarget;
+    let searchCenter: THREE.Vector3;
+    let closestDist: number;
+
+    if (this.inputManager.hasMouse) {
+      searchCenter = this.inputManager.mouseWorldTarget;
+      closestDist = 2.8; // Lock-on acquisition radius for mouse reticle
+    } else {
+      // Smart Auto-Aim for Touch / Mobile: scan ahead in player's facing direction
+      const lookDir = this.player.facingRight ? 1 : -1;
+      searchCenter = new THREE.Vector3(this.player.position.x + lookDir * 4.5, this.player.position.y + 0.5, 0);
+      closestDist = 8.5; // Wide assist field for mobile
+    }
+
     let closestEnemy: any = null;
-    let closestDist = 2.5; // Lock-on acquisition radius
 
     for (const enemy of this.obstacleManager.enemies) {
       if (!enemy.active) continue;
       const targetPos = new THREE.Vector3(enemy.position.x, enemy.position.y + 0.45, 0);
-      const d = mousePos.distanceTo(targetPos);
+      const d = searchCenter.distanceTo(targetPos);
       if (d < closestDist) {
         closestDist = d;
         closestEnemy = enemy;
@@ -1041,7 +1382,7 @@ class Game {
     for (const drone of this.obstacleManager.drones) {
       if (!drone.active) continue;
       const targetPos = new THREE.Vector3(drone.position.x, drone.position.y, 0);
-      const d = mousePos.distanceTo(targetPos);
+      const d = searchCenter.distanceTo(targetPos);
       if (d < closestDist) {
         closestDist = d;
         closestEnemy = drone;
@@ -1051,7 +1392,7 @@ class Game {
     for (const crate of this.obstacleManager.crates) {
       if (!crate.active || crate.isDestroyed) continue;
       const targetPos = new THREE.Vector3(crate.position.x, crate.position.y, 0);
-      const d = mousePos.distanceTo(targetPos);
+      const d = searchCenter.distanceTo(targetPos);
       if (d < closestDist) {
         closestDist = d;
         closestEnemy = crate;
@@ -1062,7 +1403,7 @@ class Game {
     for (const obs of this.obstacleManager.obstacles) {
       if (!obs.active || obs.type !== ObstacleType.ALIEN_CYBER_SENTINEL) continue;
       const targetPos = new THREE.Vector3(obs.group.position.x, obs.group.position.y + 0.65, 0);
-      const d = mousePos.distanceTo(targetPos);
+      const d = searchCenter.distanceTo(targetPos);
       if (d < closestDist) {
         closestDist = d;
         closestEnemy = obs;
@@ -1077,7 +1418,7 @@ class Game {
       const posY = isSentinel ? (closestEnemy.group.position.y + 0.65) : (closestEnemy.position.y + (isBlob ? 0.45 : 0));
       const enemyCenter = new THREE.Vector3(posX, posY, 0);
 
-      // Snap mouse aiming target directly to locked enemy center!
+      // Snap mouse/touch aiming target directly to locked enemy center!
       this.inputManager.mouseWorldTarget.copy(enemyCenter);
 
       // Position and animate pulsating lock-on circle

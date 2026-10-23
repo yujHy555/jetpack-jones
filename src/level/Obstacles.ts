@@ -1106,14 +1106,95 @@ export class ObstacleManager {
           ledMaterials[i].color.setHex(isBright ? 0x00f5ff : 0x002244);
         }
 
-        // Stalking Patrol Navigation with strict Edge Boundaries (never falls off!)
-        currentX += patrolDir * 1.6 * dt;
-        if (currentX >= maxX) {
-          currentX = maxX;
-          patrolDir = -1;
-        } else if (currentX <= minX) {
-          currentX = minX;
-          patrolDir = 1;
+        // Stalking Patrol Navigation with Obstacle & Barrier Collision Avoidance
+        const dogHalfW = 0.65;
+        const nextX = currentX + patrolDir * 1.6 * dt;
+        let blocked = false;
+
+        // 1. Detect ground cover barriers, mechanical presses, cogs, laser gates, and other sentinels
+        for (const other of this.obstacles) {
+          if (!other.active || other === obs) continue;
+          if (
+            other.type === ObstacleType.COVER_BARRIER ||
+            other.type === ObstacleType.LASER_GATE ||
+            other.type === ObstacleType.PISTON ||
+            other.type === ObstacleType.GEAR ||
+            other.type === ObstacleType.ALIEN_CYBER_SENTINEL
+          ) {
+            if (other.collider && other.collider.center) {
+              const otherY = other.collider.center.y;
+              const otherHalfH = other.collider.halfSize ? other.collider.halfSize.y : 0.65;
+              if (Math.abs(otherY - (y + 0.65)) < (otherHalfH + 0.65)) {
+                const otherX = other.collider.center.x;
+                const otherHalfW = other.collider.halfSize ? other.collider.halfSize.x : 0.65;
+                const distToOther = otherX - currentX;
+                if (patrolDir > 0 && distToOther > 0 && distToOther <= dogHalfW + otherHalfW + 0.15) {
+                  patrolDir = -1;
+                  blocked = true;
+                  break;
+                } else if (patrolDir < 0 && distToOther < 0 && -distToOther <= dogHalfW + otherHalfW + 0.15) {
+                  patrolDir = 1;
+                  blocked = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+
+        // 2. Detect solid physics crates
+        if (!blocked && this.crates) {
+          for (const crate of this.crates) {
+            if (!crate.active) continue;
+            if (Math.abs(crate.position.y - y) < 1.0) {
+              const distToCrate = crate.position.x - currentX;
+              const crateHalfW = 0.55;
+              if (patrolDir > 0 && distToCrate > 0 && distToCrate <= dogHalfW + crateHalfW + 0.15) {
+                patrolDir = -1;
+                blocked = true;
+                break;
+              } else if (patrolDir < 0 && distToCrate < 0 && -distToCrate <= dogHalfW + crateHalfW + 0.15) {
+                patrolDir = 1;
+                blocked = true;
+                break;
+              }
+            }
+          }
+        }
+
+        // 3. Detect vertical platform steps/walls
+        if (!blocked) {
+          const platforms = this.getPlatforms();
+          for (const plat of platforms) {
+            const pTop = plat.y + plat.height / 2;
+            const pBottom = plat.y - plat.height / 2;
+            const pLeft = plat.x - plat.width / 2;
+            const pRight = plat.x + plat.width / 2;
+            if (y < -3.0 && pBottom < -2.2) {
+              if (patrolDir > 0 && nextX + dogHalfW >= pLeft && currentX + dogHalfW <= pLeft + 0.25) {
+                patrolDir = -1;
+                blocked = true;
+                break;
+              } else if (patrolDir < 0 && nextX - dogHalfW <= pRight && currentX - dogHalfW >= pRight - 0.25) {
+                patrolDir = 1;
+                blocked = true;
+                break;
+              }
+            }
+          }
+        }
+
+        // 4. Advance and clamp to platform/patrol boundaries
+        if (!blocked) {
+          if (nextX >= maxX) {
+            currentX = maxX;
+            patrolDir = -1;
+          } else if (nextX <= minX) {
+            currentX = minX;
+            patrolDir = 1;
+          } else {
+            currentX = nextX;
+          }
         }
 
         group.position.x = currentX;

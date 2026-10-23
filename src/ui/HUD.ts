@@ -88,7 +88,7 @@ export class HUD {
     }
   }
 
-  public showGameOver(finalScore: number, onRestart: () => void) {
+  public showGameOver(finalScore: number, onRestart: () => void, onMainMenu?: () => void) {
     if (this.overlayScreen && this.overlayTitle && this.overlaySubtitle && this.btnStart) {
       this.overlayTitle.textContent = 'MISSION FAILED';
       this.overlayTitle.style.color = '#ff3311';
@@ -113,6 +113,19 @@ export class HUD {
       };
       this.btnStart.addEventListener('click', clickHandler);
       this.btnStart.addEventListener('touchstart', clickHandler, { passive: false });
+
+      const btnMainMenu = document.getElementById('btn-gameover-mainmenu');
+      if (btnMainMenu && onMainMenu) {
+        const menuHandler = (e: Event) => {
+          e.preventDefault();
+          btnMainMenu.removeEventListener('click', menuHandler);
+          btnMainMenu.removeEventListener('touchstart', menuHandler);
+          this.hideOverlay();
+          onMainMenu();
+        };
+        btnMainMenu.addEventListener('click', menuHandler);
+        btnMainMenu.addEventListener('touchstart', menuHandler, { passive: false });
+      }
     }
   }
 
