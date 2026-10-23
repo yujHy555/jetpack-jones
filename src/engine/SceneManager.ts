@@ -19,6 +19,7 @@ export class SceneManager {
   public handheldEnabled: boolean = true;
   public handheldIntensity: number = 0.7; // 0.0 (static) to 1.0 (full organic handheld sway)
   private handheldTime: number = 0;
+  public baseZ: number = 17.5; // Pulled back for spacious panoramic view of the levels and flight areas
 
   constructor() {
     this.canvas = document.getElementById('canvas3d') as HTMLCanvasElement;
@@ -29,10 +30,10 @@ export class SceneManager {
     this.scene.fog = new THREE.FogExp2(0x28192b, 0.012);
 
     // Camera setup - locked horizontal perspective for 2.5D platformer
-    // Pulled further back (Z = 16.0) for spacious panoramic view of the levels and flight areas
+    // Pulled back (Z = 17.5) for spacious panoramic view of the levels and flight areas
     const aspect = window.innerWidth / window.innerHeight;
     this.camera = new THREE.PerspectiveCamera(46, aspect, 0.1, 140);
-    this.camera.position.set(0, 0, 16.0);
+    this.camera.position.set(0, 0, this.baseZ);
 
     // WebGL Renderer configuration
     this.renderer = new THREE.WebGLRenderer({
@@ -98,6 +99,7 @@ export class SceneManager {
 
     this.camera.position.x = THREE.MathUtils.lerp(this.camera.position.x, targetCamX, dt * 6.5);
     this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, targetCamY, dt * 6.5);
+    this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, this.baseZ, dt * 6.5);
 
     // Subtle Organic Handheld Camera Breathing & Sway (scaled by user slider)
     if (this.handheldEnabled && this.handheldIntensity > 0) {

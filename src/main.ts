@@ -172,7 +172,7 @@ class Game {
     this.hud.hideOverlay();
 
     this.player.reset(0, -3.70);
-    this.sceneManager.camera.position.set(0, -1.8, 12);
+    this.sceneManager.camera.position.set(0, -1.8, this.sceneManager.baseZ);
   }
 
   public hideMainMenu() {
