@@ -11,7 +11,22 @@ export class AudioManager {
   private jetpackNoiseNode: AudioBufferSourceNode | null = null;
   private isThrusting: boolean = false;
 
-  constructor() {}
+  constructor() {
+    // Unlock AudioContext on initial browser user interaction
+    const unlockAudio = () => {
+      this.initCtx();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('pointerdown', unlockAudio);
+        window.removeEventListener('keydown', unlockAudio);
+        window.removeEventListener('touchstart', unlockAudio);
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pointerdown', unlockAudio, { passive: true });
+      window.addEventListener('keydown', unlockAudio, { passive: true });
+      window.addEventListener('touchstart', unlockAudio, { passive: true });
+    }
+  }
 
   private initCtx() {
     if (!this.ctx) {
@@ -19,12 +34,12 @@ export class AudioManager {
       this.ctx = new AudioCtx();
     }
     if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      this.ctx.resume().catch(() => {});
     }
     if (!this.masterGain && this.ctx) {
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(this.masterVolume, this.ctx.currentTime);
-      this.masterGain.connect(this.outputNode);
+      this.masterGain.gain.setValueAtTime(this.enabled ? this.masterVolume : 0, this.ctx.currentTime);
+      this.masterGain.connect(this.ctx.destination);
     }
   }
 
@@ -37,13 +52,16 @@ export class AudioManager {
 
   public setVolume(vol: number) {
     this.masterVolume = Math.max(0, Math.min(1, vol));
-    if (this.masterGain && this.ctx) {
+    if (this.masterGain && this.ctx && this.enabled) {
       this.masterGain.gain.setValueAtTime(this.masterVolume, this.ctx.currentTime);
     }
   }
 
   public toggle(): boolean {
     this.enabled = !this.enabled;
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setValueAtTime(this.enabled ? this.masterVolume : 0, this.ctx.currentTime);
+    }
     if (!this.enabled && this.jetpackGain) {
       this.jetpackGain.gain.setValueAtTime(0, this.ctx?.currentTime || 0);
     }
