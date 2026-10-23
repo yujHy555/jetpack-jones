@@ -291,6 +291,11 @@ export class ParallaxLayers {
   }
 
   public setLevel(lvl: number) {
+    if (lvl === 3) {
+      this.group.visible = false;
+      return;
+    }
+    this.group.visible = true;
     if (this.skyBackdrop && (this.skyBackdrop.material as THREE.MeshBasicMaterial)) {
       (this.skyBackdrop.material as THREE.MeshBasicMaterial).map = lvl === 2 ? this.alienSkyTex : this.normalSkyTex;
       (this.skyBackdrop.material as THREE.MeshBasicMaterial).needsUpdate = true;

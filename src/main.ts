@@ -54,7 +54,7 @@ class Game {
     this.player.onBallBounce = (s) => this.audioManager.playBallBounce(s);
     this.obstacleManager = new ObstacleManager(this.sceneManager.scene);
     this.parallaxLayers = new ParallaxLayers(this.sceneManager.scene);
-    this.levelGenerator = new LevelGenerator(this.obstacleManager);
+    this.levelGenerator = new LevelGenerator(this.obstacleManager, this.sceneManager.scene);
     this.meteorManager = new MeteorManager(this.sceneManager.scene);
     this.meteorManager.onSedimentWarning = () => {
       this.audioManager.playRadioCrackleSedimentWarning();
@@ -142,14 +142,14 @@ class Game {
     const levelBtn = document.getElementById('btn-level');
     if (levelBtn) {
       levelBtn.addEventListener('click', () => {
-        const nextLevel = this.levelGenerator.currentLevel === 1 ? 2 : 1;
+        const nextLevel = (this.levelGenerator.currentLevel % 3) + 1;
         this.switchLevel(nextLevel);
       });
     }
 
     window.addEventListener('keydown', (e) => {
       if (e.code === 'KeyL') {
-        const nextLevel = this.levelGenerator.currentLevel === 1 ? 2 : 1;
+        const nextLevel = (this.levelGenerator.currentLevel % 3) + 1;
         this.switchLevel(nextLevel);
       }
     });
@@ -319,7 +319,9 @@ class Game {
     const optLevelBtn = document.getElementById('opt-level-btn');
     if (optLevelBtn) {
       const lvl = this.levelGenerator.currentLevel;
-      optLevelBtn.textContent = lvl === 2 ? '🪐 LEVEL 2: ALIEN WORLD' : '🏭 LEVEL 1: INDUSTRIAL';
+      if (lvl === 1) optLevelBtn.textContent = '🏭 LEVEL 1: INDUSTRIAL';
+      else if (lvl === 2) optLevelBtn.textContent = '🪐 LEVEL 2: ALIEN WORLD';
+      else optLevelBtn.textContent = '🔴 LEVEL 3: MARS OUTPOST (AAA ISO)';
     }
   }
 
@@ -456,7 +458,7 @@ class Game {
     const optLevelBtn = document.getElementById('opt-level-btn');
     if (optLevelBtn) {
       optLevelBtn.addEventListener('click', () => {
-        const next = this.levelGenerator.currentLevel === 1 ? 2 : 1;
+        const next = (this.levelGenerator.currentLevel % 3) + 1;
         this.switchLevel(next);
         this.updateSettingsUI();
       });
@@ -471,23 +473,45 @@ class Game {
   }
 
   public switchLevel(lvl: number) {
+    this.sceneManager.setLevel(lvl);
     this.levelGenerator.setLevel(lvl);
     this.parallaxLayers.setLevel(lvl);
-    this.player.reset(0, -3.70);
+    this.player.isIsometric = (lvl === 3);
+
+    if (lvl === 3) {
+      this.player.reset(0, -0.5, 0); // Start on elevated skyway bridge over Mars canyon!
+    } else {
+      this.player.reset(0, -3.70, 0);
+    }
     this.score = 0;
+
     const levelBtn = document.getElementById('btn-level');
     if (levelBtn) {
-      if (lvl === 2) {
-        levelBtn.textContent = '🏭 LEVEL 1: COMPLEX [L]';
-        levelBtn.style.color = '#ffaa00';
-        levelBtn.style.borderColor = '#ffaa00';
-      } else {
+      if (lvl === 1) {
         levelBtn.textContent = '🪐 LEVEL 2: ALIEN [L]';
         levelBtn.style.color = '#39ff14';
         levelBtn.style.borderColor = '#39ff14';
+      } else if (lvl === 2) {
+        levelBtn.textContent = '🔴 LEVEL 3: MARS (ISO) [L]';
+        levelBtn.style.color = '#ff6633';
+        levelBtn.style.borderColor = '#ff6633';
+      } else {
+        levelBtn.textContent = '🏭 LEVEL 1: COMPLEX [L]';
+        levelBtn.style.color = '#ffaa00';
+        levelBtn.style.borderColor = '#ffaa00';
       }
     }
-    const levelName = lvl === 2 ? 'PLANET XYLOS (ALIEN WORLD)' : 'INDUSTRIAL COMPLEX';
+
+    const optLevelBtn = document.getElementById('opt-level-btn');
+    if (optLevelBtn) {
+      if (lvl === 1) optLevelBtn.textContent = '🏭 LEVEL 1: INDUSTRIAL';
+      else if (lvl === 2) optLevelBtn.textContent = '🪐 LEVEL 2: ALIEN WORLD';
+      else optLevelBtn.textContent = '🔴 LEVEL 3: MARS OUTPOST (AAA ISO)';
+    }
+
+    let levelName = 'INDUSTRIAL COMPLEX';
+    if (lvl === 2) levelName = 'PLANET XYLOS (ALIEN WORLD)';
+    if (lvl === 3) levelName = 'DESOLATE MARS OUTPOST (AAA ISOMETRIC)';
     this.showUpgradeBanner(`★ SWITCHED TO ${levelName} ★`);
   }
 
@@ -593,9 +617,13 @@ class Game {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const totalTime = this.clock.getElapsedTime();
 
-    this.inputManager.update();
-    // Project mouse cursor to 3D world plane Z=0 for 360° aiming
-    this.inputManager.updateAimWorldTarget(this.sceneManager.camera);
+    this.inputManager.update(this.sceneManager.isIsometric);
+    // Project mouse cursor to 3D world plane (or horizontal plane when isometric)
+    this.inputManager.updateAimWorldTarget(
+      this.sceneManager.camera,
+      this.player.position.y,
+      this.sceneManager.isIsometric
+    );
     // Update Smart Target Lock-On System
     this.updateLockOnSystem(dt, totalTime);
 
@@ -645,6 +673,10 @@ class Game {
           d => d.active && Math.hypot(d.position.x - this.player.position.x, d.position.y - this.player.position.y) < 10.0
         );
 
+      const marsSurfaceFn = (this.sceneManager.isIsometric && this.levelGenerator.marsOutpost)
+        ? (x: number, z: number) => this.levelGenerator.marsOutpost.getSurfaceHeight(x, z)
+        : undefined;
+
       this.player.update(
         dt,
         this.inputManager.moveX,
@@ -655,8 +687,15 @@ class Game {
         this.inputManager.mouseWorldTarget,
         this.inputManager.hasMouse,
         this.inputManager.crouch,
-        underPressure
+        underPressure,
+        this.inputManager.moveZ,
+        marsSurfaceFn
       );
+
+      // Update Mars Outpost dynamic elements (rotating dish, turrets, dust particles)
+      if (this.sceneManager.isIsometric && this.levelGenerator.marsOutpost) {
+        this.levelGenerator.marsOutpost.update(dt, totalTime);
+      }
 
       // Update Falling Meteor & Shatter Shrapnel System
       this.meteorManager.update(
@@ -704,7 +743,7 @@ class Game {
     }
 
     // 8. Update Camera with unrestricted tracking & screen shake
-    this.sceneManager.updateCamera(this.player.position.x, this.player.position.y, dt);
+    this.sceneManager.updateCamera(this.player.position.x, this.player.position.y, dt, this.player.position.z);
     this.hud.update(this.score, this.player.life, this.player.fuel);
 
     // 9. Render Frame
@@ -712,6 +751,10 @@ class Game {
   }
 
   private checkCollisions(dt: number = 0.016) {
+    if (this.sceneManager.isIsometric) {
+      // In 3D isometric Mars level, player navigates full 3D terrain and outpost surfaces
+      return;
+    }
     const pPos = this.player.position;
     const pCenterY = pPos.y + 1.0;
     const pRadius = 0.45;

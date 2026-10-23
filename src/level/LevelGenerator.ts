@@ -1,23 +1,52 @@
+import * as THREE from 'three';
 import { ObstacleManager } from './Obstacles';
+import { MarsOutpost } from './MarsOutpost';
 
 export class LevelGenerator {
   private obstacleManager: ObstacleManager;
+  public marsOutpost!: MarsOutpost;
   public currentLevel: number = 1;
   private nextSpawnX: number = 18;
   private spawnInterval: number = 16;
 
-  constructor(obstacleManager: ObstacleManager) {
+  constructor(obstacleManager: ObstacleManager, scene?: THREE.Scene) {
     this.obstacleManager = obstacleManager;
+    if (scene) {
+      this.marsOutpost = new MarsOutpost();
+      scene.add(this.marsOutpost.group);
+      this.marsOutpost.setVisible(false);
+    }
   }
 
   public setLevel(lvl: number) {
     this.currentLevel = lvl;
+    if (this.marsOutpost) {
+      this.marsOutpost.setVisible(lvl === 3);
+    }
     this.reset();
   }
 
   public reset(startX: number = 0) {
     this.obstacleManager.clear();
     this.nextSpawnX = startX + 18;
+
+    if (this.currentLevel === 3) {
+      // ----------------------------------------------------
+      // LEVEL 3: DESOLATE MARS OUTPOST (AAA ISOMETRIC)
+      // ----------------------------------------------------
+      if (this.marsOutpost) this.marsOutpost.setVisible(true);
+      // Patrol security drones and sentinels around Mars outpost
+      this.obstacleManager.spawnDrone(14, 4.5, 6.0);
+      this.obstacleManager.spawnDrone(-8, 8.0, 5.0);
+      this.obstacleManager.spawnDrone(24, 2.5, 5.0);
+      this.obstacleManager.spawnAlienCyberSentinel(20.0, -3.3);
+      this.obstacleManager.spawnFuelPickup(14.0, 1.2);
+      this.obstacleManager.spawnFuelPickup(-8.0, 20.5); // High reward on skyscraper tower crown!
+      this.obstacleManager.spawnHyperJetpackPickup(8.5, -0.2); // On the canyon bridge
+      return;
+    }
+
+    if (this.marsOutpost) this.marsOutpost.setVisible(false);
 
     if (this.currentLevel === 1) {
       // ----------------------------------------------------
@@ -73,6 +102,7 @@ export class LevelGenerator {
   }
 
   public update(playerX: number) {
+    if (this.currentLevel === 3) return;
     while (this.nextSpawnX < playerX + 65) {
       if (this.currentLevel === 1) {
         this.generateChunkLevel1(this.nextSpawnX);

@@ -5,6 +5,7 @@ import * as THREE from 'three';
  */
 export class InputManager {
   public moveX: number = 0; // -1 = Left, 0 = Neutral, +1 = Right
+  public moveZ: number = 0; // -1 = Forward / North, +1 = Back / South (Isometric Depth)
   public run: boolean = false;
   public jumpJustPressed: boolean = false;
   public jetpack: boolean = false;
@@ -153,9 +154,11 @@ export class InputManager {
   }
 
   /**
-   * Projects mouse screen coordinate onto game world plane (Z = 0)
+   * Projects mouse screen coordinate onto game world plane
+   * - 2.5D Mode: Intersects with vertical plane Z = 0
+   * - Isometric Mode: Intersects with horizontal plane Y = groundY
    */
-  public updateAimWorldTarget(camera: THREE.PerspectiveCamera) {
+  public updateAimWorldTarget(camera: THREE.Camera, groundY: number = 0, isIsometric: boolean = false) {
     if (!this.hasMouse) return;
 
     // Normalized Device Coordinates (-1 to +1)
@@ -167,18 +170,32 @@ export class InputManager {
     const rayTarget = new THREE.Vector3(ndcX, ndcY, 1).unproject(camera);
     const rayDir = rayTarget.sub(rayOrigin).normalize();
 
-    // Intersect with plane Z = 0
-    if (Math.abs(rayDir.z) > 0.0001) {
-      const distance = -rayOrigin.z / rayDir.z;
-      this.mouseWorldTarget.copy(rayOrigin).addScaledVector(rayDir, distance);
+    if (isIsometric) {
+      if (Math.abs(rayDir.y) > 0.0001) {
+        const distance = (groundY - rayOrigin.y) / rayDir.y;
+        this.mouseWorldTarget.copy(rayOrigin).addScaledVector(rayDir, distance);
+      }
+    } else {
+      // Intersect with plane Z = 0
+      if (Math.abs(rayDir.z) > 0.0001) {
+        const distance = -rayOrigin.z / rayDir.z;
+        this.mouseWorldTarget.copy(rayOrigin).addScaledVector(rayDir, distance);
+      }
     }
   }
 
-  public update() {
+  public update(isIsometric: boolean = false) {
     // 1. Horizontal Move Input
     let mx = 0;
     if (this.keys['KeyA'] || this.keys['ArrowLeft'] || this.touchLeft) mx -= 1;
     if (this.keys['KeyD'] || this.keys['ArrowRight'] || this.touchRight) mx += 1;
+
+    // 2. Isometric Depth Input (W / S / Up / Down)
+    let mz = 0;
+    if (isIsometric) {
+      if (this.keys['KeyW'] || this.keys['ArrowUp'] || this.touchRun) mz -= 1;
+      if (this.keys['KeyS'] || this.keys['ArrowDown'] || this.touchCrouch) mz += 1;
+    }
 
     // Gamepad axes
     const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -186,6 +203,10 @@ export class InputManager {
       if (pad) {
         if (pad.axes[0] < -0.3 || pad.buttons[14]?.pressed) mx = -1;
         if (pad.axes[0] > 0.3 || pad.buttons[15]?.pressed) mx = 1;
+        if (isIsometric) {
+          if (pad.axes[1] < -0.3 || pad.buttons[12]?.pressed) mz = -1;
+          if (pad.axes[1] > 0.3 || pad.buttons[13]?.pressed) mz = 1;
+        }
         if (pad.buttons[0]?.pressed) this.jumpJustPressed = true;
         if (pad.buttons[7]?.pressed || pad.buttons[5]?.pressed) this.jetpack = true;
         if (pad.buttons[2]?.pressed) this.shootJustPressed = true;
@@ -199,18 +220,21 @@ export class InputManager {
     }
 
     this.moveX = mx;
+    this.moveZ = mz;
 
     // 2. Sprint / Run
     const kbRun = !!(this.keys['ShiftLeft'] || this.keys['ShiftRight']);
-    this.run = kbRun || this.touchRun;
+    this.run = kbRun || (!isIsometric && this.touchRun);
 
     // 3. Jetpack Thrust
-    const kbJetpack = !!(this.keys['Space'] || (this.keys['KeyW'] && !this.jumpJustPressed) || (this.keys['ArrowUp'] && !this.jumpJustPressed));
-    this.jetpack = kbJetpack || this.touchJetpack;
+    const kbJetpack = isIsometric
+      ? !!(this.keys['Space'] || this.touchJetpack)
+      : !!(this.keys['Space'] || (this.keys['KeyW'] && !this.jumpJustPressed) || (this.keys['ArrowUp'] && !this.jumpJustPressed) || this.touchJetpack);
+    this.jetpack = kbJetpack;
 
     // 4. Crouch Input (Hold S or Down Arrow)
-    const kbCrouch = !!(this.keys['KeyS'] || this.keys['ArrowDown']);
-    this.crouch = kbCrouch || this.touchCrouch;
+    const kbCrouch = !isIsometric && !!(this.keys['KeyS'] || this.keys['ArrowDown']);
+    this.crouch = kbCrouch || (!isIsometric && this.touchCrouch);
   }
 
   public consumeJumpTrigger(): boolean {

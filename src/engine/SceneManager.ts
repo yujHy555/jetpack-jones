@@ -20,6 +20,8 @@ export class SceneManager {
   public handheldIntensity: number = 0.7; // 0.0 (static) to 1.0 (full organic handheld sway)
   private handheldTime: number = 0;
   public baseZ: number = 17.5; // Pulled back for spacious panoramic view of the levels and flight areas
+  public currentLevel: number = 1;
+  public isIsometric: boolean = false;
 
   constructor() {
     this.canvas = document.getElementById('canvas3d') as HTMLCanvasElement;
@@ -87,13 +89,96 @@ export class SceneManager {
     this.shakeDuration = duration;
   }
 
+  public setLevel(lvl: number) {
+    this.currentLevel = lvl;
+    if (lvl === 3) {
+      this.isIsometric = true;
+      // Mars Twilight Atmosphere
+      this.scene.background = new THREE.Color(0x943825);
+      this.scene.fog = new THREE.FogExp2(0x822d1c, 0.009);
+      this.ambientLight.color.setHex(0x6a382c);
+      this.ambientLight.intensity = 2.8;
+      this.keyLight.color.setHex(0xffaa85);
+      this.keyLight.intensity = 2.8;
+      this.rimLight.color.setHex(0x44ccff);
+      this.rimLight.intensity = 1.4;
+    } else {
+      this.isIsometric = false;
+      this.camera.rotation.set(0, 0, 0);
+      if (lvl === 2) {
+        this.scene.background = new THREE.Color(0x1a0d24);
+        this.scene.fog = new THREE.FogExp2(0x1a0d24, 0.012);
+        this.ambientLight.color.setHex(0xffffff);
+        this.ambientLight.intensity = 3.2;
+        this.keyLight.color.setHex(0xfff8ee);
+        this.keyLight.intensity = 1.4;
+      } else {
+        this.scene.background = new THREE.Color(0xff99cc);
+        this.scene.fog = new THREE.FogExp2(0x28192b, 0.012);
+        this.ambientLight.color.setHex(0xffffff);
+        this.ambientLight.intensity = 3.4;
+        this.keyLight.color.setHex(0xfff8ee);
+        this.keyLight.intensity = 1.4;
+      }
+    }
+  }
+
   /**
-   * Unrestricted 360° Camera Tracking
-   * Tracks Jones everywhere: on the ground and high in the air!
-   * Includes subtle organic handheld camera breathing and sway effect.
+   * Unrestricted Camera Tracking
+   * - Level 1 & 2: 2.5D panoramic side-scrolling perspective (Z = 17.5)
+   * - Level 3: Triple AAA True Isometric Perspective with smooth damped lookAt & 3D drone breathing
    */
-  public updateCamera(targetX: number, targetY: number, dt: number) {
-    // Camera leads slightly ahead and tracks full height in the air
+  public updateCamera(targetX: number, targetY: number, dt: number, targetZ: number = 0) {
+    if (this.isIsometric) {
+      // ========================================================
+      // TRIPLE AAA ISOMETRIC CAMERA SYSTEM
+      // Classic 45° azimuth / 38° elevation diamond isometric view
+      // Positioned to look across the canyon, tower, and circular hab ring
+      // ========================================================
+      const isoDistX = -18.0;
+      const isoDistY = 22.0;
+      const isoDistZ = 18.0;
+
+      const targetCamX = targetX + isoDistX;
+      const targetCamY = targetY + isoDistY;
+      const targetCamZ = targetZ + isoDistZ;
+
+      this.camera.position.x = THREE.MathUtils.lerp(this.camera.position.x, targetCamX, dt * 5.5);
+      this.camera.position.y = THREE.MathUtils.lerp(this.camera.position.y, targetCamY, dt * 5.5);
+      this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, targetCamZ, dt * 5.5);
+
+      const lookTarget = new THREE.Vector3(targetX, targetY + 1.2, targetZ);
+      this.camera.lookAt(lookTarget);
+
+      // Organic Handheld Isometric Drone Cam Sway
+      if (this.handheldEnabled && this.handheldIntensity > 0) {
+        this.handheldTime += dt;
+        const mult = this.handheldIntensity;
+        const hx = Math.sin(this.handheldTime * 1.1) * 0.08 * mult;
+        const hy = Math.cos(this.handheldTime * 0.9) * 0.08 * mult;
+        const hz = Math.sin(this.handheldTime * 1.4) * 0.08 * mult;
+        this.camera.position.x += hx;
+        this.camera.position.y += hy;
+        this.camera.position.z += hz;
+      }
+
+      // 3D Screen Shake in Isometric Space
+      if (this.shakeDuration > 0) {
+        this.shakeDuration -= dt;
+        const shakeAmt = this.shakeIntensity * (this.shakeDuration / 0.18);
+        this.camera.position.x += (Math.random() - 0.5) * shakeAmt;
+        this.camera.position.y += (Math.random() - 0.5) * shakeAmt;
+        this.camera.position.z += (Math.random() - 0.5) * shakeAmt;
+        if (this.shakeDuration <= 0) this.shakeIntensity = 0;
+      }
+
+      // High-angle directional Mars twilight sun tracking the player
+      this.keyLight.position.set(this.camera.position.x + 8, this.camera.position.y + 26, this.camera.position.z + 10);
+      this.keyLight.target.position.set(targetX, targetY, targetZ);
+      return;
+    }
+
+    // 2.5D Side-scrolling Camera Tracking (Levels 1 & 2)
     const targetCamX = targetX + 1.8;
     const targetCamY = Math.max(-1.5, targetY + 1.2); // Never cuts off top in air!
 

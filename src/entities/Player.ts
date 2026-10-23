@@ -204,6 +204,11 @@ export class Player {
   private droppedGunRotVel: number = 0;
   private hasDroppedGun: boolean = false;
 
+  // Suit Materials
+  public suitMat!: THREE.MeshStandardMaterial;
+  public suitDarkMat!: THREE.MeshStandardMaterial;
+  public isIsometric: boolean = false;
+
   private backArmBone: THREE.Group;
   private backForearmBone: THREE.Group;
   private backHandBone: THREE.Group;
@@ -292,17 +297,19 @@ export class Player {
     this.muzzleLight = new THREE.PointLight(0x00f5ff, 0, 10, 1.8);
     scene.add(this.muzzleLight);
 
-    // Stylized Materials Palette
+    // Stylized Materials Palette - Sleek Space White Astronaut Suit
     const suitOrange = new THREE.MeshStandardMaterial({
-      color: 0xee5a08,
-      roughness: 0.38,
-      metalness: 0.05,
+      color: 0xf5f7fb, // Pristine space white suit
+      roughness: 0.35,
+      metalness: 0.10,
     });
     const suitOrangeDark = new THREE.MeshStandardMaterial({
-      color: 0xcc4700,
+      color: 0xd6d9e4, // High-tech shaded space white for suit folds & joint liners
       roughness: 0.45,
-      metalness: 0.05,
+      metalness: 0.10,
     });
+    this.suitMat = suitOrange;
+    this.suitDarkMat = suitOrangeDark;
     const darkHarness = new THREE.MeshStandardMaterial({
       color: 0x22262e,
       roughness: 0.45,
@@ -1520,8 +1527,8 @@ export class Player {
     return this.shieldActive;
   }
 
-  public reset(startX: number = 0, startY: number = GROUND_Y) {
-    this.position.set(startX, startY, 0);
+  public reset(startX: number = 0, startY: number = GROUND_Y, startZ: number = 0) {
+    this.position.set(startX, startY, startZ);
     this.velocity.set(0, 0, 0);
     this.isGrounded = true;
     this.facingRight = true;
@@ -1703,12 +1710,22 @@ export class Player {
     this.bubbleBurstGroup.getWorldPosition(muzzlePos);
 
     laser.position.copy(muzzlePos);
-    laser.velocity.set(Math.cos(aimAngle) * 34, Math.sin(aimAngle) * 34, 0);
-    laser.active = true;
-    laser.life = 1.3;
-    laser.mesh.position.copy(laser.position);
-    laser.mesh.rotation.z = aimAngle;
-    laser.mesh.visible = true;
+    if (this.isIsometric && aimTargetWorld) {
+      const dir = new THREE.Vector3().subVectors(aimTargetWorld, muzzlePos).normalize();
+      laser.velocity.copy(dir).multiplyScalar(38);
+      laser.active = true;
+      laser.life = 1.4;
+      laser.mesh.position.copy(laser.position);
+      laser.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
+      laser.mesh.visible = true;
+    } else {
+      laser.velocity.set(Math.cos(aimAngle) * 34, Math.sin(aimAngle) * 34, 0);
+      laser.active = true;
+      laser.life = 1.3;
+      laser.mesh.position.copy(laser.position);
+      laser.mesh.rotation.set(0, 0, aimAngle);
+      laser.mesh.visible = true;
+    }
 
     // Trigger bubble burst droplets
     for (let i = 0; i < this.bubbleParticles.length; i++) {
@@ -1868,7 +1885,9 @@ export class Player {
     mouseWorldTarget?: THREE.Vector3,
     hasMouseTarget: boolean = false,
     crouchPressed: boolean = false,
-    underPressure: boolean = false
+    underPressure: boolean = false,
+    moveZ: number = 0,
+    marsSurfaceHeight?: (x: number, z: number) => number
   ) {
     this.animTimer += dt;
     if (this.invulnerableTime > 0) {
@@ -1880,6 +1899,23 @@ export class Player {
     // Dedicated Death Physics & Ragdoll Execution (Bypasses living player controls & collision fighting)
     if (this.isDying) {
       this.updateDeath(dt, platforms);
+      return;
+    }
+
+    // Dedicated AAA 3D Isometric Navigation for Level 3
+    if (this.isIsometric) {
+      this.updateIsometric(
+        dt,
+        moveX,
+        moveZ,
+        runPressed,
+        jumpPressed,
+        jetpackPressed,
+        mouseWorldTarget,
+        hasMouseTarget,
+        underPressure,
+        marsSurfaceHeight
+      );
       return;
     }
 
@@ -2335,6 +2371,134 @@ export class Player {
     this.updateParticles(dt);
     this.updateLasers(dt);
     this.updateDroppedGun(dt, platforms);
+    this.updateRadioWaves(dt, underPressure);
+  }
+
+  /**
+   * Triple AAA 3D Isometric Navigation & Low Martian Gravity Traversal
+   */
+  private updateIsometric(
+    dt: number,
+    moveX: number,
+    moveZ: number,
+    runPressed: boolean,
+    jumpPressed: boolean,
+    jetpackPressed: boolean,
+    mouseWorldTarget?: THREE.Vector3,
+    hasMouseTarget: boolean = false,
+    underPressure: boolean = false,
+    marsSurfaceHeight?: (x: number, z: number) => number
+  ) {
+    // 1. Aim Tracking in 3D
+    if (hasMouseTarget && mouseWorldTarget) {
+      const lookDir = new THREE.Vector3(
+        mouseWorldTarget.x - this.position.x,
+        0,
+        mouseWorldTarget.z - this.position.z
+      );
+      if (lookDir.lengthSq() > 0.1) {
+        const aimAngleY = Math.atan2(lookDir.x, lookDir.z);
+        if (Math.hypot(this.velocity.x, this.velocity.z) < 1.0) {
+          this.rigRoot.rotation.y = THREE.MathUtils.lerp(this.rigRoot.rotation.y, aimAngleY, dt * 10.0);
+        }
+      }
+    }
+
+    // 2. 8-Directional Screen-Relative Isometric Axes
+    const inputDirX = (moveX - moveZ) * 0.7071;
+    const inputDirZ = (moveZ + moveX) * 0.7071;
+
+    const walkSpeed = this.hasHyperJetpack ? 8.5 : 6.8;
+    const runSpeed = this.hasHyperJetpack ? 14.5 : 11.2;
+    const targetSpeed = runPressed ? runSpeed : walkSpeed;
+
+    const desiredVx = inputDirX * targetSpeed;
+    const desiredVz = inputDirZ * targetSpeed;
+
+    this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, desiredVx, dt * 12.0);
+    this.velocity.z = THREE.MathUtils.lerp(this.velocity.z, desiredVz, dt * 12.0);
+
+    this.position.x += this.velocity.x * dt;
+    this.position.z += this.velocity.z * dt;
+
+    const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
+    if (horizSpeed > 0.2) {
+      const targetYaw = Math.atan2(this.velocity.x, this.velocity.z);
+      this.rigRoot.rotation.y = THREE.MathUtils.lerp(this.rigRoot.rotation.y, targetYaw, dt * 15.0);
+    }
+
+    // 3. Mars Low Gravity & Vertical Jetpack Traversal
+    const marsGravity = -14.0;
+    const marsJumpVel = 10.5;
+    const marsJetpackLift = this.hasHyperJetpack ? 46.0 : 34.0;
+    const isActuallyJetpacking = jetpackPressed && this.fuel > 0;
+
+    if (jumpPressed && this.isGrounded) {
+      this.velocity.y = marsJumpVel;
+      this.isGrounded = false;
+      this.emitDust(this.position.x, this.position.y, 6);
+    }
+
+    if (isActuallyJetpacking) {
+      this.velocity.y += marsJetpackLift * dt;
+      this.fuel = Math.max(0, this.fuel - 12.0 * dt);
+      this.isGrounded = false;
+    } else {
+      this.fuel = Math.min(this.maxFuel, this.fuel + 14.0 * dt);
+    }
+
+    this.velocity.y += marsGravity * dt;
+    this.velocity.y = THREE.MathUtils.clamp(this.velocity.y, -14.0, 14.0);
+    this.position.y += this.velocity.y * dt;
+
+    // 4. Ground & Walkable Surface Collision
+    const surfaceY = marsSurfaceHeight ? marsSurfaceHeight(this.position.x, this.position.z) : -3.70;
+    if (this.position.y <= surfaceY) {
+      this.position.y = surfaceY;
+      this.velocity.y = 0;
+      this.isGrounded = true;
+    }
+
+    // 5. Walking / Running Leg Strides
+    if (this.isGrounded && horizSpeed > 0.2) {
+      const strideFreq = runPressed ? 18.0 : 12.0;
+      const legCycle = Math.sin(this.animTimer * strideFreq);
+      this.frontThighBone.rotation.x = legCycle * 0.55;
+      this.backThighBone.rotation.x = -legCycle * 0.55;
+      this.frontShinBone.rotation.x = Math.max(0, -legCycle * 0.6);
+      this.backShinBone.rotation.x = Math.max(0, legCycle * 0.6);
+    } else if (!this.isGrounded) {
+      this.frontThighBone.rotation.x = 0.25;
+      this.backThighBone.rotation.x = -0.35;
+    } else {
+      this.frontThighBone.rotation.x = THREE.MathUtils.lerp(this.frontThighBone.rotation.x, 0, dt * 10);
+      this.backThighBone.rotation.x = THREE.MathUtils.lerp(this.backThighBone.rotation.x, 0, dt * 10);
+      this.frontShinBone.rotation.x = THREE.MathUtils.lerp(this.frontShinBone.rotation.x, 0, dt * 10);
+      this.backShinBone.rotation.x = THREE.MathUtils.lerp(this.backShinBone.rotation.x, 0, dt * 10);
+    }
+
+    // 6. Jetpack Flame Emission in 3D
+    if (isActuallyJetpacking) {
+      this.flameConeLeft.visible = true;
+      this.flameConeRight.visible = true;
+      const flick = 1.0 + Math.sin(this.animTimer * 28.0) * 0.2;
+      this.flameConeLeft.scale.set(flick, flick * 1.2, flick);
+      this.flameConeRight.scale.set(flick, flick * 1.2, flick);
+      this.thrusterLight.intensity = 26;
+      this.emitSmoke(this.position.x, this.position.y + 0.9, this.position.z, 2);
+    } else {
+      this.flameConeLeft.visible = false;
+      this.flameConeRight.visible = false;
+      this.thrusterLight.intensity = 0;
+    }
+
+    // 7. Update mesh root position
+    this.mesh.position.copy(this.position);
+    this.updateParticles(dt);
+    this.updateHelmetLEDs(dt);
+    this.updateBeltLEDs(dt);
+    this.updateBubbleBurstVFX(dt);
+    this.updateLasers(dt);
     this.updateRadioWaves(dt, underPressure);
   }
 
