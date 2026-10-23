@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { IsometricPlayerRig } from './IsometricPlayerRig';
 
 export const GROUND_Y = -3.70;
 
@@ -256,6 +257,11 @@ export class Player {
 
   // Dynamic Contact Shadow
   private shadowMesh!: THREE.Mesh;
+  public isoShadowMesh!: THREE.Mesh;
+  private isoShadowMat!: THREE.MeshBasicMaterial;
+
+  // Tailor-Made AAA 3D Isometric Character Rig (Level 3)
+  public isoPlayerRig!: IsometricPlayerRig;
 
   // Enhanced Procedural Landing Suspension & Knee Flexion Physics
   private landingSuspension: number = 0;
@@ -1287,6 +1293,25 @@ export class Player {
     this.shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
     scene.add(this.shadowMesh);
 
+    // Dedicated AAA 3D Contact Shadow Decal for Level 3
+    const isoShadowGeo = new THREE.CircleGeometry(0.70, 24);
+    isoShadowGeo.rotateX(-Math.PI / 2);
+    this.isoShadowMat = new THREE.MeshBasicMaterial({
+      color: 0x110502,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+    });
+    this.isoShadowMesh = new THREE.Mesh(isoShadowGeo, this.isoShadowMat);
+    this.isoShadowMesh.visible = false;
+    scene.add(this.isoShadowMesh);
+
+    // Tailor-Made AAA 3D Character Rig for Level 3 (Space white suit, non-crossing legs, 360° aiming)
+    this.isoPlayerRig = new IsometricPlayerRig();
+    this.isoPlayerRig.onFootstep = () => this.onFootstep?.();
+    this.mesh.add(this.isoPlayerRig.group);
+    this.isoPlayerRig.group.visible = false;
+
     // Cast shadows on player meshes
     this.mesh.traverse(obj => {
       if ((obj as THREE.Mesh).isMesh) {
@@ -1554,7 +1579,12 @@ export class Player {
     this.shieldActive = false;
     if (this.shieldGroup) this.shieldGroup.visible = false;
     if (this.droppedGunMesh) this.droppedGunMesh.visible = false;
-    if (this.shadowMesh) this.shadowMesh.visible = false;
+    if (this.shadowMesh) this.shadowMesh.visible = !this.isIsometric;
+    if (this.isoShadowMesh) this.isoShadowMesh.visible = this.isIsometric;
+    if (this.isoPlayerRig) {
+      this.isoPlayerRig.group.visible = this.isIsometric;
+      this.rigRoot.visible = !this.isIsometric;
+    }
     this.blasterMesh.visible = true;
     this.rigRoot.rotation.set(0, 0, 0);
     this.rigRoot.position.set(0, 0, 0);
@@ -1709,23 +1739,31 @@ export class Player {
     const muzzlePos = new THREE.Vector3();
     this.bubbleBurstGroup.getWorldPosition(muzzlePos);
 
-    laser.position.copy(muzzlePos);
-    if (this.isIsometric && aimTargetWorld) {
-      const dir = new THREE.Vector3().subVectors(aimTargetWorld, muzzlePos).normalize();
-      laser.velocity.copy(dir).multiplyScalar(38);
+    // Dedicated 3D Isometric Blaster Fire (Line of sight along 3D ray)
+    if (this.isIsometric && this.isoPlayerRig) {
+      const muzzlePos = this.isoPlayerRig.getMuzzleWorldPosition();
+      laser.position.copy(muzzlePos);
+      let dir: THREE.Vector3;
+      if (aimTargetWorld) {
+        dir = new THREE.Vector3().subVectors(aimTargetWorld, muzzlePos).normalize();
+      } else {
+        const yaw = this.isoPlayerRig.rigRoot.rotation.y;
+        dir = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).normalize();
+      }
+      laser.velocity.copy(dir).multiplyScalar(42);
       laser.active = true;
       laser.life = 1.4;
       laser.mesh.position.copy(laser.position);
       laser.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
       laser.mesh.visible = true;
-    } else {
-      laser.velocity.set(Math.cos(aimAngle) * 34, Math.sin(aimAngle) * 34, 0);
-      laser.active = true;
-      laser.life = 1.3;
-      laser.mesh.position.copy(laser.position);
-      laser.mesh.rotation.set(0, 0, aimAngle);
-      laser.mesh.visible = true;
+      return true;
     }
+    laser.velocity.set(Math.cos(aimAngle) * 34, Math.sin(aimAngle) * 34, 0);
+    laser.active = true;
+    laser.life = 1.3;
+    laser.mesh.position.copy(laser.position);
+    laser.mesh.rotation.set(0, 0, aimAngle);
+    laser.mesh.visible = true;
 
     // Trigger bubble burst droplets
     for (let i = 0; i < this.bubbleParticles.length; i++) {
@@ -1887,7 +1925,9 @@ export class Player {
     crouchPressed: boolean = false,
     underPressure: boolean = false,
     moveZ: number = 0,
-    marsSurfaceHeight?: (x: number, z: number) => number
+    marsSurfaceHeight?: (x: number, z: number) => number,
+    marsSurfaceNormal?: (x: number, z: number) => THREE.Vector3,
+    marsCollisionResolver?: (currPos: THREE.Vector3, nextPos: THREE.Vector3, radius?: number) => THREE.Vector3
   ) {
     this.animTimer += dt;
     if (this.invulnerableTime > 0) {
@@ -1914,7 +1954,9 @@ export class Player {
         mouseWorldTarget,
         hasMouseTarget,
         underPressure,
-        marsSurfaceHeight
+        marsSurfaceHeight,
+        marsSurfaceNormal,
+        marsCollisionResolver
       );
       return;
     }
@@ -2255,77 +2297,7 @@ export class Player {
     this.mesh.position.copy(this.position);
 
     // Update Bubble Force Field / Ball Mode Transform
-    if (this.shieldGroup && this.shieldActive) {
-      const isBall = this.isBallMode && !this.isDying;
-      const shieldCenterY = this.position.y + (isBall ? 1.25 : (isActuallyCrouching ? 0.70 : 1.05));
-      this.shieldGroup.position.set(this.position.x, shieldCenterY, 0);
-
-      const time = this.animTimer;
-
-      if (this.shieldWobbleTimer > 0) {
-        this.shieldWobbleTimer -= dt;
-        this.shieldMat.emissive.setHex(0x55ffff);
-        this.shieldMat.opacity = isBall ? 0.24 : 0.28;
-        this.shieldGridMat.opacity = isBall ? 0.30 : 0.35;
-      } else {
-        this.shieldMat.emissive.setHex(isBall ? 0x002233 : 0x001525);
-        this.shieldMat.opacity = isBall ? 0.10 : 0.14; // Crystal clear transparent bubble
-        this.shieldGridMat.opacity = isBall ? 0.15 : 0.18;
-      }
-
-      // Dynamic Squash and Stretch Bouncy Ball scaling
-      if (isBall) {
-        this.ballBounceSquash = THREE.MathUtils.lerp(this.ballBounceSquash, 1.0, dt * 8.0);
-        const sqY = this.ballBounceSquash;
-        const stX = 1.0 / Math.sqrt(Math.max(0.2, sqY));
-        this.shieldGroup.scale.set(stX * 0.76, sqY * 0.76, stX * 0.76); // Bouncy sphere of 1.25m radius
-
-        // Physical 3D ball rotation when rolling and bouncing off surfaces
-        if (this.isGrounded) {
-          const rollRate = (-this.velocity.x / 1.25);
-          this.ballAngularVelocity = THREE.MathUtils.lerp(this.ballAngularVelocity, rollRate, dt * 12.0);
-        } else {
-          this.ballAngularVelocity *= (1.0 - 0.15 * dt);
-        }
-        this.ballRotationZ += this.ballAngularVelocity * dt;
-        this.ballRotationX += Math.abs(this.ballAngularVelocity) * 0.35 * dt;
-        this.ballRotationY += this.ballAngularVelocity * 0.25 * dt;
-
-        // Apply 3D sphere tumble and spin
-        this.shieldSphereMesh.rotation.set(this.ballRotationX, this.ballRotationY, this.ballRotationZ);
-        this.shieldGridMesh.rotation.set(this.ballRotationX * 0.8, this.ballRotationY * 0.8, this.ballRotationZ);
-        this.shieldRingMesh1.rotation.set(this.ballRotationX * 1.2, this.ballRotationY * 1.2, this.ballRotationZ * 1.2);
-        this.shieldRingMesh2.rotation.set(-this.ballRotationX * 0.9, -this.ballRotationY * 0.9, -this.ballRotationZ * 0.9);
-      } else {
-        this.shieldGroup.scale.set(1.0, 1.0, 1.0);
-        this.shieldSphereMesh.rotation.set(0, 0, 0);
-      }
-
-      // Rotate geodesic shield grid and counter-rotating rings
-      this.shieldGridMesh.rotation.y += 0.8 * dt;
-      this.shieldGridMesh.rotation.x += 0.5 * dt;
-
-      this.shieldRingMesh1.rotation.z += 2.8 * dt;
-      this.shieldRingMesh1.rotation.y += 1.6 * dt;
-
-      this.shieldRingMesh2.rotation.z -= 2.2 * dt;
-      this.shieldRingMesh2.rotation.x += 1.9 * dt;
-
-      // Orbit the 4 deflector micro-nodes
-      for (let i = 0; i < this.shieldNodes.length; i++) {
-        const node = this.shieldNodes[i];
-        const nodeAngle = time * 3.2 + (i * Math.PI / 2);
-        const nodeRad = 1.70;
-        const tilt = (i % 2 === 0 ? 0.4 : -0.4);
-        node.position.set(
-          Math.cos(nodeAngle) * nodeRad,
-          Math.sin(nodeAngle) * nodeRad * Math.cos(tilt),
-          Math.sin(nodeAngle) * nodeRad * Math.sin(tilt)
-        );
-        node.rotation.x += dt * 4.0;
-        node.rotation.y += dt * 5.0;
-      }
-    }
+    this.updateForcefieldSystem(dt, isActuallyCrouching);
 
     // Update Dynamic Contact Shadow Decal
     if (this.shadowMesh) {
@@ -2375,7 +2347,89 @@ export class Player {
   }
 
   /**
+   * Universal Forcefield & Ball Mode Transform & Shader Animation Update
+   */
+  private updateForcefieldSystem(dt: number, isActuallyCrouching: boolean) {
+    if (!this.shieldGroup) return;
+    this.shieldGroup.visible = this.shieldActive && !this.isDying;
+    if (!this.shieldActive) return;
+
+    const isBall = this.isBallMode && !this.isDying;
+    const shieldCenterY = this.position.y + (isBall ? 1.25 : (isActuallyCrouching ? 0.70 : 1.05));
+    this.shieldGroup.position.set(this.position.x, shieldCenterY, this.position.z);
+
+    const time = this.animTimer;
+
+    if (this.shieldWobbleTimer > 0) {
+      this.shieldWobbleTimer -= dt;
+      this.shieldMat.emissive.setHex(0x55ffff);
+      this.shieldMat.opacity = isBall ? 0.24 : 0.28;
+      this.shieldGridMat.opacity = isBall ? 0.30 : 0.35;
+    } else {
+      this.shieldMat.emissive.setHex(isBall ? 0x002233 : 0x001525);
+      this.shieldMat.opacity = isBall ? 0.10 : 0.14; // Crystal clear transparent bubble
+      this.shieldGridMat.opacity = isBall ? 0.15 : 0.18;
+    }
+
+    // Dynamic Squash and Stretch Bouncy Ball scaling
+    if (isBall) {
+      this.ballBounceSquash = THREE.MathUtils.lerp(this.ballBounceSquash, 1.0, dt * 8.0);
+      const sqY = this.ballBounceSquash;
+      const stX = 1.0 / Math.sqrt(Math.max(0.2, sqY));
+      this.shieldGroup.scale.set(stX * 0.76, sqY * 0.76, stX * 0.76); // Bouncy sphere of 1.25m radius
+
+      // Physical 3D ball rotation when rolling and bouncing off surfaces
+      const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
+      if (this.isGrounded) {
+        const rollRate = (-horizSpeed / 1.25);
+        this.ballAngularVelocity = THREE.MathUtils.lerp(this.ballAngularVelocity, rollRate, dt * 12.0);
+      } else {
+        this.ballAngularVelocity *= (1.0 - 0.15 * dt);
+      }
+      this.ballRotationZ += this.ballAngularVelocity * dt;
+      this.ballRotationX += Math.abs(this.ballAngularVelocity) * 0.35 * dt;
+      this.ballRotationY += this.ballAngularVelocity * 0.25 * dt;
+
+      // Apply 3D sphere tumble and spin
+      this.shieldSphereMesh.rotation.set(this.ballRotationX, this.ballRotationY, this.ballRotationZ);
+      this.shieldGridMesh.rotation.set(this.ballRotationX * 0.8, this.ballRotationY * 0.8, this.ballRotationZ);
+      this.shieldRingMesh1.rotation.set(this.ballRotationX * 1.2, this.ballRotationY * 1.2, this.ballRotationZ * 1.2);
+      this.shieldRingMesh2.rotation.set(-this.ballRotationX * 0.9, -this.ballRotationY * 0.9, -this.ballRotationZ * 0.9);
+    } else {
+      this.shieldGroup.scale.set(1.0, 1.0, 1.0);
+      this.shieldSphereMesh.rotation.set(0, 0, 0);
+    }
+
+    // Rotate geodesic shield grid and counter-rotating rings
+    this.shieldGridMesh.rotation.y += 0.8 * dt;
+    this.shieldGridMesh.rotation.x += 0.5 * dt;
+
+    this.shieldRingMesh1.rotation.z += 2.8 * dt;
+    this.shieldRingMesh1.rotation.y += 1.6 * dt;
+
+    this.shieldRingMesh2.rotation.z -= 2.2 * dt;
+    this.shieldRingMesh2.rotation.x += 1.9 * dt;
+
+    // Orbit the 4 deflector micro-nodes
+    for (let i = 0; i < this.shieldNodes.length; i++) {
+      const node = this.shieldNodes[i];
+      const nodeAngle = time * 3.2 + (i * Math.PI / 2);
+      const nodeRad = 1.70;
+      const tilt = (i % 2 === 0 ? 0.4 : -0.4);
+      node.position.set(
+        Math.cos(nodeAngle) * nodeRad,
+        Math.sin(nodeAngle) * nodeRad * Math.cos(tilt),
+        Math.sin(nodeAngle) * nodeRad * Math.sin(tilt)
+      );
+      node.rotation.x += dt * 4.0;
+      node.rotation.y += dt * 5.0;
+    }
+  }
+
+  /**
    * Triple AAA 3D Isometric Navigation & Low Martian Gravity Traversal
+   * Powered by tailor-made IsometricPlayerRig (space white suit, independent non-crossing legs,
+   * 360° aiming, dynamic contact shadow decal, terrain slope climbing, and 3D forcefield ball mode).
    */
   private updateIsometric(
     dt: number,
@@ -2387,22 +2441,15 @@ export class Player {
     mouseWorldTarget?: THREE.Vector3,
     hasMouseTarget: boolean = false,
     underPressure: boolean = false,
-    marsSurfaceHeight?: (x: number, z: number) => number
+    marsSurfaceHeight?: (x: number, z: number) => number,
+    marsSurfaceNormal?: (x: number, z: number) => THREE.Vector3,
+    marsCollisionResolver?: (currPos: THREE.Vector3, nextPos: THREE.Vector3, radius?: number) => THREE.Vector3
   ) {
-    // 1. Aim Tracking in 3D
-    if (hasMouseTarget && mouseWorldTarget) {
-      const lookDir = new THREE.Vector3(
-        mouseWorldTarget.x - this.position.x,
-        0,
-        mouseWorldTarget.z - this.position.z
-      );
-      if (lookDir.lengthSq() > 0.1) {
-        const aimAngleY = Math.atan2(lookDir.x, lookDir.z);
-        if (Math.hypot(this.velocity.x, this.velocity.z) < 1.0) {
-          this.rigRoot.rotation.y = THREE.MathUtils.lerp(this.rigRoot.rotation.y, aimAngleY, dt * 10.0);
-        }
-      }
-    }
+    // 1. Rig & Shadow Visibility
+    this.rigRoot.visible = false;
+    this.isoPlayerRig.group.visible = true;
+    if (this.shadowMesh) this.shadowMesh.visible = false;
+    this.isoShadowMesh.visible = true;
 
     // 2. 8-Directional Screen-Relative Isometric Axes
     const inputDirX = (moveX - moveZ) * 0.7071;
@@ -2418,16 +2465,28 @@ export class Player {
     this.velocity.x = THREE.MathUtils.lerp(this.velocity.x, desiredVx, dt * 12.0);
     this.velocity.z = THREE.MathUtils.lerp(this.velocity.z, desiredVz, dt * 12.0);
 
-    this.position.x += this.velocity.x * dt;
-    this.position.z += this.velocity.z * dt;
+    // 3. Next Position & Solid Structure Collision Resolution
+    let nextPos = new THREE.Vector3(
+      this.position.x + this.velocity.x * dt,
+      this.position.y,
+      this.position.z + this.velocity.z * dt
+    );
 
-    const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
-    if (horizSpeed > 0.2) {
-      const targetYaw = Math.atan2(this.velocity.x, this.velocity.z);
-      this.rigRoot.rotation.y = THREE.MathUtils.lerp(this.rigRoot.rotation.y, targetYaw, dt * 15.0);
+    if (marsCollisionResolver) {
+      nextPos = marsCollisionResolver(this.position, nextPos, 0.45);
     }
 
-    // 3. Mars Low Gravity & Vertical Jetpack Traversal
+    this.position.x = nextPos.x;
+    this.position.z = nextPos.z;
+
+    // 4. Sample Surface Elevation & Normal for Slope Traversal
+    const surfaceY = marsSurfaceHeight ? marsSurfaceHeight(this.position.x, this.position.z) : -3.70;
+    const normal = marsSurfaceNormal ? marsSurfaceNormal(this.position.x, this.position.z) : new THREE.Vector3(0, 1, 0);
+
+    const slopePitch = Math.atan2(-normal.z, normal.y);
+    const slopeRoll = Math.atan2(normal.x, normal.y);
+
+    // 5. Mars Low Gravity & Vertical Jetpack Traversal
     const marsGravity = -14.0;
     const marsJumpVel = 10.5;
     const marsJetpackLift = this.hasHyperJetpack ? 46.0 : 34.0;
@@ -2451,52 +2510,70 @@ export class Player {
     this.velocity.y = THREE.MathUtils.clamp(this.velocity.y, -14.0, 14.0);
     this.position.y += this.velocity.y * dt;
 
-    // 4. Ground & Walkable Surface Collision
-    const surfaceY = marsSurfaceHeight ? marsSurfaceHeight(this.position.x, this.position.z) : -3.70;
-    if (this.position.y <= surfaceY) {
+    // 6. Slope Traversal & Ground Attachment
+    if (this.isGrounded) {
+      const heightDiff = surfaceY - this.position.y;
+      if (heightDiff > -0.65 && heightDiff < 0.65) {
+        this.position.y = surfaceY;
+        this.velocity.y = 0;
+      } else if (this.position.y < surfaceY) {
+        this.position.y = surfaceY;
+        this.velocity.y = 0;
+      } else {
+        this.isGrounded = false;
+      }
+    } else if (this.position.y <= surfaceY) {
       this.position.y = surfaceY;
       this.velocity.y = 0;
       this.isGrounded = true;
+
+      if (this.isBallMode) {
+        const inSpeed = Math.abs(this.velocity.y);
+        if (inSpeed > 1.5) {
+          this.onBallBounce?.(inSpeed);
+          this.ballBounceSquash = 0.55;
+          const dot = this.velocity.dot(normal);
+          this.velocity.addScaledVector(normal, -1.85 * dot);
+          this.isGrounded = false;
+        }
+      }
     }
 
-    // 5. Walking / Running Leg Strides
-    if (this.isGrounded && horizSpeed > 0.2) {
-      const strideFreq = runPressed ? 18.0 : 12.0;
-      const legCycle = Math.sin(this.animTimer * strideFreq);
-      this.frontThighBone.rotation.x = legCycle * 0.55;
-      this.backThighBone.rotation.x = -legCycle * 0.55;
-      this.frontShinBone.rotation.x = Math.max(0, -legCycle * 0.6);
-      this.backShinBone.rotation.x = Math.max(0, legCycle * 0.6);
-    } else if (!this.isGrounded) {
-      this.frontThighBone.rotation.x = 0.25;
-      this.backThighBone.rotation.x = -0.35;
-    } else {
-      this.frontThighBone.rotation.x = THREE.MathUtils.lerp(this.frontThighBone.rotation.x, 0, dt * 10);
-      this.backThighBone.rotation.x = THREE.MathUtils.lerp(this.backThighBone.rotation.x, 0, dt * 10);
-      this.frontShinBone.rotation.x = THREE.MathUtils.lerp(this.frontShinBone.rotation.x, 0, dt * 10);
-      this.backShinBone.rotation.x = THREE.MathUtils.lerp(this.backShinBone.rotation.x, 0, dt * 10);
-    }
+    // 7. Dynamic Contact Shadow Beneath Player (Rotated to match terrain slope)
+    this.isoShadowMesh.position.set(this.position.x, surfaceY + 0.02, this.position.z);
+    this.isoShadowMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
 
-    // 6. Jetpack Flame Emission in 3D
-    if (isActuallyJetpacking) {
-      this.flameConeLeft.visible = true;
-      this.flameConeRight.visible = true;
-      const flick = 1.0 + Math.sin(this.animTimer * 28.0) * 0.2;
-      this.flameConeLeft.scale.set(flick, flick * 1.2, flick);
-      this.flameConeRight.scale.set(flick, flick * 1.2, flick);
-      this.thrusterLight.intensity = 26;
-      this.emitSmoke(this.position.x, this.position.y + 0.9, this.position.z, 2);
-    } else {
-      this.flameConeLeft.visible = false;
-      this.flameConeRight.visible = false;
-      this.thrusterLight.intensity = 0;
-    }
+    const heightAbove = Math.max(0, this.position.y - surfaceY);
+    const shadowScale = 1.0 + Math.min(1.5, heightAbove * 0.15);
+    this.isoShadowMesh.scale.set(shadowScale, shadowScale, shadowScale);
+    this.isoShadowMat.opacity = Math.max(0.12, 0.60 - heightAbove * 0.045);
 
-    // 7. Update mesh root position
+    // 8. Update Multi-Layer Bubble Forcefield (Z correctly set!)
+    this.updateForcefieldSystem(dt, false);
+
+    // 9. Update Tailor-Made 3D Isometric Character Rig & Animations
     this.mesh.position.copy(this.position);
+    this.isoPlayerRig.update(dt, {
+      velocity: this.velocity,
+      isGrounded: this.isGrounded,
+      isJetpacking: isActuallyJetpacking,
+      isBallMode: this.isBallMode,
+      aimTarget: mouseWorldTarget,
+      hasAimTarget: hasMouseTarget,
+      underPressure,
+      groundSlopePitch: slopePitch,
+      groundSlopeRoll: slopeRoll,
+    });
+
+    // 10. Smoke VFX from Jetpack Nozzles
+    if (isActuallyJetpacking) {
+      const thrusters = this.isoPlayerRig.getThrusterWorldPositions();
+      this.emitSmoke(thrusters.left.x, thrusters.left.y, thrusters.left.z, 1);
+      this.emitSmoke(thrusters.right.x, thrusters.right.y, thrusters.right.z, 1);
+    }
+
+    // 11. Generic Particle & Weapon VFX
     this.updateParticles(dt);
-    this.updateHelmetLEDs(dt);
-    this.updateBeltLEDs(dt);
     this.updateBubbleBurstVFX(dt);
     this.updateLasers(dt);
     this.updateRadioWaves(dt, underPressure);
@@ -2511,7 +2588,12 @@ export class Player {
     this.deathTimer += dt;
     this.invulnerableTime = 999;
     this.mesh.visible = true;
-    if (this.shadowMesh) this.shadowMesh.visible = false;
+    if (this.shadowMesh) this.shadowMesh.visible = !this.isIsometric;
+    if (this.isoShadowMesh) this.isoShadowMesh.visible = this.isIsometric;
+    if (this.isoPlayerRig) {
+      this.isoPlayerRig.group.visible = this.isIsometric;
+      this.rigRoot.visible = !this.isIsometric;
+    }
     if (this.flameConeLeft) this.flameConeLeft.visible = false;
     if (this.flameConeRight) this.flameConeRight.visible = false;
     if (this.thrusterLight) this.thrusterLight.intensity = 0;

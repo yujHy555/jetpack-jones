@@ -33,13 +33,10 @@ export class LevelGenerator {
     if (this.currentLevel === 3) {
       // ----------------------------------------------------
       // LEVEL 3: DESOLATE MARS OUTPOST (AAA ISOMETRIC)
+      // Dedicated 3D Martian sentry drones, automated defense turrets,
+      // and canyon traversal are natively managed by MarsOutpost
       // ----------------------------------------------------
       if (this.marsOutpost) this.marsOutpost.setVisible(true);
-      // Patrol security drones and sentinels around Mars outpost
-      this.obstacleManager.spawnDrone(14, 4.5, 6.0);
-      this.obstacleManager.spawnDrone(-8, 8.0, 5.0);
-      this.obstacleManager.spawnDrone(24, 2.5, 5.0);
-      this.obstacleManager.spawnAlienCyberSentinel(20.0, -3.3);
       this.obstacleManager.spawnFuelPickup(14.0, 1.2);
       this.obstacleManager.spawnFuelPickup(-8.0, 20.5); // High reward on skyscraper tower crown!
       this.obstacleManager.spawnHyperJetpackPickup(8.5, -0.2); // On the canyon bridge

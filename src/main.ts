@@ -673,9 +673,12 @@ class Game {
           d => d.active && Math.hypot(d.position.x - this.player.position.x, d.position.y - this.player.position.y) < 10.0
         );
 
-      const marsSurfaceFn = (this.sceneManager.isIsometric && this.levelGenerator.marsOutpost)
-        ? (x: number, z: number) => this.levelGenerator.marsOutpost.getSurfaceHeight(x, z)
-        : undefined;
+      const marsOutpost = this.levelGenerator.marsOutpost;
+      const isIso = this.sceneManager.isIsometric && !!marsOutpost;
+
+      const marsSurfaceFn = isIso ? (x: number, z: number) => marsOutpost.getSurfaceHeight(x, z) : undefined;
+      const marsNormalFn = isIso ? (x: number, z: number) => marsOutpost.getSurfaceNormal(x, z) : undefined;
+      const marsCollisionFn = isIso ? (curr: THREE.Vector3, next: THREE.Vector3, rad?: number) => marsOutpost.resolveCollision(curr, next, rad) : undefined;
 
       this.player.update(
         dt,
@@ -689,12 +692,14 @@ class Game {
         this.inputManager.crouch,
         underPressure,
         this.inputManager.moveZ,
-        marsSurfaceFn
+        marsSurfaceFn,
+        marsNormalFn,
+        marsCollisionFn
       );
 
-      // Update Mars Outpost dynamic elements (rotating dish, turrets, dust particles)
-      if (this.sceneManager.isIsometric && this.levelGenerator.marsOutpost) {
-        this.levelGenerator.marsOutpost.update(dt, totalTime);
+      // Update Mars Outpost dynamic elements, active enemies, hostile bolts
+      if (isIso) {
+        marsOutpost.update(dt, totalTime, this.player.position);
       }
 
       // Update Falling Meteor & Shatter Shrapnel System
@@ -1089,6 +1094,41 @@ class Game {
       }
     }
 
+    // Level 3: Hostile Plasma Bolts from Mars Outpost vs Player & Bubble Forcefield
+    if (this.sceneManager.isIsometric && this.levelGenerator.marsOutpost) {
+      for (const bolt of this.levelGenerator.marsOutpost.hostileBolts) {
+        if (!bolt.active) continue;
+        const playerCenter = new THREE.Vector3(pPos.x, pPos.y + 1.0, pPos.z);
+        const dist = bolt.position.distanceTo(playerCenter);
+
+        // Check Bubble Forcefield Deflect / Ball Bounce
+        if (this.player.shieldActive && dist < 1.65) {
+          bolt.active = false;
+          bolt.mesh.visible = false;
+          this.player.onShieldDeflect?.();
+          this.player.emitSparks(bolt.position.x, bolt.position.y, bolt.position.z, 10);
+          if (this.player.isBallMode) {
+            this.player.velocity.x += (bolt.velocity.x > 0 ? 3.5 : -3.5);
+            this.player.velocity.z += (bolt.velocity.z > 0 ? 3.5 : -3.5);
+            this.audioManager.playBallBounce(1.5);
+          }
+          continue;
+        }
+
+        // Direct Player Impact
+        if (dist < 0.70) {
+          bolt.active = false;
+          bolt.mesh.visible = false;
+          if (this.player.invulnerableTime <= 0) {
+            this.player.takeDamage(15, bolt.velocity.x > 0 ? 1 : -1);
+            this.player.emitSparks(bolt.position.x, bolt.position.y, bolt.position.z, 8);
+            this.audioManager.playHitImpact();
+            this.sceneManager.triggerShake(0.30, 0.20);
+          }
+        }
+      }
+    }
+
     // Interactive Physics Supply Crates vs Player (Smooth Horizontal Push Momentum)
     for (const crate of this.obstacleManager.crates) {
       if (!crate.active || crate.isDestroyed) continue;
@@ -1111,6 +1151,32 @@ class Game {
 
     // C. Lasers in 360° vs Destructible Obstacles, Alien Blobs & Flying Drones
     for (const laser of this.player.lasers) {
+      if (!laser.active) continue;
+
+      // 0. Level 3: Check against Mars Outpost Automated Turrets & Sentry Drones in 3D
+      if (this.sceneManager.isIsometric && this.levelGenerator.marsOutpost) {
+        for (const enemy of this.levelGenerator.marsOutpost.enemies) {
+          if (!enemy.active) continue;
+          const dist3D = laser.position.distanceTo(enemy.position);
+          if (dist3D < enemy.radius + 0.35) {
+            laser.active = false;
+            laser.mesh.visible = false;
+            this.player.emitSparks(laser.position.x, laser.position.y, laser.position.z, 8);
+            this.audioManager.playEnemyImpact();
+            this.sceneManager.triggerShake(0.22, 0.15);
+
+            const destroyed = enemy.takeDamage(25);
+            if (destroyed) {
+              this.audioManager.playExplosion();
+              this.sceneManager.triggerShake(0.40, 0.25);
+              this.score += enemy.type === 'turret' ? 250 : 150;
+              this.obstacleManager.spawnCoinPickup(enemy.position.x, enemy.position.y);
+            }
+            break;
+          }
+        }
+      }
+
       if (!laser.active) continue;
 
       // 1. Check against Alien Blob Enemies
@@ -1412,65 +1478,87 @@ class Game {
 
     let closestEnemy: any = null;
 
-    for (const enemy of this.obstacleManager.enemies) {
-      if (!enemy.active) continue;
-      const targetPos = new THREE.Vector3(enemy.position.x, enemy.position.y + 0.45, 0);
-      const d = searchCenter.distanceTo(targetPos);
-      if (d < closestDist) {
-        closestDist = d;
-        closestEnemy = enemy;
+    if (this.sceneManager.isIsometric && this.levelGenerator.marsOutpost) {
+      // Level 3: Mars Outpost Automated Defense Turrets & Aerial Sentry Drones Lock-On
+      for (const enemy of this.levelGenerator.marsOutpost.getLockOnTargets()) {
+        const d = searchCenter.distanceTo(enemy.position);
+        if (d < closestDist) {
+          closestDist = d;
+          closestEnemy = enemy;
+        }
       }
-    }
-
-    for (const drone of this.obstacleManager.drones) {
-      if (!drone.active) continue;
-      const targetPos = new THREE.Vector3(drone.position.x, drone.position.y, 0);
-      const d = searchCenter.distanceTo(targetPos);
-      if (d < closestDist) {
-        closestDist = d;
-        closestEnemy = drone;
+    } else {
+      // Level 1 & 2: 2.5D Obstacles, Aliens, and Drones
+      for (const enemy of this.obstacleManager.enemies) {
+        if (!enemy.active) continue;
+        const targetPos = new THREE.Vector3(enemy.position.x, enemy.position.y + 0.45, 0);
+        const d = searchCenter.distanceTo(targetPos);
+        if (d < closestDist) {
+          closestDist = d;
+          closestEnemy = enemy;
+        }
       }
-    }
 
-    for (const crate of this.obstacleManager.crates) {
-      if (!crate.active || crate.isDestroyed) continue;
-      const targetPos = new THREE.Vector3(crate.position.x, crate.position.y, 0);
-      const d = searchCenter.distanceTo(targetPos);
-      if (d < closestDist) {
-        closestDist = d;
-        closestEnemy = crate;
+      for (const drone of this.obstacleManager.drones) {
+        if (!drone.active) continue;
+        const targetPos = new THREE.Vector3(drone.position.x, drone.position.y, 0);
+        const d = searchCenter.distanceTo(targetPos);
+        if (d < closestDist) {
+          closestDist = d;
+          closestEnemy = drone;
+        }
       }
-    }
 
-    // Modern Robot Dogs (Alien Cyber Sentinels) Cursor Lock-On
-    for (const obs of this.obstacleManager.obstacles) {
-      if (!obs.active || obs.type !== ObstacleType.ALIEN_CYBER_SENTINEL) continue;
-      const targetPos = new THREE.Vector3(obs.group.position.x, obs.group.position.y + 0.65, 0);
-      const d = searchCenter.distanceTo(targetPos);
-      if (d < closestDist) {
-        closestDist = d;
-        closestEnemy = obs;
+      for (const crate of this.obstacleManager.crates) {
+        if (!crate.active || crate.isDestroyed) continue;
+        const targetPos = new THREE.Vector3(crate.position.x, crate.position.y, 0);
+        const d = searchCenter.distanceTo(targetPos);
+        if (d < closestDist) {
+          closestDist = d;
+          closestEnemy = crate;
+        }
+      }
+
+      // Modern Robot Dogs (Alien Cyber Sentinels) Cursor Lock-On
+      for (const obs of this.obstacleManager.obstacles) {
+        if (!obs.active || obs.type !== ObstacleType.ALIEN_CYBER_SENTINEL) continue;
+        const targetPos = new THREE.Vector3(obs.group.position.x, obs.group.position.y + 0.65, 0);
+        const d = searchCenter.distanceTo(targetPos);
+        if (d < closestDist) {
+          closestDist = d;
+          closestEnemy = obs;
+        }
       }
     }
 
     if (closestEnemy) {
       this.lockedEnemy = closestEnemy;
-      const isBlob = !!closestEnemy.slimeTrail;
-      const isSentinel = closestEnemy.type === ObstacleType.ALIEN_CYBER_SENTINEL;
-      const posX = isSentinel ? closestEnemy.group.position.x : closestEnemy.position.x;
-      const posY = isSentinel ? (closestEnemy.group.position.y + 0.65) : (closestEnemy.position.y + (isBlob ? 0.45 : 0));
-      const enemyCenter = new THREE.Vector3(posX, posY, 0);
 
-      // Snap mouse/touch aiming target directly to locked enemy center!
-      this.inputManager.mouseWorldTarget.copy(enemyCenter);
+      let enemyCenter: THREE.Vector3;
+      if (closestEnemy.mesh && (closestEnemy.type === 'turret' || closestEnemy.type === 'drone')) {
+        // Level 3 3D Enemy (Turret or Drone)
+        enemyCenter = closestEnemy.position.clone();
+        this.inputManager.mouseWorldTarget.copy(enemyCenter);
 
-      // Position and animate pulsating lock-on circle
-      this.lockOnMesh.position.set(enemyCenter.x, enemyCenter.y, 0.40);
+        this.lockOnMesh.position.copy(enemyCenter);
+        this.lockOnMesh.quaternion.copy(this.sceneManager.camera.quaternion);
+      } else {
+        // Level 1 & 2 2.5D Enemies
+        const isBlob = !!closestEnemy.slimeTrail;
+        const isSentinel = closestEnemy.type === ObstacleType.ALIEN_CYBER_SENTINEL;
+        const posX = isSentinel ? closestEnemy.group.position.x : closestEnemy.position.x;
+        const posY = isSentinel ? (closestEnemy.group.position.y + 0.65) : (closestEnemy.position.y + (isBlob ? 0.45 : 0));
+        enemyCenter = new THREE.Vector3(posX, posY, 0);
+
+        this.inputManager.mouseWorldTarget.copy(enemyCenter);
+
+        this.lockOnMesh.position.set(enemyCenter.x, enemyCenter.y, 0.40);
+        this.lockOnMesh.rotation.z += dt * 2.8;
+      }
+
       this.lockOnMesh.visible = true;
-
       const pulse = 1.0 + Math.sin(totalTime * 14.0) * 0.12;
       this.lockOnMesh.scale.set(pulse, pulse, 1.0);
-      this.lockOnMesh.rotation.z += dt * 2.8;
 
       document.getElementById('reticle')?.classList.add('locked');
     } else {

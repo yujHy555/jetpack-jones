@@ -132,12 +132,12 @@ export class SceneManager {
     if (this.isIsometric) {
       // ========================================================
       // TRIPLE AAA ISOMETRIC CAMERA SYSTEM
-      // Classic 45° azimuth / 38° elevation diamond isometric view
-      // Positioned to look across the canyon, tower, and circular hab ring
+      // Intimate, high-action 45° azimuth / 38° elevation diamond isometric view
+      // Moved closer for crisp character animations, terrain slopes, and Outpost architecture
       // ========================================================
-      const isoDistX = -18.0;
-      const isoDistY = 22.0;
-      const isoDistZ = 18.0;
+      const isoDistX = -12.5;
+      const isoDistY = 15.5;
+      const isoDistZ = 12.5;
 
       const targetCamX = targetX + isoDistX;
       const targetCamY = targetY + isoDistY;
